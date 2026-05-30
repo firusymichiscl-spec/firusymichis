@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import LogoutButton from "@/components/LogoutButton";
 
 export default async function Dashboard() {
   const cookieStore = await cookies();
@@ -50,9 +51,10 @@ export default async function Dashboard() {
         }}>
           ¡Bienvenido!
         </h1>
-        <p style={{ color: "#C4845A", fontSize: 14 }}>
+        <p style={{ color: "#C4845A", fontSize: 14, marginBottom: 32 }}>
           {user.email}
         </p>
+        <LogoutButton />
       </div>
     </div>
   );
