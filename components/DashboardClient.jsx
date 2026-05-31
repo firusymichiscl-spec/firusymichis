@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import WeightChart from "@/components/WeightChart";
+import PetPhotoUpload from "@/components/PetPhotoUpload";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -136,7 +137,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
           </div>
 
           <div className="pet-card">
-            <div className="pet-avatar">{speciesIcon}</div>
+            <PetPhotoUpload pet={pet} />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{pet.name}</div>
               <div className="pet-breed">{pet.breed} · {calcAge(pet.birth_date)}</div>
