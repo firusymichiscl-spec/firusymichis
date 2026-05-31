@@ -91,7 +91,7 @@ export default function EditPetModal({ pet, onClose, onSave }) {
   };
 
   return (
-    <div style={css.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div style={css.overlay}> 
       <div style={css.modal}>
         <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
         

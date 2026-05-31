@@ -36,29 +36,35 @@ export default function WeightChart({ pet }) {
   useEffect(() => { loadWeights(); }, []);
 
   const loadWeights = async () => {
-    const { data } = await supabase
-      .from("weight_logs")
-      .select("*")
-      .eq("pet_id", pet.id)
-      .order("logged_date", { ascending: true })
-      .limit(3);
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
 
-    if (data?.length) {
-      setWeights(data.map(w => ({
-        date: new Date(w.logged_date).toLocaleDateString("es-CL", { month: "short", year: "numeric" }),
-        kg: parseFloat(w.weight_kg),
-        id: w.id,
-        logged_date: w.logged_date,
-      })));
-    } else if (pet.weight_kg) {
-      setWeights([{
-        date: new Date().toLocaleDateString("es-CL", { month: "short", year: "numeric" }),
-        kg: parseFloat(pet.weight_kg),
-        id: null,
-        logged_date: new Date().toISOString().split("T")[0],
-      }]);
-    }
-  };
+  const { data } = await supabase
+    .from("weight_logs")
+    .select("*")
+    .eq("pet_id", pet.id)
+    .gte("logged_date", firstDay)
+    .lte("logged_date", lastDay)
+    .order("logged_date", { ascending: true })
+    .limit(4);
+
+  if (data?.length) {
+    setWeights(data.map(w => ({
+      date: new Date(w.logged_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
+      kg: parseFloat(w.weight_kg),
+      id: w.id,
+      logged_date: w.logged_date,
+    })));
+  } else if (pet.weight_kg) {
+    setWeights([{
+      date: new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
+      kg: parseFloat(pet.weight_kg),
+      id: null,
+      logged_date: new Date().toISOString().split("T")[0],
+    }]);
+  }
+};
 
   const openAdd = () => {
     setEditingIdx(null);
@@ -170,7 +176,7 @@ export default function WeightChart({ pet }) {
 
       <div style={{ borderTop: "1px solid #FFF0EB", paddingTop: 14, marginTop: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-          Registros del año — toca para editar
+          Registros del mes — máx. 4 (1 por semana)
         </div>
         <div style={css.slots}>
           {weights.map((w, i) => {
@@ -183,7 +189,7 @@ export default function WeightChart({ pet }) {
               </div>
             );
           })}
-          {weights.length < 3 && (
+          {weights.length < 4 && (
             <div style={css.addBtn} onClick={openAdd}>
               <div style={css.slotLabel}>+ Agregar</div>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, color: "#C4845A" }}>+</div>
