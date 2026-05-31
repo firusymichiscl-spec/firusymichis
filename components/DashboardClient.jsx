@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import WeightChart from "@/components/WeightChart";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -194,6 +195,8 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                   </div>
                 </div>
               )}
+
+              <WeightChart pet={pet} />
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
