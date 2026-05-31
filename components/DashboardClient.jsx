@@ -56,7 +56,17 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Nunito', sans-serif; background: var(--cream); color: var(--brown); }
-    .app { max-width: 420px; margin: 0 auto; min-height: 100vh; }
+    .app { max-width: 900px; margin: 0 auto; min-height: 100vh; }
+    .header { border-radius: 0 0 24px 24px; }
+    .content { display: grid; grid-template-columns: 1fr; gap: 0; }
+    @media (min-width: 640px) {
+    .content { grid-template-columns: 1fr 1fr; gap: 20px; padding: 24px; }
+    .tabs { max-width: 420px; }
+    }
+    @media (max-width: 639px) {
+    .app { max-width: 420px; }
+    .header { border-radius: 0; }
+    }
     .header { background: linear-gradient(160deg, #FF6B35 0%, #FF4500 60%, #E63900 100%); padding: 20px 20px 0; position: relative; overflow: hidden; }
     .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
     .brand-left { display: flex; align-items: center; gap: 10px; }
@@ -64,7 +74,9 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
     .brand-name { font-family: 'Baloo 2', cursive; font-size: 20px; font-weight: 800; color: #fff; }
     .brand-name span { color: var(--yellow); }
     .signout-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 10px; padding: 6px 12px; color: #fff; font-family: 'Nunito', sans-serif; font-size: 11px; font-weight: 700; cursor: pointer; }
-    .pet-card { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+    .pet-card { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; max-width: 860px; margin-left: auto; margin-right: auto; }
+    .brand { max-width: 860px; margin-left: auto; margin-right: auto; }
+    .conditions-row { max-width: 860px; margin-left: auto; margin-right: auto; }
     .pet-avatar { width: 68px; height: 68px; border-radius: 50%; background: linear-gradient(135deg, #FFD166, #FF8C5A); display: flex; align-items: center; justify-content: center; font-size: 34px; box-shadow: 0 6px 20px rgba(0,0,0,0.2), 0 0 0 3px rgba(255,255,255,0.3); flex-shrink: 0; }
     .pet-name { font-family: 'Baloo 2', cursive; font-size: 26px; font-weight: 800; color: #fff; line-height: 1; margin-bottom: 3px; }
     .pet-breed { font-size: 12px; color: rgba(255,255,255,0.8); font-style: italic; }
