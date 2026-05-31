@@ -27,44 +27,62 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function WeightChart({ pet }) {
   const supabase = createClient();
   const [weights, setWeights] = useState([]);
+  const [history, setHistory] = useState([]);
   const [newWeight, setNewWeight] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
   const [showInput, setShowInput] = useState(false);
   const [editingIdx, setEditingIdx] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { loadWeights(); }, []);
-
-  const loadWeights = async () => {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
 
-  const { data } = await supabase
-    .from("weight_logs")
-    .select("*")
-    .eq("pet_id", pet.id)
-    .gte("logged_date", firstDay)
-    .lte("logged_date", lastDay)
-    .order("logged_date", { ascending: true })
-    .limit(4);
+  useEffect(() => { loadWeights(); }, []);
 
-  if (data?.length) {
-    setWeights(data.map(w => ({
-      date: new Date(w.logged_date).toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
-      kg: parseFloat(w.weight_kg),
-      id: w.id,
-      logged_date: w.logged_date,
-    })));
-  } else if (pet.weight_kg) {
-    setWeights([{
-      date: new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
-      kg: parseFloat(pet.weight_kg),
-      id: null,
-      logged_date: new Date().toISOString().split("T")[0],
-    }]);
-  }
-};
+  const loadWeights = async () => {
+    const { data: current } = await supabase
+      .from("weight_logs")
+      .select("*")
+      .eq("pet_id", pet.id)
+      .gte("logged_date", firstDay)
+      .lte("logged_date", lastDay)
+      .order("logged_date", { ascending: true })
+      .limit(4);
+
+    const { data: hist } = await supabase
+      .from("weight_logs")
+      .select("*")
+      .eq("pet_id", pet.id)
+      .lt("logged_date", firstDay)
+      .order("logged_date", { ascending: false })
+      .limit(12);
+
+    if (current?.length) {
+      setWeights(current.map(w => ({
+        date: new Date(w.logged_date + "T12:00:00").toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
+        kg: parseFloat(w.weight_kg),
+        id: w.id,
+        logged_date: w.logged_date,
+      })));
+    } else if (pet.weight_kg) {
+      setWeights([{
+        date: new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
+        kg: parseFloat(pet.weight_kg),
+        id: null,
+        logged_date: new Date().toISOString().split("T")[0],
+      }]);
+    }
+
+    if (hist?.length) {
+      setHistory(hist.map(w => ({
+        date: new Date(w.logged_date + "T12:00:00").toLocaleDateString("es-CL", { month: "short", year: "numeric" }),
+        kg: parseFloat(w.weight_kg),
+        id: w.id,
+        logged_date: w.logged_date,
+      })));
+    }
+  };
 
   const openAdd = () => {
     setEditingIdx(null);
@@ -83,16 +101,20 @@ export default function WeightChart({ pet }) {
   const saveWeight = async () => {
     const val = parseFloat(newWeight);
     if (!val || val < 0.1 || val > 200 || !newDate) return;
+
+    if (newDate < firstDay || newDate > lastDay) {
+      alert("Solo puedes registrar pesos del mes actual en este panel.");
+      return;
+    }
+
     setLoading(true);
 
     if (editingIdx !== null && weights[editingIdx]?.id) {
-      // Editar registro existente
       await supabase
         .from("weight_logs")
         .update({ weight_kg: val, logged_date: newDate })
         .eq("id", weights[editingIdx].id);
     } else {
-      // Nuevo registro
       await supabase.from("weight_logs").insert({
         pet_id: pet.id,
         weight_kg: val,
@@ -117,20 +139,21 @@ export default function WeightChart({ pet }) {
 
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
-    title: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 },
+    title: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1 },
     header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
     kg: { fontFamily: "'Baloo 2', cursive", fontSize: 28, fontWeight: 800, color: "#3D1F0A", lineHeight: 1 },
     label: { fontSize: 10, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px" },
     trend: (up) => ({ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, marginTop: 3, background: up ? "#e8faf4" : "#fef2f2", color: up ? "#059669" : "#dc2626" }),
-    slots: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 },
-    slot: (type) => ({ border: `1.5px ${type === "empty" ? "dashed" : "solid"} ${type === "filled" ? "#2EC4B6" : type === "active" ? "#FF6B35" : "#FFD9C8"}`, borderRadius: 12, padding: "10px 6px", textAlign: "center", cursor: "pointer", background: type === "filled" ? "#E8FAF9" : type === "active" ? "#FFF0EB" : "#FFFAF7", position: "relative" }),
-    slotLabel: { fontSize: 10, color: "#C4845A", marginBottom: 4 },
-    slotVal: (type) => ({ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: type === "filled" ? "#0F6E56" : "#3D1F0A" }),
-    editBadge: { position: "absolute", top: 4, right: 6, fontSize: 9, color: "#C4845A", fontWeight: 700 },
+    slots: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
+    slot: (type) => ({ border: `1.5px ${type === "empty" ? "dashed" : "solid"} ${type === "filled" ? "#2EC4B6" : type === "active" ? "#FF6B35" : "#FFD9C8"}`, borderRadius: 10, padding: "8px 4px", textAlign: "center", cursor: "pointer", background: type === "filled" ? "#E8FAF9" : type === "active" ? "#FFF0EB" : "#FFFAF7", position: "relative" }),
+    slotLabel: { fontSize: 9, color: "#C4845A", marginBottom: 3 },
+    slotVal: (type) => ({ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: type === "filled" ? "#0F6E56" : "#3D1F0A" }),
+    editBadge: { position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" },
     inputRow: { display: "flex", gap: 8, marginTop: 8 },
     input: { flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#FFFAF7", fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#3D1F0A", outline: "none" },
     saveBtn: { padding: "9px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-    addBtn: { border: "1.5px dashed #FFD9C8", borderRadius: 12, padding: "10px 6px", textAlign: "center", cursor: "pointer", background: "#FFFAF7" },
+    addBtn: { border: "1.5px dashed #FFD9C8", borderRadius: 10, padding: "8px 4px", textAlign: "center", cursor: "pointer", background: "#FFFAF7" },
+    histChip: { display: "inline-flex", flexDirection: "column", alignItems: "center", background: "#F5E6DA", borderRadius: 8, padding: "4px 8px", fontSize: 10, color: "#7A4522", fontWeight: 700, gap: 1 },
   };
 
   return (
@@ -175,8 +198,8 @@ export default function WeightChart({ pet }) {
       )}
 
       <div style={{ borderTop: "1px solid #FFF0EB", paddingTop: 14, marginTop: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-          Registros del mes — máx. 4 (1 por semana)
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+          Este mes — toca para editar (máx. 4)
         </div>
         <div style={css.slots}>
           {weights.map((w, i) => {
@@ -192,7 +215,7 @@ export default function WeightChart({ pet }) {
           {weights.length < 4 && (
             <div style={css.addBtn} onClick={openAdd}>
               <div style={css.slotLabel}>+ Agregar</div>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, color: "#C4845A" }}>+</div>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, color: "#C4845A" }}>+</div>
             </div>
           )}
         </div>
@@ -204,26 +227,12 @@ export default function WeightChart({ pet }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Fecha</div>
-                <input
-                  style={css.input}
-                  type="date"
-                  min={pet.birth_date || "2000-01-01"}
-                  max={new Date().toISOString().split("T")[0]}
-                  value={newDate}
-                  onChange={e => setNewDate(e.target.value)}
-                />
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Fecha (mes actual)</div>
+                <input style={css.input} type="date" min={firstDay} max={lastDay} value={newDate} onChange={e => setNewDate(e.target.value)} />
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Peso (kg)</div>
-                <input
-                  style={css.input}
-                  type="number"
-                  placeholder="ej: 12.5"
-                  step="0.1"
-                  value={newWeight}
-                  onChange={e => setNewWeight(e.target.value)}
-                />
+                <input style={css.input} type="number" placeholder="ej: 12.5" step="0.1" value={newWeight} onChange={e => setNewWeight(e.target.value)} />
               </div>
             </div>
             <div style={css.inputRow}>
@@ -233,6 +242,22 @@ export default function WeightChart({ pet }) {
               <button onClick={() => { setShowInput(false); setEditingIdx(null); }} style={{ ...css.saveBtn, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
                 Cancelar
               </button>
+            </div>
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #FFF0EB" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+              Historial anterior
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {history.map((w, i) => (
+                <div key={i} style={css.histChip}>
+                  <span style={{ fontSize: 9, color: "#C4845A" }}>{w.date}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#7A4522" }}>{w.kg.toFixed(1)} kg</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
