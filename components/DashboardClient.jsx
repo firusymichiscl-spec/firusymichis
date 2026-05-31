@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import WeightChart from "@/components/WeightChart";
 import PetPhotoUpload from "@/components/PetPhotoUpload";
+import EditPetModal from "@/components/EditPetModal";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -20,8 +21,10 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
   const router = useRouter();
   const supabase = createClient();
   const [tab, setTab] = useState("ficha");
+  const [editingPet, setEditingPet] = useState(false);
+  const [petData, setPetData] = useState(pet);
 
-  const speciesIcon = pet.species === "cat" ? "🐱" : pet.species === "other" ? "🐰" : "🐶";
+  const speciesIcon = petData.species === "cat" ? "🐱" : petData.species === "other" ? "🐰" : "🐶";
 
   const calcAge = (birthDate) => {
     if (!birthDate) return "Sin datos";
@@ -139,8 +142,8 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
           <div className="pet-card">
             <PetPhotoUpload pet={pet} />
             <div style={{ flex: 1 }}>
-              <div className="pet-name">{pet.name}</div>
-              <div className="pet-breed">{pet.breed} · {calcAge(pet.birth_date)}</div>
+              <div className="pet-name">{petData.name}</div>
+              <div className="pet-breed">{petData.breed} · {calcAge(petData.birth_date)}</div>
             </div>
             <div className="today-badge">
               <div className="today-num">{medications.length}</div>
@@ -148,9 +151,9 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
             </div>
           </div>
 
-          {pet.conditions?.length > 0 && (
+          {petData.conditions?.length > 0 && (
             <div className="conditions-row">
-              {pet.conditions.map(c => (
+              {petData.conditions.map(c => (
                 <span key={c} className="condition-pill">{c}</span>
               ))}
             </div>
@@ -175,13 +178,16 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
           {tab === "ficha" && (
             <div className="fade-up">
               <div className="card">
-                <div className="card-title">🐶 Datos básicos</div>
+                <div className="card-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>🐶 Datos básicos</span>
+                  <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                  </div>
                 {[
-                  ["Nombre", pet.name],
-                  ["Especie", pet.species === "dog" ? "Perro" : pet.species === "cat" ? "Gato" : "Otro"],
-                  ["Raza", pet.breed || "Sin datos"],
-                  ["Edad", calcAge(pet.birth_date)],
-                  ["Peso", pet.weight_kg ? `${pet.weight_kg} kg` : "Sin datos"],
+                  ["Nombre", petData.name],
+                  ["Especie", petData.species === "dog" ? "Perro" : petData.species === "cat" ? "Gato" : "Otro"],
+                  ["Raza", petData.breed || "Sin datos"],
+                  ["Edad", calcAge(petData.birth_date)],
+                  ["Peso", petData.weight_kg ? `${petData.weight_kg} kg` : "Sin datos"],
                 ].map(([l, v]) => (
                   <div className="row" key={l}>
                     <span className="row-label">{l}</span>
@@ -190,12 +196,12 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                 ))}
               </div>
 
-              {pet.diet && (
+              {petData.diet && (
                 <div className="card">
                   <div className="card-title">🍽️ Alimentación</div>
                   <div className="row">
                     <span className="row-label">Dieta</span>
-                    <span className="row-value">{pet.diet}</span>
+                    <span className="row-value">{petData.diet}</span>
                   </div>
                 </div>
               )}
@@ -287,6 +293,17 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
           )}
         </div>
       </div>
+          {editingPet && (
+          <EditPetModal
+            pet={petData}
+            onClose={() => setEditingPet(false)}
+            onSave={(updated) => {
+              setPetData(p => ({ ...p, ...updated }));
+              setEditingPet(false);
+            }}
+          />
+        )}
+
     </>
   );
 }
