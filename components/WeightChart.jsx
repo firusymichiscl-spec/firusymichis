@@ -29,6 +29,7 @@ export default function WeightChart({ pet }) {
   const [weights, setWeights] = useState([]);
   const [newWeight, setNewWeight] = useState("");
   const [showInput, setShowInput] = useState(false);
+  const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -57,19 +58,21 @@ export default function WeightChart({ pet }) {
   };
 
   const saveWeight = async () => {
-    const val = parseFloat(newWeight);
-    if (!val || val < 0.1 || val > 200) return;
-    setLoading(true);
-    await supabase.from("weight_logs").insert({
-      pet_id: pet.id,
-      weight_kg: val,
-      logged_date: new Date().toISOString().split("T")[0],
-    });
-    setNewWeight("");
-    setShowInput(false);
-    await loadWeights();
-    setLoading(false);
-  };
+  const val = parseFloat(newWeight);
+  if (!val || val < 0.1 || val > 200) return;
+  if (!newDate) return;
+  setLoading(true);
+  await supabase.from("weight_logs").insert({
+    pet_id: pet.id,
+    weight_kg: val,
+    logged_date: newDate,
+  });
+  setNewWeight("");
+  setNewDate(new Date().toISOString().split("T")[0]);
+  setShowInput(false);
+  await loadWeights();
+  setLoading(false);
+};
 
   const current = weights[weights.length - 1]?.kg;
   const prev = weights[weights.length - 2]?.kg;
@@ -159,13 +162,41 @@ export default function WeightChart({ pet }) {
           )}
         </div>
         {showInput && (
-          <div style={css.inputRow}>
-            <input style={css.input} type="number" placeholder="ej: 12.5" step="0.1" value={newWeight} onChange={e => setNewWeight(e.target.value)} />
-            <button style={css.saveBtn} onClick={saveWeight} disabled={loading}>
-              {loading ? "..." : "Guardar"}
-            </button>
-          </div>
-        )}
+  <div style={{ marginTop: 8 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Fecha</div>
+        <input
+          style={css.input}
+          type="date"
+          min={pet.birth_date || "2000-01-01"}
+          max={new Date().toISOString().split("T")[0]}
+          value={newDate}
+          onChange={e => setNewDate(e.target.value)}
+        />
+      </div>
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Peso (kg)</div>
+        <input
+          style={css.input}
+          type="number"
+          placeholder="ej: 12.5"
+          step="0.1"
+          value={newWeight}
+          onChange={e => setNewWeight(e.target.value)}
+        />
+      </div>
+    </div>
+    <div style={css.inputRow}>
+      <button style={{ ...css.saveBtn, flex: 1 }} onClick={saveWeight} disabled={loading}>
+        {loading ? "..." : "Guardar"}
+      </button>
+      <button onClick={() => setShowInput(false)} style={{ ...css.saveBtn, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
+        Cancelar
+      </button>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );
