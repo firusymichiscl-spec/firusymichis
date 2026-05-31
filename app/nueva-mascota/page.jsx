@@ -1,0 +1,231 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase";
+
+const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
+const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
+const BREEDS_OTHER = ['Conejo enano','Hámster sirio','Cobaya','Chinchilla','Hurón','Tortuga','Loro','Canario','Periquito','Iguana'];
+const DIETS = ['Royal Canin Skin Care','Royal Canin Urinary','Royal Canin Renal','Hill\'s Science Diet','Hill\'s Prescription Diet','Purina Pro Plan','Eukanuba','Advance Veterinary Diets','Orijen','Acana','Brit Care','Taste of the Wild','Nutrivet','Equilibrio Veterinary','Natural Choice'];
+const CONDITIONS = ['Hipotiroidismo','Dermatitis atópica','Otitis recurrente','Diabetes','Epilepsia','Displasia de cadera','Insuficiencia renal','Problemas cardíacos','Alergias alimentarias','Parásitos','Ansiedad','Artritis','Obesidad','Cáncer','Leishmaniasis'];
+
+const SPECIES_OPTIONS = [
+  { value: 'dog', icon: '🐶', label: 'Perro' },
+  { value: 'cat', icon: '🐱', label: 'Gato' },
+  { value: 'other', icon: '🐰', label: 'Otro' },
+];
+
+export default function NuevaMascota() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    species: 'dog', speciesIcon: '🐶', speciesLabel: 'Perro',
+    name: '', breed: '', birth_date: '', weight_kg: '',
+    conditions: [], diet: '',
+  });
+  const [breedQuery, setBreedQuery] = useState('');
+  const [breedDropdown, setBreedDropdown] = useState(false);
+  const [dietQuery, setDietQuery] = useState('');
+  const [dietDropdown, setDietDropdown] = useState(false);
+
+  const breeds = form.species === 'cat' ? BREEDS_CAT : form.species === 'other' ? BREEDS_OTHER : BREEDS_DOG;
+  const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
+  const filteredDiets = dietQuery ? DIETS.filter(d => d.toLowerCase().includes(dietQuery.toLowerCase())) : DIETS.slice(0, 6);
+
+  const toggleCondition = (cond) => {
+    setForm(f => ({
+      ...f,
+      conditions: f.conditions.includes(cond)
+        ? f.conditions.filter(c => c !== cond)
+        : [...f.conditions, cond]
+    }));
+  };
+
+  const savePet = async () => {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
+
+    const { error } = await supabase.from('pets').insert({
+      user_id: user.id,
+      name: form.name,
+      species: form.species,
+      breed: form.breed,
+      birth_date: form.birth_date || null,
+      weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
+      conditions: form.conditions,
+      diet: form.diet,
+    });
+
+    if (!error) { setStep(4); }
+    setLoading(false);
+  };
+
+  const css = {
+    wrap: { background: '#FFF8F3', minHeight: '100vh', padding: '24px 16px', fontFamily: "'Nunito', sans-serif" },
+    progress: { display: 'flex', gap: 6, marginBottom: 20, maxWidth: 680, margin: '0 auto 20px' },
+    dot: (s) => ({ flex: 1, height: 6, borderRadius: 3, background: s === 'done' ? '#2EC4B6' : s === 'active' ? '#FF6B35' : '#FFD9C8', transition: 'background 0.3s' }),
+    layout: { display: 'grid', gridTemplateColumns: '1fr 220px', gap: 14, maxWidth: 680, margin: '0 auto' },
+    card: { background: '#fff', borderRadius: 20, padding: '24px 20px', border: '1.5px solid #FFD9C8' },
+    sumCard: { background: '#fff', borderRadius: 20, padding: '18px 16px', border: '1.5px solid #2EC4B6' },
+    title: { fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: '#3D1F0A', marginBottom: 3 },
+    sub: { fontSize: 12, color: '#C4845A', marginBottom: 18 },
+    label: { fontSize: 11, fontWeight: 700, color: '#7A4522', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 5, display: 'block', marginTop: 12 },
+    input: { width: '100%', padding: '10px 13px', borderRadius: 11, border: '1.5px solid #FFD9C8', background: '#FFFAF7', fontFamily: "'Nunito', sans-serif", fontSize: 14, color: '#3D1F0A', outline: 'none' },
+    btn: { width: '100%', padding: 13, borderRadius: 13, background: '#FF6B35', color: '#fff', border: 'none', fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: 'pointer', marginTop: 14 },
+    btnBack: { width: '100%', padding: 11, borderRadius: 13, background: '#FFF0EB', color: '#FF6B35', border: '2px solid #FFD0BC', fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8 },
+    dropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid #FF6B35', borderRadius: 11, maxHeight: 160, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 16px rgba(61,31,10,0.1)' },
+    dropItem: { padding: '9px 13px', fontSize: 13, cursor: 'pointer', color: '#3D1F0A' },
+  };
+
+  const dotState = (i) => i < step ? 'done' : i === step ? 'active' : 'idle';
+
+  return (
+    <div style={css.wrap}>
+      <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
+      <div style={css.progress}>
+        {[1,2,3,4].map(i => <div key={i} style={css.dot(dotState(i))} />)}
+      </div>
+
+      <div style={css.layout}>
+        <div>
+          {/* PASO 1 */}
+          {step === 1 && (
+            <div style={css.card}>
+              <div style={css.title}>¿Qué tipo de mascota? 🐾</div>
+              <div style={css.sub}>Selecciona para personalizar la experiencia</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
+                {SPECIES_OPTIONS.map(s => (
+                  <div key={s.value} onClick={() => setForm(f => ({ ...f, species: s.value, speciesIcon: s.icon, speciesLabel: s.label }))}
+                    style={{ border: `2px solid ${form.species === s.value ? '#FF6B35' : '#FFD9C8'}`, borderRadius: 14, padding: '14px 6px', background: form.species === s.value ? '#FFF0EB' : '#FFFAF7', cursor: 'pointer', textAlign: 'center' }}>
+                    <span style={{ fontSize: 32, display: 'block', marginBottom: 4 }}>{s.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#3D1F0A' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+              <button style={css.btn} onClick={() => setStep(2)}>Continuar →</button>
+            </div>
+          )}
+
+          {/* PASO 2 */}
+          {step === 2 && (
+            <div style={css.card}>
+              <div style={css.title}>Datos básicos 📋</div>
+              <div style={css.sub}>Cuéntanos sobre tu mascota</div>
+              <label style={css.label}>Nombre</label>
+              <input style={css.input} placeholder="Ej: Kiara" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <label style={css.label}>Raza</label>
+              <div style={{ position: 'relative' }}>
+                <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
+                  onChange={e => { setBreedQuery(e.target.value); setBreedDropdown(true); }}
+                  onFocus={() => setBreedDropdown(true)}
+                  onBlur={() => setTimeout(() => setBreedDropdown(false), 200)} />
+                {breedDropdown && (
+                  <div style={css.dropdown}>
+                    {filteredBreeds.slice(0, 8).map(b => (
+                      <div key={b} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, breed: b })); setBreedQuery(b); setBreedDropdown(false); }}>{b}</div>
+                    ))}
+                    {breedQuery && !breeds.find(b => b.toLowerCase() === breedQuery.toLowerCase()) && (
+                      <div style={{ ...css.dropItem, color: '#2EC4B6', fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, breed: breedQuery })); setBreedDropdown(false); }}>+ Usar "{breedQuery}"</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={css.label}>Fecha de nacimiento</label>
+                  <input style={css.input} type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={css.label}>Peso (kg)</label>
+                  <input style={css.input} type="number" placeholder="38" step="0.1" value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} />
+                </div>
+              </div>
+              <button style={css.btn} onClick={() => setStep(3)}>Continuar →</button>
+              <button style={css.btnBack} onClick={() => setStep(1)}>← Volver</button>
+            </div>
+          )}
+
+          {/* PASO 3 */}
+          {step === 3 && (
+            <div style={css.card}>
+              <div style={css.title}>Condiciones de salud 🏥</div>
+              <div style={css.sub}>Selecciona las que apliquen</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 16 }}>
+                {CONDITIONS.map(cond => {
+                  const sel = form.conditions.includes(cond);
+                  return (
+                    <div key={cond} onClick={() => toggleCondition(cond)} style={{ padding: '7px 13px', borderRadius: 20, border: `1.5px solid ${sel ? '#FF6B35' : '#E8D5C8'}`, background: sel ? '#FFF0EB' : '#FFFAF7', fontSize: 12, fontWeight: 700, color: sel ? '#CC4A1A' : '#7A4522', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 14, height: 14, borderRadius: '50%', border: `1.5px solid ${sel ? '#FF6B35' : '#C4845A'}`, background: sel ? '#FF6B35' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff' }}>{sel ? '✓' : ''}</span>
+                      {cond}
+                    </div>
+                  );
+                })}
+              </div>
+              <label style={css.label}>Dieta especial</label>
+              <div style={{ position: 'relative' }}>
+                <input style={css.input} placeholder="Buscar o escribir dieta..." value={dietQuery}
+                  onChange={e => { setDietQuery(e.target.value); setDietDropdown(true); setForm(f => ({ ...f, diet: e.target.value })); }}
+                  onFocus={() => setDietDropdown(true)}
+                  onBlur={() => setTimeout(() => setDietDropdown(false), 200)} />
+                {dietDropdown && (
+                  <div style={css.dropdown}>
+                    {filteredDiets.map(d => (
+                      <div key={d} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, diet: d })); setDietQuery(d); setDietDropdown(false); }}>{d}</div>
+                    ))}
+                    {dietQuery && !DIETS.find(d => d.toLowerCase() === dietQuery.toLowerCase()) && (
+                      <div style={{ ...css.dropItem, color: '#2EC4B6', fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, diet: dietQuery })); setDietDropdown(false); }}>+ Usar "{dietQuery}"</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>
+              <button style={css.btnBack} onClick={() => setStep(2)}>← Volver</button>
+            </div>
+          )}
+
+          {/* PASO 4 */}
+          {step === 4 && (
+            <div style={css.card}>
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <div style={{ fontSize: 60, marginBottom: 10 }}>🎉</div>
+                <div style={css.title}>¡{form.name} ha sido registrada!</div>
+                <div style={{ ...css.sub, margin: '8px 0 20px' }}>Ya tiene su ficha en Firus&Michis</div>
+                <button style={css.btn} onClick={() => router.push('/dashboard')}>Ver dashboard →</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RESUMEN */}
+        <div style={css.sumCard}>
+          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: '#2EC4B6', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>📋 Resumen</div>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#FFD166,#FF8C5A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 10px' }}>{form.speciesIcon}</div>
+          <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: form.name ? 16 : 13, fontWeight: form.name ? 800 : 400, color: form.name ? '#3D1F0A' : '#C4845A', textAlign: 'center', marginBottom: 8 }}>{form.name || 'Nombre de mascota'}</div>
+          {[
+            ['Especie', form.speciesLabel],
+            ['Raza', form.breed],
+            ['Nacimiento', form.birth_date ? new Date(form.birth_date).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : ''],
+            ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
+            ['Dieta', form.diet],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
+              <span style={{ color: '#C4845A' }}>{k}</span>
+              <span style={{ fontWeight: 700, color: '#3D1F0A', textAlign: 'right', maxWidth: 120, wordBreak: 'break-word' }}>{v}</span>
+            </div>
+          ))}
+          {form.conditions.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+              {form.conditions.map(c => (
+                <span key={c} style={{ background: '#FFF0EB', color: '#FF6B35', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{c}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
