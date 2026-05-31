@@ -3,157 +3,218 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, ReferenceLine
 } from "recharts";
+
+const getWeekOfMonth = (date) => {
+  const d = new Date(date + "T12:00:00");
+  const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
+  return Math.ceil((d.getDate() + firstDay.getDay()) / 7);
+};
+
+const weeksInMonth = (year, month) => {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return Math.ceil((firstDay + daysInMonth) / 7);
+};
+
+const currentWeekOfMonth = () => {
+  const today = new Date();
+  return getWeekOfMonth(today.toISOString().split("T")[0]);
+};
 
 const PAW_EMOJI = { dog: "🐾", cat: "🐱", other: "🐰" };
 
-const CustomDot = ({ cx, cy, species }) => (
-  <text x={cx} y={cy + 7} textAnchor="middle" fontSize={18} style={{ userSelect: "none" }}>
-    {PAW_EMOJI[species] || "🐾"}
-  </text>
-);
+const CustomDot = (props) => {
+  const { cx, cy, payload, species } = props;
+  if (!cx || !cy) return null;
+  const isHistorical = payload?.type === "historical";
+  return (
+    <text x={cx} y={cy + 7} textAnchor="middle" fontSize={isHistorical ? 14 : 18}
+      style={{ userSelect: "none", opacity: isHistorical ? 0.7 : 1 }}>
+      {isHistorical ? "📅" : (PAW_EMOJI[species] || "🐾")}
+    </text>
+  );
+};
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
+  const isHist = payload[0]?.payload?.type === "historical";
   return (
     <div style={{ background: "#3D1F0A", color: "#fff", padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
       {Number(payload[0].value).toFixed(1)} kg · {label}
+      {isHist && <div style={{ fontSize: 10, opacity: 0.7 }}>promedio anual</div>}
     </div>
   );
 };
 
 export default function WeightChart({ pet }) {
   const supabase = createClient();
-  const [weights, setWeights] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [newWeight, setNewWeight] = useState("");
-  const [newDate, setNewDate] = useState(new Date().toISOString().split("T")[0]);
+  const [weekData, setWeekData] = useState([]);
+  const [yearlyAvgs, setYearlyAvgs] = useState([]);
+  const [chartData, setChartData] = useState([]);
   const [showInput, setShowInput] = useState(false);
-  const [editingIdx, setEditingIdx] = useState(null);
+  const [editingWeek, setEditingWeek] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [newWeight, setNewWeight] = useState("");
   const [loading, setLoading] = useState(false);
 
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const totalWeeks = weeksInMonth(year, month);
+  const currentWeek = currentWeekOfMonth();
+  const firstDay = new Date(year, month, 1).toISOString().split("T")[0];
+  const lastDay = new Date(year, month + 1, 0).toISOString().split("T")[0];
+  const monthLabel = now.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+  const species = pet.species || "dog";
 
-  useEffect(() => { loadWeights(); }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  const loadWeights = async () => {
+  const loadAll = async () => {
+    // Mes actual
     const { data: current } = await supabase
       .from("weight_logs")
       .select("*")
       .eq("pet_id", pet.id)
       .gte("logged_date", firstDay)
       .lte("logged_date", lastDay)
-      .order("logged_date", { ascending: true })
-      .limit(4);
+      .order("week_of_month", { ascending: true });
 
+    // Años anteriores
     const { data: hist } = await supabase
       .from("weight_logs")
       .select("*")
       .eq("pet_id", pet.id)
       .lt("logged_date", firstDay)
-      .order("logged_date", { ascending: false })
-      .limit(12);
+      .order("logged_date", { ascending: true });
 
-    if (current?.length) {
-      setWeights(current.map(w => ({
-        date: new Date(w.logged_date + "T12:00:00").toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
-        kg: parseFloat(w.weight_kg),
-        id: w.id,
-        logged_date: w.logged_date,
-      })));
-    } else if (pet.weight_kg) {
-      setWeights([{
-        date: new Date().toLocaleDateString("es-CL", { day: "2-digit", month: "short" }),
-        kg: parseFloat(pet.weight_kg),
-        id: null,
-        logged_date: new Date().toISOString().split("T")[0],
-      }]);
+    const weeks = Array.from({ length: Math.min(totalWeeks, 4) }, (_, i) => {
+      const wk = i + 1;
+      const found = current?.find(w => w.week_of_month === wk);
+      return {
+        week: wk,
+        kg: found ? parseFloat(found.weight_kg) : null,
+        id: found?.id || null,
+      };
+    });
+
+    // Si hay semana 5, promediar con semana 4
+    if (totalWeeks === 5) {
+      const wk5 = current?.find(w => w.week_of_month === 5);
+      if (wk5 && weeks[3]) {
+        const avg = ((weeks[3].kg || 0) + parseFloat(wk5.weight_kg)) / 2;
+        weeks[3] = { ...weeks[3], kg: parseFloat(avg.toFixed(1)) };
+      }
     }
 
-    if (hist?.length) {
-      setHistory(hist.map(w => ({
-        date: new Date(w.logged_date + "T12:00:00").toLocaleDateString("es-CL", { month: "short", year: "numeric" }),
-        kg: parseFloat(w.weight_kg),
-        id: w.id,
-        logged_date: w.logged_date,
-      })));
-    }
+    setWeekData(weeks);
+
+    // Promedios anuales
+    const byYear = {};
+    hist?.forEach(w => {
+      const y = w.logged_date.slice(0, 4);
+      if (!byYear[y]) byYear[y] = [];
+      byYear[y].push(parseFloat(w.weight_kg));
+    });
+
+    const avgs = Object.entries(byYear).map(([y, vals]) => ({
+      year: y,
+      kg: parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)),
+      type: "historical",
+    }));
+
+    setYearlyAvgs(avgs);
+
+    // Chart data: años históricos + semanas del mes actual
+    const currentPoints = weeks
+      .filter(w => w.kg !== null)
+      .map(w => ({
+        label: `S${w.week} ${now.toLocaleDateString("es-CL", { month: "short" })}`,
+        kg: w.kg,
+        type: "current",
+      }));
+
+    setChartData([
+      ...avgs.map(a => ({ label: a.year, kg: a.kg, type: "historical" })),
+      ...currentPoints,
+    ]);
   };
 
-  const openAdd = () => {
-    setEditingIdx(null);
-    setNewWeight("");
-    setNewDate(new Date().toISOString().split("T")[0]);
+  const currentKg = weekData.filter(w => w.kg !== null).slice(-1)[0]?.kg;
+  const prevKg = weekData.filter(w => w.kg !== null).slice(-2)[0]?.kg;
+  const diff = currentKg && prevKg ? (currentKg - prevKg).toFixed(1) : null;
+  const minY = chartData.length ? Math.min(...chartData.map(d => d.kg)) - 1 : 0;
+  const maxY = chartData.length ? Math.max(...chartData.map(d => d.kg)) + 1 : 20;
+
+  const openEdit = (week, kg, id) => {
+    setEditingWeek(week);
+    setEditingId(id);
+    setNewWeight(kg?.toString() || "");
     setShowInput(true);
   };
 
-  const openEdit = (idx) => {
-    setEditingIdx(idx);
-    setNewWeight(weights[idx].kg.toString());
-    setNewDate(weights[idx].logged_date);
-    setShowInput(true);
+  const getWeekDateRange = (wk) => {
+    const firstOfMonth = new Date(year, month, 1);
+    const startDay = (wk - 1) * 7 - firstOfMonth.getDay() + 1;
+    const start = new Date(year, month, Math.max(startDay, 1));
+    const end = new Date(year, month, Math.min(startDay + 6, new Date(year, month + 1, 0).getDate()));
+    const startStr = start.toISOString().split("T")[0];
+    return startStr <= lastDay ? startStr : null;
   };
 
   const saveWeight = async () => {
     const val = parseFloat(newWeight);
-    if (!val || val < 0.1 || val > 200 || !newDate) return;
-
-    if (newDate < firstDay || newDate > lastDay) {
-      alert("Solo puedes registrar pesos del mes actual en este panel.");
-      return;
-    }
-
+    if (!val || val < 0.1 || val > 200) return;
     setLoading(true);
 
-    if (editingIdx !== null && weights[editingIdx]?.id) {
-      await supabase
-        .from("weight_logs")
-        .update({ weight_kg: val, logged_date: newDate })
-        .eq("id", weights[editingIdx].id);
+    const loggedDate = getWeekDateRange(editingWeek) || firstDay;
+
+    if (editingId) {
+      await supabase.from("weight_logs").update({
+        weight_kg: val,
+        week_of_month: editingWeek,
+        logged_date: loggedDate,
+      }).eq("id", editingId);
     } else {
       await supabase.from("weight_logs").insert({
         pet_id: pet.id,
         weight_kg: val,
-        logged_date: newDate,
+        week_of_month: editingWeek,
+        logged_date: loggedDate,
       });
     }
 
     setNewWeight("");
-    setNewDate(new Date().toISOString().split("T")[0]);
     setShowInput(false);
-    setEditingIdx(null);
-    await loadWeights();
+    setEditingWeek(null);
+    setEditingId(null);
+    await loadAll();
     setLoading(false);
   };
-
-  const current = weights[weights.length - 1]?.kg;
-  const prev = weights[weights.length - 2]?.kg;
-  const diff = current && prev ? (current - prev).toFixed(1) : null;
-  const minY = weights.length ? Math.min(...weights.map(w => w.kg)) - 0.8 : 0;
-  const maxY = weights.length ? Math.max(...weights.map(w => w.kg)) + 0.8 : 20;
-  const species = pet.species || "dog";
 
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
     title: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1 },
     header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
-    kg: { fontFamily: "'Baloo 2', cursive", fontSize: 28, fontWeight: 800, color: "#3D1F0A", lineHeight: 1 },
+    kg: { fontFamily: "'Baloo 2', cursive", fontSize: 26, fontWeight: 800, color: "#3D1F0A", lineHeight: 1 },
     label: { fontSize: 10, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px" },
     trend: (up) => ({ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, marginTop: 3, background: up ? "#e8faf4" : "#fef2f2", color: up ? "#059669" : "#dc2626" }),
-    slots: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, marginBottom: 10 },
-    slot: (type) => ({ border: `1.5px ${type === "empty" ? "dashed" : "solid"} ${type === "filled" ? "#2EC4B6" : type === "active" ? "#FF6B35" : "#FFD9C8"}`, borderRadius: 10, padding: "8px 4px", textAlign: "center", cursor: "pointer", background: type === "filled" ? "#E8FAF9" : type === "active" ? "#FFF0EB" : "#FFFAF7", position: "relative" }),
-    slotLabel: { fontSize: 9, color: "#C4845A", marginBottom: 3 },
-    slotVal: (type) => ({ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: type === "filled" ? "#0F6E56" : "#3D1F0A" }),
-    editBadge: { position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" },
-    inputRow: { display: "flex", gap: 8, marginTop: 8 },
-    input: { flex: 1, padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#FFFAF7", fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#3D1F0A", outline: "none" },
+    slots: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6, margin: "10px 0" },
+    slot: (type) => ({
+      border: `1.5px ${type === "empty" ? "dashed" : "solid"} ${type === "filled" ? "#2EC4B6" : type === "active" ? "#FF6B35" : type === "disabled" ? "#F5E6DA" : "#FFD9C8"}`,
+      borderRadius: 10, padding: "8px 4px", textAlign: "center",
+      cursor: type === "disabled" ? "not-allowed" : "pointer",
+      background: type === "filled" ? "#E8FAF9" : type === "active" ? "#FFF0EB" : type === "disabled" ? "#FDFAF8" : "#FFFAF7",
+      opacity: type === "disabled" ? 0.5 : 1,
+      position: "relative",
+    }),
+    slotLabel: { fontSize: 9, color: "#C4845A", marginBottom: 2 },
+    slotVal: (type) => ({ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: type === "filled" ? "#0F6E56" : type === "active" ? "#CC4A1A" : "#C4845A" }),
+    input: { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#FFFAF7", fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#3D1F0A", outline: "none", boxSizing: "border-box" },
     saveBtn: { padding: "9px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-    addBtn: { border: "1.5px dashed #FFD9C8", borderRadius: 10, padding: "8px 4px", textAlign: "center", cursor: "pointer", background: "#FFFAF7" },
-    histChip: { display: "inline-flex", flexDirection: "column", alignItems: "center", background: "#F5E6DA", borderRadius: 8, padding: "4px 8px", fontSize: 10, color: "#7A4522", fontWeight: 700, gap: 1 },
+    histChip: { display: "inline-flex", flexDirection: "column", alignItems: "center", background: "#F5E6DA", borderRadius: 8, padding: "4px 10px" },
   };
 
   return (
@@ -161,7 +222,7 @@ export default function WeightChart({ pet }) {
       <div style={css.header}>
         <div style={css.title}>⚖️ Evolución de peso</div>
         <div style={{ textAlign: "right" }}>
-          {current && <div style={css.kg}>{current.toFixed(1)} <span style={{ fontSize: 14 }}>kg</span></div>}
+          {currentKg && <div style={css.kg}>{currentKg.toFixed(1)} <span style={{ fontSize: 14 }}>kg</span></div>}
           <div style={css.label}>peso actual</div>
           {diff !== null && (
             <div style={css.trend(parseFloat(diff) >= 0)}>
@@ -171,91 +232,89 @@ export default function WeightChart({ pet }) {
         </div>
       </div>
 
-      {weights.length > 0 && (
+      {chartData.length > 0 && (
         <ResponsiveContainer width="100%" height={160}>
-          <AreaChart data={weights} margin={{ top: 16, right: 8, left: -20, bottom: 0 }}>
-            <defs>
-              <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#FF6B35" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="#FF6B35" stopOpacity={0.01} />
-              </linearGradient>
-            </defs>
+          <LineChart data={chartData} margin={{ top: 16, right: 8, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(245,230,218,0.6)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#C4845A", fontFamily: "Nunito" }} axisLine={false} tickLine={false} />
-            <YAxis domain={[minY, maxY]} tick={{ fontSize: 11, fill: "#C4845A", fontFamily: "Nunito" }} axisLine={false} tickLine={false} tickFormatter={v => v.toFixed(1)} />
+            <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#C4845A", fontFamily: "Nunito" }} axisLine={false} tickLine={false} />
+            <YAxis domain={[minY, maxY]} tick={{ fontSize: 10, fill: "#C4845A", fontFamily: "Nunito" }} axisLine={false} tickLine={false} tickFormatter={v => v.toFixed(0)} />
             <Tooltip content={<CustomTooltip />} />
-            <Area
+            {yearlyAvgs.length > 0 && (
+              <ReferenceLine x={yearlyAvgs[yearlyAvgs.length - 1].year} stroke="#FFD9C8" strokeDasharray="4 4" />
+            )}
+            <Line
               type="monotone"
               dataKey="kg"
               stroke="#FF6B35"
               strokeWidth={2.5}
-              fill="url(#weightGrad)"
               dot={(props) => <CustomDot {...props} species={species} />}
               activeDot={{ r: 6, fill: "#FF6B35", stroke: "#fff", strokeWidth: 2 }}
             />
-          </AreaChart>
+          </LineChart>
         </ResponsiveContainer>
       )}
 
+      {/* SLOTS SEMANAS */}
       <div style={{ borderTop: "1px solid #FFF0EB", paddingTop: 14, marginTop: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-          Este mes — toca para editar (máx. 4)
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
+          {monthLabel} — toca para editar
         </div>
         <div style={css.slots}>
-          {weights.map((w, i) => {
-            const type = i === weights.length - 1 ? "active" : "filled";
+          {weekData.map((w, i) => {
+            const wk = w.week;
+            const isCurrent = wk === currentWeek;
+            const isFuture = wk > currentWeek;
+            const type = isFuture ? "disabled" : w.kg !== null ? (isCurrent ? "active" : "filled") : "empty";
             return (
-              <div key={i} style={css.slot(type)} onClick={() => openEdit(i)}>
-                <div style={css.editBadge}>✏️</div>
-                <div style={css.slotLabel}>{w.date}</div>
-                <div style={css.slotVal(type)}>{w.kg.toFixed(1)}</div>
+              <div key={wk} style={css.slot(type)}
+                onClick={() => !isFuture && openEdit(wk, w.kg, w.id)}>
+                {!isFuture && w.kg !== null && (
+                  <div style={{ position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" }}>✏️</div>
+                )}
+                <div style={css.slotLabel}>semana {wk}</div>
+                <div style={css.slotVal(type)}>
+                  {w.kg !== null ? w.kg.toFixed(1) : isFuture ? "—" : "+"}
+                </div>
               </div>
             );
           })}
-          {weights.length < 4 && (
-            <div style={css.addBtn} onClick={openAdd}>
-              <div style={css.slotLabel}>+ Agregar</div>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, color: "#C4845A" }}>+</div>
-            </div>
-          )}
         </div>
+        {totalWeeks === 5 && (
+          <div style={{ fontSize: 10, color: "#C4845A", fontStyle: "italic", marginBottom: 8 }}>
+            * Este mes tiene 5 semanas — semana 4 mostrará el promedio de S4 y S5
+          </div>
+        )}
 
+        {/* INPUT */}
         {showInput && (
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 8, background: "#FFF0EB", borderRadius: 12, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>
-              {editingIdx !== null ? `✏️ Editando registro ${editingIdx + 1}` : "➕ Nuevo registro"}
+              {editingId ? `✏️ Editando semana ${editingWeek}` : `➕ Registrar semana ${editingWeek}`}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Fecha (mes actual)</div>
-                <input style={css.input} type="date" min={firstDay} max={lastDay} value={newDate} onChange={e => setNewDate(e.target.value)} />
-              </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Peso (kg)</div>
-                <input style={css.input} type="number" placeholder="ej: 12.5" step="0.1" value={newWeight} onChange={e => setNewWeight(e.target.value)} />
-              </div>
-            </div>
-            <div style={css.inputRow}>
-              <button style={{ ...css.saveBtn, flex: 1 }} onClick={saveWeight} disabled={loading}>
-                {loading ? "..." : editingIdx !== null ? "Actualizar" : "Guardar"}
+            <div style={{ display: "flex", gap: 8 }}>
+              <input style={css.input} type="number" placeholder="ej: 12.5" step="0.1"
+                value={newWeight} onChange={e => setNewWeight(e.target.value)} />
+              <button style={css.saveBtn} onClick={saveWeight} disabled={loading}>
+                {loading ? "..." : editingId ? "Actualizar" : "Guardar"}
               </button>
-              <button onClick={() => { setShowInput(false); setEditingIdx(null); }} style={{ ...css.saveBtn, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
-                Cancelar
+              <button onClick={() => setShowInput(false)} style={{ ...css.saveBtn, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
+                ✕
               </button>
             </div>
           </div>
         )}
 
-        {history.length > 0 && (
+        {/* PROMEDIOS ANUALES */}
+        {yearlyAvgs.length > 0 && (
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #FFF0EB" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-              Historial anterior
+              Promedio anual
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {history.map((w, i) => (
+              {yearlyAvgs.map((a, i) => (
                 <div key={i} style={css.histChip}>
-                  <span style={{ fontSize: 9, color: "#C4845A" }}>{w.date}</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: "#7A4522" }}>{w.kg.toFixed(1)} kg</span>
+                  <span style={{ fontSize: 9, color: "#C4845A" }}>{a.year}</span>
+                  <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#7A4522" }}>{a.kg.toFixed(1)} kg</span>
                 </div>
               ))}
             </div>
