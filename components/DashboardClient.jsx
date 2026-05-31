@@ -129,7 +129,10 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
               <div className="brand-logo">🐾</div>
               <div className="brand-name">Firus<span>&</span>Michis</div>
             </div>
+            <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>{user.email}</div>
             <button className="signout-btn" onClick={handleSignOut}>Cerrar sesión</button>
+          </div>
           </div>
 
           <div className="pet-card">
