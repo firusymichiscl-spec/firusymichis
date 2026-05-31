@@ -23,6 +23,15 @@ export default async function Dashboard() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const { data: pets } = await supabase
+    .from("pets")
+    .select("*")
+    .eq("user_id", user.id);
+
+  if (!pets || pets.length === 0) {
+    redirect("/nueva-mascota");
+  }
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -51,8 +60,11 @@ export default async function Dashboard() {
         }}>
           ¡Bienvenido!
         </h1>
-        <p style={{ color: "#C4845A", fontSize: 14, marginBottom: 32 }}>
+        <p style={{ color: "#C4845A", fontSize: 14, marginBottom: 8 }}>
           {user.email}
+        </p>
+        <p style={{ color: "#3D1F0A", fontSize: 14, marginBottom: 32 }}>
+          Tienes {pets.length} mascota{pets.length > 1 ? "s" : ""} registrada{pets.length > 1 ? "s" : ""}
         </p>
         <LogoutButton />
       </div>
