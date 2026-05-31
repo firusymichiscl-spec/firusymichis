@@ -44,12 +44,21 @@ export default function NuevaMascota() {
     }));
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
   const savePet = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    console.log('Usuario:', user);
+    console.log('Error usuario:', userError);
+
     if (!user) { router.push('/login'); return; }
 
-    const { error } = await supabase.from('pets').insert({
+    const payload = {
       user_id: user.id,
       name: form.name,
       species: form.species,
@@ -58,15 +67,29 @@ export default function NuevaMascota() {
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions,
       diet: form.diet,
-    });
+    };
 
-    if (!error) { setStep(4); }
+    console.log('Payload:', payload);
+
+    const { data, error } = await supabase.from('pets').insert(payload).select();
+
+    console.log('Resultado insert:', data);
+    console.log('Error insert:', error);
+
+    if (!error) {
+      setStep(4);
+    } else {
+      alert('Error: ' + JSON.stringify(error));
+    }
     setLoading(false);
   };
 
   const css = {
     wrap: { background: '#FFF8F3', minHeight: '100vh', padding: '24px 16px', fontFamily: "'Nunito', sans-serif" },
-    progress: { display: 'flex', gap: 6, marginBottom: 20, maxWidth: 680, margin: '0 auto 20px' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 680, margin: '0 auto 16px' },
+    brandName: { fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 800, color: '#3D1F0A' },
+    signOutBtn: { background: 'transparent', border: '1.5px solid #FFD0BC', borderRadius: 10, padding: '6px 14px', color: '#C4845A', fontFamily: "'Nunito', sans-serif", fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+    progress: { display: 'flex', gap: 6, maxWidth: 680, margin: '0 auto 20px' },
     dot: (s) => ({ flex: 1, height: 6, borderRadius: 3, background: s === 'done' ? '#2EC4B6' : s === 'active' ? '#FF6B35' : '#FFD9C8', transition: 'background 0.3s' }),
     layout: { display: 'grid', gridTemplateColumns: '1fr 220px', gap: 14, maxWidth: 680, margin: '0 auto' },
     card: { background: '#fff', borderRadius: 20, padding: '24px 20px', border: '1.5px solid #FFD9C8' },
@@ -86,6 +109,14 @@ export default function NuevaMascota() {
   return (
     <div style={css.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
+
+      {/* HEADER */}
+      <div style={css.header}>
+        <div style={css.brandName}>🐾 Firus<span style={{ color: '#FFD166' }}>&</span>Michis</div>
+        <button style={css.signOutBtn} onClick={handleSignOut}>Cerrar sesión</button>
+      </div>
+
+      {/* PROGRESS */}
       <div style={css.progress}>
         {[1,2,3,4].map(i => <div key={i} style={css.dot(dotState(i))} />)}
       </div>
