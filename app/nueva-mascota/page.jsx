@@ -51,14 +51,10 @@ export default function NuevaMascota() {
 
   const savePet = async () => {
     setLoading(true);
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-    console.log('Usuario:', user);
-    console.log('Error usuario:', userError);
-
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
-    const payload = {
+    const { error } = await supabase.from('pets').insert({
       user_id: user.id,
       name: form.name,
       species: form.species,
@@ -67,20 +63,9 @@ export default function NuevaMascota() {
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions,
       diet: form.diet,
-    };
+    });
 
-    console.log('Payload:', payload);
-
-    const { data, error } = await supabase.from('pets').insert(payload).select();
-
-    console.log('Resultado insert:', data);
-    console.log('Error insert:', error);
-
-    if (!error) {
-      setStep(4);
-    } else {
-      alert('Error: ' + JSON.stringify(error));
-    }
+    if (!error) { setStep(4); }
     setLoading(false);
   };
 
