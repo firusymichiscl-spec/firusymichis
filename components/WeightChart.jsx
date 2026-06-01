@@ -16,7 +16,7 @@ const currentWeekOfMonth = () => {
   return Math.ceil(today.getDate() / 7);
 };
 
-export default function WeightChart({ pet }) {
+export default function WeightChart({ pet, onWeightUpdate }) {
   const supabase = createClient();
   const [weekData, setWeekData] = useState([]);
   const [yearlyAvgs, setYearlyAvgs] = useState([]);
@@ -262,7 +262,7 @@ export default function WeightChart({ pet }) {
   };
 
   const saveWeight = async () => {
-    const val = parseFloat(newWeight);
+    const val = parseFloat(newWeight.replace(",", "."));
     if (!val || val < 0.1 || val > 200) return;
     setLoading(true);
     const loggedDate = getWeekDateRange(editingWeek) || firstDay;
@@ -276,6 +276,7 @@ export default function WeightChart({ pet }) {
       });
     }
     setNewWeight(""); setShowInput(false); setEditingWeek(null); setEditingId(null);
+    onWeightUpdate?.(val);
     await loadAll();
     setLoading(false);
   };
@@ -380,8 +381,8 @@ export default function WeightChart({ pet }) {
               {editingId ? `✏️ Editando semana ${editingWeek}` : `➕ Registrar semana ${editingWeek}`}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <input style={css.input} type="number" placeholder="ej: 12.5" step="0.1"
-                value={newWeight} onChange={e => setNewWeight(e.target.value)} />
+              <input style={css.input} type="text" inputMode="decimal" placeholder="ej: 12.5"
+                value={newWeight} onChange={e => setNewWeight(e.target.value.replace(",", "."))} />
               <button style={css.saveBtn} onClick={saveWeight} disabled={loading}>
                 {loading ? "..." : editingId ? "Actualizar" : "Guardar"}
               </button>

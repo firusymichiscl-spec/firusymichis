@@ -25,6 +25,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
   const [petData, setPetData] = useState(pet);
+  const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || pet.weight_kg);
 
   const speciesIcon = petData.species === "cat" ? "🐱" : petData.species === "other" ? "🐰" : "🐶";
 
@@ -190,7 +191,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                   ["Especie", petData.species === "dog" ? "Perro" : petData.species === "cat" ? "Gato" : "Otro"],
                   ["Raza", petData.breed || "Sin datos"],
                   ["Edad", calcAge(petData.birth_date)],
-                  ["Peso actual", lastWeight ? `${lastWeight.weight_kg} kg` : petData.weight_kg ? `${petData.weight_kg} kg` : "Sin datos"],
+                  ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
                 ].map(([l, v]) => (
                   <div className="row" key={l}>
                     <span className="row-label">{l}</span>
@@ -201,7 +202,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
 
               <DietTimeline pet={petData} />
 
-              <WeightChart pet={pet} />
+              <WeightChart pet={pet} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
