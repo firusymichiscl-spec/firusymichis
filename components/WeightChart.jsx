@@ -3,7 +3,7 @@
 import WeightHistoryModal from "@/components/WeightHistoryModal";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip } from "chart.js";
+import { Chart, CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip } from "chart.js";
 
 const weeksInMonth = (year, month) => {
   const firstDay = new Date(year, month, 1).getDay();
@@ -94,7 +94,7 @@ export default function WeightChart({ pet }) {
     console.log('useEffect ejecutado', { weekData, yearlyAvgs }, chartRef.current);
     if (typeof window === "undefined" || !chartRef.current) return;
 
-    Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
+    Chart.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip);
     console.log('Chart registrado');
 
     if (chartInstanceRef.current) {
@@ -215,8 +215,10 @@ export default function WeightChart({ pet }) {
     }
 
     return () => {
-      chartInstanceRef.current?.destroy();
-      chartInstanceRef.current = null;
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+        chartInstanceRef.current = null;
+      }
     };
   }, [weekData, yearlyAvgs]);
 
