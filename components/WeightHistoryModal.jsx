@@ -174,6 +174,7 @@ const resetAll = async () => {
   setExistingSporadic([]);
   setWeekData({ 1: "", 2: "", 3: "", 4: "" });
   setLoading(false);
+  onSaved?.();
 };
 
   const saveWeekly = async () => {

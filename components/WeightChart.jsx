@@ -22,7 +22,7 @@ const weeksInMonth = (year, month) => {
 
 const currentWeekOfMonth = () => {
   const today = new Date();
-  return getWeekOfMonth(today.toISOString().split("T")[0]);
+  return Math.ceil(today.getDate() / 7);
 };
 
 const PAW_EMOJI = { dog: "🐾", cat: "🐱", other: "🐰" };
