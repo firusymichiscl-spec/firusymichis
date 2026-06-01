@@ -3,6 +3,7 @@
 import WeightHistoryModal from "@/components/WeightHistoryModal";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip } from "chart.js";
 
 const weeksInMonth = (year, month) => {
   const firstDay = new Date(year, month, 1).getDay();
@@ -88,11 +89,16 @@ export default function WeightChart({ pet }) {
     setYearlyAvgs(avgs);
   };
 
-  // Chart.js — dynamic import para evitar errores de SSR
+  // Chart.js
   useEffect(() => {
     if (typeof window === "undefined" || !chartRef.current) return;
 
-    let destroyed = false;
+    Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
+
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+      chartInstanceRef.current = null;
+    }
 
     const allYears = Array.from({ length: year - birthYear }, (_, i) => birthYear + i);
     const monthShort = now.toLocaleDateString("es-CL", { month: "short" });
@@ -129,95 +135,83 @@ export default function WeightChart({ pet }) {
       ...currentWeekPoints.map(() => "#2EC4B6"),
     ];
 
-    import("chart.js").then(({ Chart, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip }) => {
-      if (destroyed || !chartRef.current) return;
+    const ctx = chartRef.current.getContext("2d");
+    const canvasWidth = chartRef.current.parentElement?.offsetWidth || 400;
 
-      Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
+    const gradLine = ctx.createLinearGradient(0, 0, canvasWidth, 0);
+    gradLine.addColorStop(0, "#FF6B35");
+    gradLine.addColorStop(1, "#2EC4B6");
 
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.destroy();
-        chartInstanceRef.current = null;
-      }
+    const gradFill = ctx.createLinearGradient(0, 0, 0, 160);
+    gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
+    gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
 
-      const ctx = chartRef.current.getContext("2d");
-      const canvasWidth = chartRef.current.parentElement?.offsetWidth || 400;
-
-      const gradLine = ctx.createLinearGradient(0, 0, canvasWidth, 0);
-      gradLine.addColorStop(0, "#FF6B35");
-      gradLine.addColorStop(1, "#2EC4B6");
-
-      const gradFill = ctx.createLinearGradient(0, 0, 0, 160);
-      gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
-      gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
-
-      try {
-        chartInstanceRef.current = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels,
-            datasets: [{
-              data,
-              borderColor: gradLine,
-              borderWidth: 2.5,
-              backgroundColor: gradFill,
-              fill: true,
-              tension: 0.35,
-              spanGaps: false,
-              pointBackgroundColor: pointBgColors,
-              pointBorderColor: pointBorderColors,
-              pointBorderWidth: pointBorderWidths,
-              pointRadius: pointRadii,
-              pointHoverRadius: 6,
-            }],
+    try {
+      chartInstanceRef.current = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            data,
+            borderColor: gradLine,
+            borderWidth: 2.5,
+            backgroundColor: gradFill,
+            fill: true,
+            tension: 0.35,
+            spanGaps: false,
+            pointBackgroundColor: pointBgColors,
+            pointBorderColor: pointBorderColors,
+            pointBorderWidth: pointBorderWidths,
+            pointRadius: pointRadii,
+            pointHoverRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: { label: (c) => `${c.parsed.y?.toFixed(1)} kg` },
+              backgroundColor: "#3D1F0A",
+              titleColor: "#C4845A",
+              bodyColor: "#fff",
+              cornerRadius: 8,
+              padding: 8,
+              titleFont: { size: 10 },
+              bodyFont: { size: 13, weight: "bold" },
+            },
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: { label: (c) => `${c.parsed.y?.toFixed(1)} kg` },
-                backgroundColor: "#3D1F0A",
-                titleColor: "#C4845A",
-                bodyColor: "#fff",
-                cornerRadius: 8,
-                padding: 8,
-                titleFont: { size: 10 },
-                bodyFont: { size: 13, weight: "bold" },
+          scales: {
+            x: {
+              grid: { color: "rgba(245,230,218,0.4)" },
+              border: { display: false },
+              ticks: {
+                font: { size: 9, family: "Nunito" },
+                color: (c) => tickColors[c.index] || "#C4845A",
+                maxRotation: 45,
+                autoSkip: true,
+                maxTicksLimit: 14,
               },
             },
-            scales: {
-              x: {
-                grid: { color: "rgba(245,230,218,0.4)" },
-                border: { display: false },
-                ticks: {
-                  font: { size: 9, family: "Nunito" },
-                  color: (c) => tickColors[c.index] || "#C4845A",
-                  maxRotation: 45,
-                  autoSkip: true,
-                  maxTicksLimit: 14,
-                },
-              },
-              y: {
-                grid: { color: "rgba(245,230,218,0.4)" },
-                border: { display: false },
-                ticks: {
-                  font: { size: 9, family: "Nunito" },
-                  color: "#C4845A",
-                  callback: v => v.toFixed(0),
-                },
+            y: {
+              grid: { color: "rgba(245,230,218,0.4)" },
+              border: { display: false },
+              ticks: {
+                font: { size: 9, family: "Nunito" },
+                color: "#C4845A",
+                callback: v => v.toFixed(0),
               },
             },
           },
-        });
-      } catch (e) {
-        // chart creation failed silently (e.g. canvas destroyed mid-render)
-      }
-    });
+        },
+      });
+    } catch (e) {
+      // canvas no disponible durante el render
+    }
 
     return () => {
-      destroyed = true;
       chartInstanceRef.current?.destroy();
       chartInstanceRef.current = null;
     };
@@ -314,7 +308,7 @@ export default function WeightChart({ pet }) {
 
       {/* GRÁFICO CHART.JS */}
       <div style={{ position: "relative", height: 180 }}>
-        <canvas ref={chartRef} />
+        <canvas ref={chartRef} style={{ width: "100%", height: "180px", display: "block" }} />
       </div>
 
       {/* SLOTS SEMANAS */}
