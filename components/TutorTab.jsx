@@ -19,6 +19,9 @@ const parsePhone = (phone) => {
 
 const formatPhone = (digits) => digits ? `+569${digits.replace(/\D/g, "").slice(0, 8)}` : "";
 
+const capitalizeName = (str) =>
+  str.replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w/g, c => c.toLowerCase());
+
 const inputStyle = {
   width: "100%", padding: "9px 12px", borderRadius: 10,
   border: "1.5px solid #FFD9C8", background: "#fff",
@@ -37,7 +40,7 @@ export default function TutorTab({ pet }) {
   const [loading, setLoading] = useState(true);
   const [editingType, setEditingType] = useState(null);
   const [googleLoaded, setGoogleLoaded] = useState(false);
-  const addressInputRef = useRef(null);
+  const containerRef = useRef(null);
   const autocompleteRef = useRef(null);
 
   const emptyForm = {
@@ -61,28 +64,27 @@ export default function TutorTab({ pet }) {
     const existing = document.querySelector('script[src*="maps.googleapis.com"]');
     if (existing) { existing.addEventListener("load", () => setGoogleLoaded(true)); return; }
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`;
     script.async = true;
     script.onload = () => setGoogleLoaded(true);
     document.head.appendChild(script);
   }, []);
 
-  // Init Places Autocomplete when modal opens
+  // Init PlaceAutocompleteElement when modal opens
   useEffect(() => {
     if (!editingType || !googleLoaded) return;
     const timer = setTimeout(() => {
-      if (!addressInputRef.current || !window.google?.maps?.places) return;
-      if (autocompleteRef.current) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
-      }
-      const ac = new window.google.maps.places.Autocomplete(addressInputRef.current, {
+      if (!containerRef.current || !window.google?.maps?.places?.PlaceAutocompleteElement) return;
+      containerRef.current.innerHTML = "";
+      const placeAutocomplete = new window.google.maps.places.PlaceAutocompleteElement({
         componentRestrictions: { country: "cl" },
-        fields: ["address_components"],
       });
-      ac.addListener("place_changed", () => {
-        const place = ac.getPlace();
-        const comps = place.address_components || [];
-        const get = (type) => comps.find(c => c.types.includes(type))?.long_name || "";
+      placeAutocomplete.style.width = "100%";
+      containerRef.current.appendChild(placeAutocomplete);
+      placeAutocomplete.addEventListener("gmp-select", async (event) => {
+        const place = event.placePrediction.toPlace();
+        await place.fetchFields({ fields: ["addressComponents"] });
+        const get = (type) => place.addressComponents?.find(c => c.types.includes(type))?.longText || "";
         setForm(f => ({
           ...f,
           street: get("route"),
@@ -93,9 +95,12 @@ export default function TutorTab({ pet }) {
         }));
         setAddressManual(true);
       });
-      autocompleteRef.current = ac;
+      autocompleteRef.current = placeAutocomplete;
     }, 100);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (containerRef.current) containerRef.current.innerHTML = "";
+    };
   }, [editingType, googleLoaded]);
 
   // Copy address from primary
@@ -274,7 +279,7 @@ export default function TutorTab({ pet }) {
       {/* MODAL */}
       {editingType && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-          <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" }}>
+          <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto" }}>
             <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
 
             {/* HEADER */}
@@ -293,7 +298,7 @@ export default function TutorTab({ pet }) {
               <div style={{ marginBottom: 12 }}>
                 {fieldLabel("Nombre completo *")}
                 <input style={inputStyle} type="text" placeholder="Ej: María González"
-                  value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+                  value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: capitalizeName(e.target.value) }))} />
               </div>
 
               {/* TELÉFONO */}
@@ -335,19 +340,13 @@ export default function TutorTab({ pet }) {
                 )}
               </div>
 
-              {/* DIRECCIÓN — Google Places */}
+              {/* DIRECCIÓN — Google Places PlaceAutocompleteElement */}
               <div style={{ marginBottom: 12 }}>
                 {fieldLabel("Buscar dirección")}
-                <input
-                  ref={addressInputRef}
-                  style={inputStyle}
-                  type="text"
-                  placeholder={googleLoaded ? "Escribe una dirección..." : "Cargando Maps..."}
-                  disabled={!googleLoaded}
-                />
-                {!googleLoaded && (
-                  <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Google Maps cargando...</div>
-                )}
+                {googleLoaded
+                  ? <div ref={containerRef} style={{ width: "100%" }} />
+                  : <div style={{ ...inputStyle, color: "#C4845A", fontSize: 13 }}>Cargando Google Maps...</div>
+                }
               </div>
 
               {/* COPY FROM PRIMARY */}
