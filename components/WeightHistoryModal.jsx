@@ -176,11 +176,6 @@ const resetAll = async () => {
   setLoading(false);
 };
 
-const saveWeekly = async () => {
-
-
-
-
   const saveWeekly = async () => {
     setLoading(true);
     const entries = Object.entries(weekData).filter(([, v]) => v && parseFloat(v) > 0);
