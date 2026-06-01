@@ -3,17 +3,6 @@
 import WeightHistoryModal from "@/components/WeightHistoryModal";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import {
-  Chart,
-  LineElement,
-  PointElement,
-  LinearScale,
-  CategoryScale,
-  Filler,
-  Tooltip,
-} from "chart.js";
-
-Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
 const weeksInMonth = (year, month) => {
   const firstDay = new Date(year, month, 1).getDay();
@@ -99,14 +88,11 @@ export default function WeightChart({ pet }) {
     setYearlyAvgs(avgs);
   };
 
-  // Chart.js
+  // Chart.js — dynamic import para evitar errores de SSR
   useEffect(() => {
-    if (!chartRef.current) return;
+    if (typeof window === "undefined" || !chartRef.current) return;
 
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy();
-      chartInstanceRef.current = null;
-    }
+    let destroyed = false;
 
     const allYears = Array.from({ length: year - birthYear }, (_, i) => birthYear + i);
     const monthShort = now.toLocaleDateString("es-CL", { month: "short" });
@@ -118,112 +104,120 @@ export default function WeightChart({ pet }) {
       ...allYears.map(String),
       ...currentWeekPoints.map(w => `S${w.week} ${monthShort}`),
     ];
-
     const data = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y)?.kg ?? null),
       ...currentWeekPoints.map(w => w.kg),
     ];
-
     const pointBgColors = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y) ? "#FF6B35" : "transparent"),
       ...currentWeekPoints.map(() => "#2EC4B6"),
     ];
-
     const pointBorderColors = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y) ? "#FF6B35" : "#C4845A"),
       ...currentWeekPoints.map(() => "#2EC4B6"),
     ];
-
     const pointBorderWidths = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y) ? 2 : 1.5),
       ...currentWeekPoints.map(() => 2),
     ];
-
     const pointRadii = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y) ? 4 : 3),
       ...currentWeekPoints.map(() => 5),
     ];
-
     const tickColors = [
       ...allYears.map(() => "#C4845A"),
       ...currentWeekPoints.map(() => "#2EC4B6"),
     ];
 
-    const ctx = chartRef.current.getContext("2d");
-    const canvasWidth = chartRef.current.parentElement?.offsetWidth || 400;
+    import("chart.js").then(({ Chart, LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip }) => {
+      if (destroyed || !chartRef.current) return;
 
-    const gradLine = ctx.createLinearGradient(0, 0, canvasWidth, 0);
-    gradLine.addColorStop(0, "#FF6B35");
-    gradLine.addColorStop(1, "#2EC4B6");
+      Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip);
 
-    const gradFill = ctx.createLinearGradient(0, 0, 0, 160);
-    gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
-    gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+        chartInstanceRef.current = null;
+      }
 
-    chartInstanceRef.current = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{
-          data,
-          borderColor: gradLine,
-          borderWidth: 2.5,
-          backgroundColor: gradFill,
-          fill: true,
-          tension: 0.35,
-          spanGaps: false,
-          pointBackgroundColor: pointBgColors,
-          pointBorderColor: pointBorderColors,
-          pointBorderWidth: pointBorderWidths,
-          pointRadius: pointRadii,
-          pointHoverRadius: 6,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (c) => `${c.parsed.y?.toFixed(1)} kg`,
-            },
-            backgroundColor: "#3D1F0A",
-            titleColor: "#C4845A",
-            bodyColor: "#fff",
-            cornerRadius: 8,
-            padding: 8,
-            titleFont: { size: 10 },
-            bodyFont: { size: 13, weight: "bold" },
+      const ctx = chartRef.current.getContext("2d");
+      const canvasWidth = chartRef.current.parentElement?.offsetWidth || 400;
+
+      const gradLine = ctx.createLinearGradient(0, 0, canvasWidth, 0);
+      gradLine.addColorStop(0, "#FF6B35");
+      gradLine.addColorStop(1, "#2EC4B6");
+
+      const gradFill = ctx.createLinearGradient(0, 0, 0, 160);
+      gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
+      gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
+
+      try {
+        chartInstanceRef.current = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              data,
+              borderColor: gradLine,
+              borderWidth: 2.5,
+              backgroundColor: gradFill,
+              fill: true,
+              tension: 0.35,
+              spanGaps: false,
+              pointBackgroundColor: pointBgColors,
+              pointBorderColor: pointBorderColors,
+              pointBorderWidth: pointBorderWidths,
+              pointRadius: pointRadii,
+              pointHoverRadius: 6,
+            }],
           },
-        },
-        scales: {
-          x: {
-            grid: { color: "rgba(245,230,218,0.4)" },
-            border: { display: false },
-            ticks: {
-              font: { size: 9, family: "Nunito" },
-              color: (c) => tickColors[c.index] || "#C4845A",
-              maxRotation: 45,
-              autoSkip: true,
-              maxTicksLimit: 14,
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: { label: (c) => `${c.parsed.y?.toFixed(1)} kg` },
+                backgroundColor: "#3D1F0A",
+                titleColor: "#C4845A",
+                bodyColor: "#fff",
+                cornerRadius: 8,
+                padding: 8,
+                titleFont: { size: 10 },
+                bodyFont: { size: 13, weight: "bold" },
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(245,230,218,0.4)" },
+                border: { display: false },
+                ticks: {
+                  font: { size: 9, family: "Nunito" },
+                  color: (c) => tickColors[c.index] || "#C4845A",
+                  maxRotation: 45,
+                  autoSkip: true,
+                  maxTicksLimit: 14,
+                },
+              },
+              y: {
+                grid: { color: "rgba(245,230,218,0.4)" },
+                border: { display: false },
+                ticks: {
+                  font: { size: 9, family: "Nunito" },
+                  color: "#C4845A",
+                  callback: v => v.toFixed(0),
+                },
+              },
             },
           },
-          y: {
-            grid: { color: "rgba(245,230,218,0.4)" },
-            border: { display: false },
-            ticks: {
-              font: { size: 9, family: "Nunito" },
-              color: "#C4845A",
-              callback: v => v.toFixed(0),
-            },
-          },
-        },
-      },
+        });
+      } catch (e) {
+        // chart creation failed silently (e.g. canvas destroyed mid-render)
+      }
     });
 
     return () => {
+      destroyed = true;
       chartInstanceRef.current?.destroy();
       chartInstanceRef.current = null;
     };
