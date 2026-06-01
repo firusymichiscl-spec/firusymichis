@@ -24,7 +24,7 @@ export default function NuevaMascota() {
   const [form, setForm] = useState({
     species: 'dog', speciesIcon: '🐶', speciesLabel: 'Perro',
     name: '', breed: '', birth_date: '', weight_kg: '',
-    conditions: [], diet: '',
+    sex: '', conditions: [], diet: '',
   });
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
@@ -58,6 +58,7 @@ export default function NuevaMascota() {
       user_id: user.id,
       name: form.name,
       species: form.species,
+      sex: form.sex || null,
       breed: form.breed,
       birth_date: form.birth_date || null,
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
@@ -133,6 +134,16 @@ export default function NuevaMascota() {
               <div style={css.sub}>Cuéntanos sobre tu mascota</div>
               <label style={css.label}>Nombre</label>
               <input style={css.input} placeholder="Ej: Kiara" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <label style={css.label}>Sexo</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
+                {[{ value: 'male', icon: '♂️', label: 'Macho' }, { value: 'female', icon: '♀️', label: 'Hembra' }, { value: 'unknown', icon: '❓', label: 'Descon.' }].map(s => (
+                  <div key={s.value} onClick={() => setForm(f => ({ ...f, sex: s.value }))}
+                    style={{ border: `2px solid ${form.sex === s.value ? '#FF6B35' : '#FFD9C8'}`, borderRadius: 12, padding: '10px 6px', background: form.sex === s.value ? '#FFF0EB' : '#FFFAF7', cursor: 'pointer', textAlign: 'center' }}>
+                    <span style={{ fontSize: 20, display: 'block', marginBottom: 3 }}>{s.icon}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#3D1F0A' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
               <label style={css.label}>Raza</label>
               <div style={{ position: 'relative' }}>
                 <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
