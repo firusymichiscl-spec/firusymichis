@@ -236,7 +236,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                     <div className="empty-icon">💊</div>
                     <p>Sin medicamentos registrados</p>
                   </div>
-                  <button className="add-btn">+ Agregar medicamento</button>
+                  <button className="add-btn" onClick={() => router.push('/medicamentos')}>+ Agregar medicamento</button>
                 </div>
               ) : medications.map(med => (
                 <div key={med.id} style={{ background: "#fff", borderRadius: 18, padding: 18, marginBottom: 14, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
