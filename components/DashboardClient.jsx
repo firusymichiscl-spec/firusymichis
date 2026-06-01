@@ -19,7 +19,7 @@ const TYPE_STYLES = {
 
 const DAYS = ["L","M","X","J","V","S","D"];
 
-export default function DashboardClient({ pet, medications, history, vaccines, user }) {
+export default function DashboardClient({ pet, medications, history, vaccines, user, lastWeight }) {
   const router = useRouter();
   const supabase = createClient();
   const [tab, setTab] = useState("ficha");
@@ -190,7 +190,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                   ["Especie", petData.species === "dog" ? "Perro" : petData.species === "cat" ? "Gato" : "Otro"],
                   ["Raza", petData.breed || "Sin datos"],
                   ["Edad", calcAge(petData.birth_date)],
-                  ["Peso", petData.weight_kg ? `${petData.weight_kg} kg` : "Sin datos"],
+                  ["Peso actual", lastWeight ? `${lastWeight.weight_kg} kg` : petData.weight_kg ? `${petData.weight_kg} kg` : "Sin datos"],
                 ].map(([l, v]) => (
                   <div className="row" key={l}>
                     <span className="row-label">{l}</span>
