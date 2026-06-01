@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase";
 import WeightChart from "@/components/WeightChart";
 import PetPhotoUpload from "@/components/PetPhotoUpload";
 import EditPetModal from "@/components/EditPetModal";
+import DietTimeline from "@/components/DietTimeline";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -196,15 +197,7 @@ export default function DashboardClient({ pet, medications, history, vaccines, u
                 ))}
               </div>
 
-              {petData.diet && (
-                <div className="card">
-                  <div className="card-title">🍽️ Alimentación</div>
-                  <div className="row">
-                    <span className="row-label">Dieta</span>
-                    <span className="row-value">{petData.diet}</span>
-                  </div>
-                </div>
-              )}
+              <DietTimeline pet={petData} />
 
               <WeightChart pet={pet} />
 
