@@ -91,11 +91,9 @@ export default function WeightChart({ pet }) {
 
   // Chart.js
   useEffect(() => {
-    console.log('useEffect ejecutado', { weekData, yearlyAvgs }, chartRef.current);
     if (typeof window === "undefined" || !chartRef.current) return;
 
     Chart.register(CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip);
-    console.log('Chart registrado');
 
     if (chartInstanceRef.current) {
       chartInstanceRef.current.destroy();
@@ -170,7 +168,6 @@ export default function WeightChart({ pet }) {
       },
     };
 
-    console.log('Creando chart con datos:', { labels, data });
     try {
       chartInstanceRef.current = new Chart(ctx, {
         type: "line",
@@ -234,7 +231,7 @@ export default function WeightChart({ pet }) {
         },
       });
     } catch (err) {
-      console.error('Error creando chart:', err);
+      // canvas no disponible durante el render
     }
 
     return () => {
