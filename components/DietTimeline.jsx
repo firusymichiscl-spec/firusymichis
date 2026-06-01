@@ -9,6 +9,7 @@ export default function DietTimeline({ pet }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => { loadRecords(); }, []);
 
@@ -80,6 +81,7 @@ export default function DietTimeline({ pet }) {
           <div style={css.timeline}>
             <div style={css.line} />
             {records.map((r, i) => {
+              if (i > 0 && !expanded) return null;
               const color = dotColor(r, i);
               const isCurrent = !r.date_to;
               return (
@@ -99,6 +101,13 @@ export default function DietTimeline({ pet }) {
               );
             })}
           </div>
+          {records.length > 1 && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{ width: "100%", padding: "6px 0", background: "transparent", border: "none", color: "#C4845A", fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 4 }}>
+              {expanded ? "▲ Ocultar historial" : `▼ Ver historial anterior (${records.length - 1})`}
+            </button>
+          )}
           <button style={css.addBtn} onClick={() => setShowModal(true)}>+ Agregar período</button>
         </>
       )}
