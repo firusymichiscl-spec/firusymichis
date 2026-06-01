@@ -157,6 +157,30 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
     setLoading(false);
   };
 
+const resetAll = async () => {
+  if (!confirm("¿Eliminar TODOS los registros históricos de peso? Esta acción no se puede deshacer.")) return;
+  setLoading(true);
+  const firstDay = `${birthYear}-01-01`;
+  const lastDay = `${currentYear - 1}-12-31`;
+  await supabase
+    .from("weight_logs")
+    .delete()
+    .eq("pet_id", pet.id)
+    .gte("logged_date", firstDay)
+    .lte("logged_date", lastDay);
+  setAnnualData(Object.fromEntries(years.map(y => [y, ""])));
+  setSem1(""); setSem2(""); setSemAutoCalc(false);
+  setSporadic([{ date: "", kg: "" }]);
+  setExistingSporadic([]);
+  setWeekData({ 1: "", 2: "", 3: "", 4: "" });
+  setLoading(false);
+};
+
+const saveWeekly = async () => {
+
+
+
+
   const saveWeekly = async () => {
     setLoading(true);
     const entries = Object.entries(weekData).filter(([, v]) => v && parseFloat(v) > 0);
@@ -221,9 +245,14 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
               {pet.name} · desde {birthYear}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>
-            ✕ Cerrar
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+  <button onClick={resetAll} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, padding: "6px 10px", cursor: "pointer" }}>
+    🗑️ Limpiar todo
+  </button>
+  <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>
+    ✕ Cerrar
+  </button>
+</div>
         </div>
 
         <div style={css.body}>
