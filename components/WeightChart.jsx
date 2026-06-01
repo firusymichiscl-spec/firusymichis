@@ -130,7 +130,7 @@ export default function WeightChart({ pet }) {
     ];
     const pointRadii = [
       ...allYears.map(y => yearlyAvgs.find(a => parseInt(a.year) === y) ? 4 : 3),
-      ...currentWeekPoints.map(() => 5),
+      ...currentWeekPoints.map(() => 0),
     ];
     const tickColors = [
       ...allYears.map(() => "#C4845A"),
@@ -148,10 +148,33 @@ export default function WeightChart({ pet }) {
     gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
     gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
 
+    const species = pet.species || "dog";
+    const emoji = species === "cat" ? "🐱" : species === "other" ? "🐰" : "🐾";
+    const pawPlugin = {
+      id: "pawPlugin",
+      afterDatasetsDraw(chart) {
+        const { ctx: c } = chart;
+        const meta = chart.getDatasetMeta(0);
+        meta.data.forEach((point, i) => {
+          const label = chart.data.labels[i];
+          const isCurrentMonth = typeof label === "string" && label.startsWith("S");
+          if (isCurrentMonth && chart.data.datasets[0].data[i] !== null) {
+            c.save();
+            c.font = "16px serif";
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.fillText(emoji, point.x, point.y);
+            c.restore();
+          }
+        });
+      },
+    };
+
     console.log('Creando chart con datos:', { labels, data });
     try {
       chartInstanceRef.current = new Chart(ctx, {
         type: "line",
+        plugins: [pawPlugin],
         data: {
           labels,
           datasets: [{
