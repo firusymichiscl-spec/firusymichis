@@ -44,18 +44,18 @@ export default function DietTimeline({ pet }) {
     header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
     timeline: { position: "relative", paddingLeft: 32 },
     line: { position: "absolute", left: 10, top: 0, bottom: 0, width: 2, background: "linear-gradient(to bottom, #FF6B35, #2EC4B6)", borderRadius: 2 },
-    item: { position: "relative", marginBottom: 16 },
+    item: { position: "relative", marginBottom: 10 },
     dot: (color) => ({
-      position: "absolute", left: -28, top: 4,
-      width: 16, height: 16, borderRadius: "50%",
+      position: "absolute", left: -26, top: 6,
+      width: 8, height: 8, borderRadius: "50%",
       background: color, boxShadow: `0 0 0 3px #FFF8F3`,
     }),
-    content: { background: "#FFFAF7", borderRadius: 12, padding: "10px 14px", border: "1.5px solid #FFD9C8" },
-    foodName: { fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" },
-    period: { fontSize: 10, color: "#C4845A", marginBottom: 4 },
-    meta: { fontSize: 12, color: "#7A4522", marginTop: 3 },
-    badge: { background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", borderRadius: 6, padding: "1px 8px", fontSize: 10, fontWeight: 800, marginLeft: 8 },
-    notes: { fontSize: 11, color: "#C4845A", marginTop: 4, fontStyle: "italic" },
+    content: { background: "#FFFAF7", borderRadius: 12, padding: "8px 12px", border: "1.5px solid #FFD9C8" },
+    foodName: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#3D1F0A" },
+    period: { fontSize: 10, color: "#C4845A", marginBottom: 3 },
+    meta: { fontSize: 11, color: "#7A4522", marginTop: 2 },
+    badge: { background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", borderRadius: 6, padding: "2px 6px", fontSize: 9, fontWeight: 800, marginLeft: 6 },
+    notes: { fontSize: 11, color: "#C4845A", marginTop: 3, fontStyle: "italic" },
     addBtn: { width: "100%", padding: 11, borderRadius: 13, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8 },
     histBtn: { background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" },
   };
@@ -106,8 +106,8 @@ export default function DietTimeline({ pet }) {
       {showModal && (
         <DietHistoryModal
           pet={pet}
-          onClose={() => setShowModal(false)}
-          onSaved={() => { setShowModal(false); loadRecords(); }}
+          onClose={() => { setShowModal(false); loadRecords(); }}
+          onSaved={() => { loadRecords(); }}
         />
       )}
     </div>

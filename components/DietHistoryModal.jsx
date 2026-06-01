@@ -77,7 +77,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     setLoading(false);
     setSaved(true);
     await loadRecords();
-    setTimeout(() => { resetForm(); }, 800);
+    setTimeout(() => { resetForm(); onSaved?.(); }, 800);
   };
 
   const handleDelete = async (id) => {
