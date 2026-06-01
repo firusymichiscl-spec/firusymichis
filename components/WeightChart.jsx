@@ -196,6 +196,12 @@ export default function WeightChart({ pet }) {
     setLoading(false);
   };
 
+  const deleteWeight = async (id) => {
+    if (!id) return;
+    await supabase.from("weight_logs").delete().eq("id", id);
+    await loadAll();
+  };
+
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
     title: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1 },
@@ -281,8 +287,15 @@ export default function WeightChart({ pet }) {
             return (
               <div key={wk} style={css.slot(type)}
                 onClick={() => !isFuture && openEdit(wk, w.kg, w.id)}>
-                {!isFuture && w.kg !== null && (
-                  <div style={{ position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" }}>✏️</div>
+                {!isFuture && w.kg !== null && w.id !== null && (
+                  <>
+                    <div style={{ position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" }}>✏️</div>
+                    <div
+                      style={{ position: "absolute", top: 3, left: 4, fontSize: 8, color: "#dc2626", cursor: "pointer", background: "#fef2f2", borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      onClick={e => { e.stopPropagation(); deleteWeight(w.id); }}>
+                      ×
+                    </div>
+                  </>
                 )}
                 <div style={css.slotLabel}>semana {wk}</div>
                 <div style={css.slotVal(type)}>
