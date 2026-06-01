@@ -1,5 +1,6 @@
 "use client";
 
+import WeightHistoryModal from "@/components/WeightHistoryModal";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import {
@@ -59,6 +60,7 @@ export default function WeightChart({ pet }) {
   const [editingId, setEditingId] = useState(null);
   const [newWeight, setNewWeight] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const now = new Date();
   const year = now.getFullYear();
@@ -219,9 +221,20 @@ export default function WeightChart({ pet }) {
 
   return (
     <div style={css.card}>
+      
+      
       <div style={css.header}>
-        <div style={css.title}>⚖️ Evolución de peso</div>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <div style={css.title}>⚖️ Evolución de peso</div>
+            <button onClick={() => setShowHistoryModal(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>
+              📈 Historial
+            </button>
+          </div>
+        </div>
         <div style={{ textAlign: "right" }}>
+          
+          
           {currentKg && <div style={css.kg}>{currentKg.toFixed(1)} <span style={{ fontSize: 14 }}>kg</span></div>}
           <div style={css.label}>peso actual</div>
           {diff !== null && (
@@ -321,6 +334,15 @@ export default function WeightChart({ pet }) {
           </div>
         )}
       </div>
+    
+    {showHistoryModal && (
+        <WeightHistoryModal
+          pet={pet}
+          onClose={() => setShowHistoryModal(false)}
+          onSaved={() => { setShowHistoryModal(false); loadAll(); }}
+        />
+      )}
     </div>
   );
 }
+    
