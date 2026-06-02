@@ -103,6 +103,72 @@ export default function DashboardClient({ pet, medications: initialMeds, history
 
   useEffect(() => { loadTreatmentItems(); }, []);
 
+  const [editingTreatmentItem, setEditingTreatmentItem] = useState(null);
+  const [tiForm, setTiForm] = useState({});
+  const [tiSaving, setTiSaving] = useState(false);
+  const [tiSaved, setTiSaved] = useState(false);
+
+  const calcTreatmentProgress = (ti) => {
+    if (!ti.start_date || !ti.start_time || !ti.frequency) return null;
+    const freqMap = {
+      "cada 6 horas": 6, "cada 6h": 6,
+      "cada 8 horas": 8, "cada 8h": 8,
+      "cada 12 horas": 12, "cada 12h": 12,
+      "cada 24 horas": 24, "cada 24h": 24,
+      "1 vez al día": 24, "una vez al día": 24,
+      "2 veces al día": 12, "dos veces al día": 12,
+      "3 veces al día": 8, "tres veces al día": 8,
+    };
+    const freqKey = Object.keys(freqMap).find(k => ti.frequency.toLowerCase().includes(k));
+    const intervalHours = freqKey ? freqMap[freqKey] : null;
+    if (!intervalHours) return null;
+    const start = new Date(`${ti.start_date}T${ti.start_time}:00`);
+    const now = new Date();
+    const totalDays = ti.duration_days || 0;
+    const totalDoses = Math.round((totalDays * 24) / intervalHours);
+    const elapsedHours = Math.max(0, (now - start) / 3600000);
+    const dosesDone = Math.min(totalDoses, Math.floor(elapsedHours / intervalHours));
+    const dosesLeft = Math.max(0, totalDoses - dosesDone);
+    const daysDone = Math.floor(dosesDone * intervalHours / 24);
+    const daysLeft = Math.max(0, totalDays - daysDone);
+    const nextDoseTime = new Date(start.getTime() + (dosesDone + 1) * intervalHours * 3600000);
+    const isToday = nextDoseTime.toDateString() === now.toDateString();
+    const isTomorrow = nextDoseTime.toDateString() === new Date(now.getTime() + 86400000).toDateString();
+    const timeStr = nextDoseTime.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+    const nextLabel = dosesDone >= totalDoses ? "Tratamiento finalizado" :
+      isToday ? `Hoy a las ${timeStr}` :
+      isTomorrow ? `Mañana a las ${timeStr}` :
+      nextDoseTime.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" }) + ` a las ${timeStr}`;
+    const progress = totalDoses > 0 ? Math.round((dosesDone / totalDoses) * 100) : 0;
+    const [h] = ti.start_time.split(":").map(Number);
+    const momento = h >= 6 && h < 12 ? "mañana" : h >= 12 && h < 15 ? "mediodia" : h >= 15 && h < 19 ? "tarde" : "noche";
+    return { intervalHours, totalDoses, dosesDone, dosesLeft, daysDone, daysLeft, totalDays, progress, nextLabel, momento };
+  };
+
+  const getMomentoActual = () => {
+    const h = new Date().getHours();
+    if (h >= 6 && h < 12) return "mañana";
+    if (h >= 12 && h < 15) return "mediodia";
+    if (h >= 15 && h < 19) return "tarde";
+    return "noche";
+  };
+
+  const saveTreatmentItem = async () => {
+    if (!editingTreatmentItem) return;
+    setTiSaving(true);
+    const startTime = `${tiForm.start_hour.toString().padStart(2, "0")}:${tiForm.start_min}`;
+    await supabase.from("treatment_items").update({
+      name: tiForm.name, prescribed_dose: tiForm.prescribed_dose, frequency: tiForm.frequency,
+      duration_days: tiForm.duration_days ? parseInt(tiForm.duration_days) : null,
+      start_date: tiForm.start_date, start_time: startTime,
+      mg_per_unit: tiForm.mg_per_unit ? parseFloat(tiForm.mg_per_unit) : null,
+      units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
+    }).eq("id", editingTreatmentItem.id);
+    setTiSaving(false); setTiSaved(true);
+    await loadTreatmentItems();
+    setTimeout(() => { setEditingTreatmentItem(null); setTiSaved(false); setTiForm({}); }, 800);
+  };
+
   const reloadMeds = async () => {
     const { data } = await supabase.from('medications').select('*').eq('pet_id', pet.id).order('created_at', { ascending: false });
     setMeds(data || []);
@@ -579,40 +645,79 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                         <p style={{ fontSize: 11, marginTop: 4 }}>Sube una receta en el tab IA para comenzar</p>
                       </div>
                     </div>
-                  ) : treatmentItems.map(ti => {
-                    const daysLeft = ti.duration_days && ti.start_date
-                      ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
-                      : null;
-                    const totalDays = ti.duration_days || 0;
-                    const progress = daysLeft !== null && totalDays > 0 ? Math.max(0, Math.min(100, Math.round((1 - daysLeft / totalDays) * 100))) : null;
+                  ) : (() => {
+                    const momentos = [
+                      { id: "mañana", icon: "🌅", label: "Mañana", range: "06:00 – 11:59" },
+                      { id: "mediodia", icon: "☀️", label: "Mediodía", range: "12:00 – 14:59" },
+                      { id: "tarde", icon: "🌆", label: "Tarde", range: "15:00 – 18:59" },
+                      { id: "noche", icon: "🌙", label: "Noche", range: "19:00 – 23:30" },
+                    ];
+                    const momentoActual = getMomentoActual();
                     return (
-                      <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 18, marginBottom: 14, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
-                        <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
-                        <div style={{ paddingLeft: 10 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
-                            {daysLeft !== null && (
-                              <div style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 12, background: daysLeft < 3 ? "#fef2f2" : daysLeft < 7 ? "#fff7ed" : "#f5f3ff", color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#7c3aed" }}>
-                                {daysLeft > 0 ? `${daysLeft} días restantes` : "Finalizado"}
+                      <>
+                        {momentos.map(momento => {
+                          const items = treatmentItems.filter(ti => calcTreatmentProgress(ti)?.momento === momento.id);
+                          if (items.length === 0) return null;
+                          const isNow = momento.id === momentoActual;
+                          return (
+                            <div key={momento.id} style={{ marginBottom: 20 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                <div style={{ fontSize: 18 }}>{momento.icon}</div>
+                                <div>
+                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: isNow ? "#FF6B35" : "#7A4522" }}>{momento.label}</div>
+                                  <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range}</div>
+                                </div>
+                                {isNow && <div style={{ background: "#FFF0EB", color: "#FF6B35", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, border: "1px solid #FFD0BC" }}>Ahora</div>}
                               </div>
-                            )}
-                          </div>
-                          {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
-                          {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
-                          {ti.start_date && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>📅 Inicio: {ti.start_date.split("-").reverse().join("/")} {ti.start_time ? `a las ${ti.start_time}` : ""}</div>}
-                          {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
-                          {progress !== null && (
-                            <div>
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A", marginBottom: 4 }}><span>Progreso</span><span>{progress}%</span></div>
-                              <div style={{ height: 6, borderRadius: 4, background: "#f5f3ff", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${progress}%`, background: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#8B5CF6", borderRadius: 4, transition: "width 0.3s" }} />
-                              </div>
+                              {items.map(ti => {
+                                const prog = calcTreatmentProgress(ti);
+                                return (
+                                  <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
+                                    <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
+                                    <div style={{ paddingLeft: 10 }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                                        <button onClick={() => {
+                                          const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
+                                          setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"" });
+                                          setEditingTreatmentItem(ti); setTiSaved(false);
+                                        }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                                      </div>
+                                      {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
+                                      {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
+                                      {prog && (
+                                        <div style={{ background: prog.daysLeft === 0 ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "#FF6B35" }}>
+                                            {prog.daysLeft === 0 ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {prog && prog.totalDays > 0 && (
+                                        <div>
+                                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A", marginBottom: 4 }}>
+                                            <span>✓ {prog.daysDone} días completados</span>
+                                            <span>{prog.daysLeft} días restantes</span>
+                                          </div>
+                                          <div style={{ height: 8, borderRadius: 4, background: "#f5f3ff", overflow: "hidden", marginBottom: 4 }}>
+                                            <div style={{ height: "100%", width: `${prog.progress}%`, background: prog.daysLeft === 0 ? "#059669" : prog.daysLeft < 3 ? "#dc2626" : prog.daysLeft < 7 ? "#d97706" : "#8B5CF6", borderRadius: 4, transition: "width 0.3s" }} />
+                                          </div>
+                                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A" }}>
+                                            <span>{prog.dosesDone} dosis dadas</span>
+                                            <span>{prog.progress}% completado</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          );
+                        })}
+                      </>
                     );
-                  })}
+                  })()}
                 </>
               )}
 
@@ -986,6 +1091,85 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               <button onClick={handleHistSave}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR TREATMENT ITEM */}
+      {editingTreatmentItem && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" }}>
+            <div style={{ background: "linear-gradient(135deg,#8B5CF6,#7c3aed)", padding: "16px 20px", borderRadius: "24px 24px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#fff" }}>✏️ Editar medicamento</div>
+              <button onClick={() => { setEditingTreatmentItem(null); setTiForm({}); }}
+                style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>✕ Cerrar</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Medicamento")}
+                <input style={inputS} value={tiForm.name || ""} onChange={e => setTiForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Dosis recetada")}
+                <input style={inputS} placeholder="ej: 1 + 1/4 comprimido" value={tiForm.prescribed_dose || ""} onChange={e => setTiForm(f => ({ ...f, prescribed_dose: e.target.value }))} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Frecuencia")}
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+                  {["cada 6 horas", "cada 8 horas", "cada 12 horas", "cada 24 horas"].map(f => (
+                    <div key={f} onClick={() => setTiForm(p => ({ ...p, frequency: f }))}
+                      style={{ padding: "5px 10px", borderRadius: 8, border: `${tiForm.frequency === f ? "2px solid #8B5CF6" : "1.5px solid #C4B5FD"}`, background: tiForm.frequency === f ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: tiForm.frequency === f ? 700 : 400, color: tiForm.frequency === f ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
+                      {f.replace("cada ", "")}
+                    </div>
+                  ))}
+                </div>
+                <input style={inputS} placeholder="O escribe frecuencia libre..." value={tiForm.frequency || ""} onChange={e => setTiForm(f => ({ ...f, frequency: e.target.value }))} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Días de tratamiento")}
+                <input style={inputS} type="number" min="1" placeholder="ej: 30" value={tiForm.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); setTiForm(f => ({ ...f, duration_days: v > 0 ? v : "" })); }} />
+              </div>
+              <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 9, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
+                <div style={{ marginBottom: 8 }}>
+                  {fLabel("Fecha")}
+                  <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
+                </div>
+                {fLabel("Hora")}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                  {Array.from({ length: 18 }, (_, i) => i + 6).map(h => (
+                    <div key={h} onClick={() => setTiForm(f => ({ ...f, start_hour: h }))}
+                      style={{ padding: "5px 8px", borderRadius: 7, border: `${tiForm.start_hour === h ? "2px solid #FF6B35" : "1.5px solid #FFD9C8"}`, background: tiForm.start_hour === h ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: tiForm.start_hour === h ? 700 : 400, color: tiForm.start_hour === h ? "#CC4A1A" : "#7A4522", cursor: "pointer", minWidth: 32, textAlign: "center" }}>
+                      {h.toString().padStart(2, "0")}
+                    </div>
+                  ))}
+                </div>
+                {fLabel("Minutos")}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {["00", "30"].map(m => (
+                    <div key={m} onClick={() => setTiForm(f => ({ ...f, start_min: m }))}
+                      style={{ flex: 1, padding: "8px", borderRadius: 10, border: `${tiForm.start_min === m ? "2px solid #FF6B35" : "1.5px solid #FFD9C8"}`, background: tiForm.start_min === m ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 14, fontWeight: tiForm.start_min === m ? 700 : 400, color: tiForm.start_min === m ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>:{m}</div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: "#f5f3ff", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                <div style={{ fontSize: 9, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Datos de la caja</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    {fLabel("mg por unidad")}
+                    <input style={{ ...inputS, background: "#fff" }} type="number" placeholder="ej: 75" value={tiForm.mg_per_unit || ""} onChange={e => setTiForm(f => ({ ...f, mg_per_unit: e.target.value }))} />
+                  </div>
+                  <div>
+                    {fLabel("Unidades por caja")}
+                    <input style={{ ...inputS, background: "#fff" }} type="number" min="1" placeholder="ej: 30" value={tiForm.units_per_box || ""} onChange={e => setTiForm(f => ({ ...f, units_per_box: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+              <button onClick={saveTreatmentItem} disabled={tiSaving}
+                style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "#2EC4B6" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
+                {tiSaved ? "✓ Actualizado" : tiSaving ? "Guardando..." : "✓ Actualizar medicamento"}
               </button>
             </div>
           </div>
