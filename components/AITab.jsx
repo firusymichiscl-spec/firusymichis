@@ -393,7 +393,7 @@ export default function AITab({ pet, medications, history }) {
                           </div>
                           <div>
                             <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Días de tratamiento</div>
-                            <input style={inputS} type="number" placeholder="ej: 30" value={item.duration_days || ""} onChange={e => updateItem(item.id, "duration_days", parseInt(e.target.value) || null)} />
+                            <input style={inputS} type="number" min="1" placeholder="ej: 30" value={item.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); if (v > 0) updateItem(item.id, "duration_days", v); else updateItem(item.id, "duration_days", ""); }} />
                             <div style={{ marginTop: 6 }}>
                               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7A4522", cursor: "pointer" }}>
                                 <input type="checkbox" checked={item.lifelong || false}
