@@ -15,14 +15,18 @@ Alergias: ${pet.allergies?.join(", ") || "ninguna"}
 Historial reciente: ${history?.slice(0, 5).map(h => `${h.event_date}: ${h.event}`).join(" | ") || "sin historial"}
   `;
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    messages: [{
-      role: "user",
-      content: `Eres un asistente veterinario experto. Analiza esta mascota y da recomendaciones prácticas y personalizadas en español. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y tips según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones claras. Contexto: ${petContext}`
-    }]
-  });
-
-  return Response.json({ result: message.content[0].text });
+  try {
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      messages: [{
+        role: "user",
+        content: `Eres un asistente veterinario experto. Analiza esta mascota y da recomendaciones prácticas y personalizadas en español. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y tips según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones claras. Contexto: ${petContext}`
+      }]
+    });
+    return Response.json({ result: message.content[0].text });
+  } catch (e) {
+    console.error("[ai-analyze] error:", e);
+    return Response.json({ error: e.message }, { status: 500 });
+  }
 }
