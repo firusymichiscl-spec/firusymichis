@@ -14,6 +14,7 @@ const TYPE_STYLES = {
   illness:   { bg: "#fffbeb", text: "#d97706", dot: "#f59e0b", icon: "🤒", label: "Enfermedad" },
   exam:      { bg: "#eff6ff", text: "#2563eb", dot: "#3b82f6", icon: "🧪", label: "Examen" },
   procedure: { bg: "#f5f3ff", text: "#7c3aed", dot: "#8b5cf6", icon: "⚕️", label: "Procedimiento" },
+  vaccine:   { bg: "#f0fdf4", text: "#16a34a", dot: "#22c55e", icon: "💉", label: "Vacuna" },
   other:     { bg: "#f0fdf4", text: "#16a34a", dot: "#22c55e", icon: "📝", label: "Otro" },
 };
 
@@ -44,6 +45,10 @@ const FREQ_DOSES_PER_DAY = {
   '3 veces al día': 3, 'Cada 48 horas': 0.5, 'Semanal': 1/7, 'Mensual': 1/30,
 };
 
+const VACCINES_DOG = ["Séxtuple", "Rabia", "Bordetella", "Leptospira", "Parvovirus", "Moquillo", "Hepatitis"];
+const VACCINES_CAT = ["Triple Felina", "Rabia", "Leucemia Felina", "Calicivirus", "Panleucopenia"];
+const VACCINES_OTHER = ["Rabia", "Mixomatosis"];
+
 const emptyMedForm = {
   name:'', dose:'', frequency:'', frequency_custom:'',
   stock:'', unit:'comp.', color:'#FF6B35', in_ayunas: false,
@@ -68,7 +73,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [customFreq, setCustomFreq] = useState(false);
 
   const [showHistModal, setShowHistModal] = useState(false);
-  const [histForm, setHistForm] = useState({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
+  const [histForm, setHistForm] = useState({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
   const [histSaving, setHistSaving] = useState(false);
   const [histSaved, setHistSaved] = useState(false);
   const [historyData, setHistoryData] = useState(history);
@@ -139,13 +144,22 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     setHistoryData(data || []);
   };
 
+  useEffect(() => {
+    if (histForm.type === "vaccine" && histForm.event_date) {
+      const d = new Date(histForm.event_date);
+      d.setFullYear(d.getFullYear() + 1);
+      setHistForm(f => ({ ...f, vaccine_next_date: d.toISOString().split("T")[0] }));
+    }
+  }, [histForm.event_date, histForm.type]);
+
   const openHistModal = (item = null) => {
     if (item) {
-      setHistForm({ type: item.type || "exam", event: item.event || "", event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "" });
+      const isVaccine = item.type === "vaccine";
+      setHistForm({ type: item.type || "exam", event: isVaccine ? "" : (item.event || ""), event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "", vaccine_name: isVaccine ? (item.event || "") : "", vaccine_next_date: isVaccine ? (item.next_date || "") : "" });
       setClinicQuery(item.vet_clinic || "");
       setEditingHistId(item.id);
     } else {
-      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
+      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
       setClinicQuery("");
       setEditingHistId(null);
     }
@@ -155,16 +169,17 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   const handleHistSave = async () => {
-    console.log("histForm al guardar:", histForm);
-    console.log("event trim:", histForm.event.trim());
-    console.log("event_date:", histForm.event_date);
     const errors = {};
-    if (!histForm.event.trim()) errors.event = true;
+    if (histForm.type === "vaccine") {
+      if (!histForm.vaccine_name.trim()) errors.vaccine_name = true;
+    } else {
+      if (!histForm.event.trim()) errors.event = true;
+    }
     if (!histForm.event_date) errors.event_date = true;
     if (Object.keys(errors).length > 0) { setHistErrors(errors); return; }
     setHistErrors({});
     setHistSaving(true);
-    const payload = { type: histForm.type, event: histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null };
+    const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null };
     if (editingHistId) {
       await supabase.from("medical_history").update(payload).eq("id", editingHistId);
     } else {
@@ -174,7 +189,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     await reloadHistory();
     setTimeout(() => {
       setShowHistModal(false); setHistSaved(false); setHistErrors({}); setEditingHistId(null);
-      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
+      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
       setClinicQuery(""); setClinicSuggestions([]);
     }, 800);
   };
@@ -245,6 +260,9 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               {item.vet_clinic && item.vet_name && <span> · </span>}
               {item.vet_name && <span>{item.vet_name}</span>}
             </div>
+          )}
+          {item.next_date && (
+            <div style={{ fontSize: 11, color: "#2EC4B6", fontWeight: 700, marginTop: 3 }}>💉 Próxima: {formatDate(item.next_date)}</div>
           )}
           {item.notes && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 4 }}>{item.notes}</div>}
         </div>
@@ -412,20 +430,29 @@ export default function DashboardClient({ pet, medications: initialMeds, history
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
-                {vaccines.length === 0 ? (
-                  <div className="empty-state"><div className="empty-icon">💉</div><p>Sin vacunas registradas</p></div>
-                ) : vaccines.map(v => {
-                  const { cls, label } = vaccineStatus(v.next_date);
-                  return (
-                    <div className="vaccine-row" key={v.id}>
-                      <div>
-                        <div className="vaccine-name">{v.name}</div>
-                        <div className="vaccine-date">Próx: {formatDate(v.next_date)}</div>
-                      </div>
-                      <div className={`badge badge-${cls}`}>{label}</div>
+                {(() => {
+                  const vaccineEvents = historyData.filter(h => h.type === "vaccine");
+                  if (vaccineEvents.length === 0) return (
+                    <div className="empty-state">
+                      <div className="empty-icon">💉</div>
+                      <p>Sin vacunas registradas</p>
+                      <button onClick={() => { setTab("historial"); setTimeout(() => { setHistForm(f => ({ ...f, type: "vaccine" })); setShowHistModal(true); }, 50); }} style={{ marginTop: 10, padding: "8px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Registrar vacuna</button>
                     </div>
                   );
-                })}
+                  return vaccineEvents.map(v => {
+                    const { cls, label } = vaccineStatus(v.next_date);
+                    return (
+                      <div className="vaccine-row" key={v.id}>
+                        <div>
+                          <div className="vaccine-name">{v.event}</div>
+                          <div className="vaccine-date">Aplicada: {formatDate(v.event_date)}</div>
+                          {v.next_date && <div className="vaccine-date">Próx: {formatDate(v.next_date)}</div>}
+                        </div>
+                        <div className={`badge badge-${cls}`}>{label}</div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -671,7 +698,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Tipo de evento")}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 2 }}>
-                  {[{ value:"exam",icon:"🧪",label:"Examen"},{value:"illness",icon:"🤒",label:"Enfermedad"},{value:"surgery",icon:"🔪",label:"Cirugía"},{value:"procedure",icon:"⚕️",label:"Procedimiento"},{value:"other",icon:"📝",label:"Otro"}].map(t => (
+                  {[{ value:"exam",icon:"🧪",label:"Examen"},{value:"illness",icon:"🤒",label:"Enfermedad"},{value:"surgery",icon:"🔪",label:"Cirugía"},{value:"procedure",icon:"⚕️",label:"Procedimiento"},{value:"vaccine",icon:"💉",label:"Vacuna"},{value:"other",icon:"📝",label:"Otro"}].map(t => (
                     <div key={t.value} onClick={() => setHistForm(f => ({ ...f, type: t.value }))}
                       style={{ padding: "7px 13px", borderRadius: 20, border: `1.5px solid ${histForm.type === t.value ? "#FF6B35" : "#FFD9C8"}`, background: histForm.type === t.value ? "#FFF0EB" : "#fff", fontSize: 12, fontWeight: 700, color: histForm.type === t.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                       {t.icon} {t.label}
@@ -679,15 +706,52 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                   ))}
                 </div>
               </div>
-              {/* Descripción */}
-              <div style={{ marginBottom: 12 }}>
-                {fLabel("Descripción *")}
-                <input style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
-                  placeholder="ej: Control rutinario, Otitis bilateral..."
-                  value={histForm.event}
-                  onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); setHistErrors(p => ({ ...p, event: false })); }} />
-                {histErrors.event && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La descripción es obligatoria</div>}
-              </div>
+
+              {/* Descripción — solo para no-vacuna */}
+              {histForm.type !== "vaccine" && (
+                <div style={{ marginBottom: 12 }}>
+                  {fLabel("Descripción *")}
+                  <input style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
+                    placeholder="ej: Control rutinario, Otitis bilateral..."
+                    value={histForm.event}
+                    onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); setHistErrors(p => ({ ...p, event: false })); }} />
+                  {histErrors.event && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La descripción es obligatoria</div>}
+                </div>
+              )}
+
+              {/* Campos vacuna */}
+              {histForm.type === "vaccine" && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Vacuna</div>
+                  <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #FFD9C8", padding: 12, marginBottom: 10 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {(petData.species === "cat" ? VACCINES_CAT : petData.species === "other" ? VACCINES_OTHER : VACCINES_DOG).map(v => (
+                        <div key={v} onClick={() => setHistForm(f => ({ ...f, vaccine_name: f.vaccine_name === v ? "" : v }))}
+                          style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histForm.vaccine_name === v ? "#2EC4B6" : "#FFD9C8"}`, background: histForm.vaccine_name === v ? "#E8FAF9" : "#fff", fontSize: 11, fontWeight: 700, color: histForm.vaccine_name === v ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
+                          {v}
+                        </div>
+                      ))}
+                      <div onClick={() => setHistForm(f => ({ ...f, vaccine_name: "" }))}
+                        style={{ padding: "5px 12px", borderRadius: 20, border: "1.5px solid #c4b5fd", background: "#f5f3ff", fontSize: 11, fontWeight: 700, color: "#7c3aed", cursor: "pointer" }}>
+                        + Otra
+                      </div>
+                    </div>
+                    <input style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${histErrors.vaccine_name ? "#dc2626" : "#FFD9C8"}`, fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" }}
+                      placeholder="Nombre de la vacuna..."
+                      value={histForm.vaccine_name}
+                      onChange={e => { setHistForm(f => ({ ...f, vaccine_name: e.target.value })); setHistErrors(p => ({ ...p, vaccine_name: false })); }} />
+                    {histErrors.vaccine_name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ Selecciona o escribe el nombre de la vacuna</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Próxima dosis</div>
+                    <input type="date" style={{ ...inputS }}
+                      value={histForm.vaccine_next_date}
+                      onChange={e => setHistForm(f => ({ ...f, vaccine_next_date: e.target.value }))} />
+                    <div style={{ fontSize: 10, color: "#2EC4B6", fontWeight: 700, marginTop: 4 }}>✓ Auto-calculado: +1 año desde fecha de aplicación</div>
+                  </div>
+                </div>
+              )}
+
               {/* Fecha */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Fecha *")}
@@ -697,6 +761,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                   onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); setHistErrors(p => ({ ...p, event_date: false })); }} />
                 {histErrors.event_date && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La fecha es obligatoria</div>}
               </div>
+
               {/* Veterinaria */}
               <div style={{ marginBottom: 12, position: "relative" }}>
                 {fLabel("Veterinaria")}
@@ -716,12 +781,15 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                   </div>
                 )}
               </div>
-              {/* Veterinario */}
-              <div style={{ marginBottom: 12 }}>
-                {fLabel("Veterinario/a")}
-                <input style={inputS} placeholder="Nombre del veterinario/a (opcional)"
-                  value={histForm.vet_name} onChange={e => setHistForm(f => ({ ...f, vet_name: e.target.value }))} />
-              </div>
+
+              {/* Veterinario — solo para no-vacuna */}
+              {histForm.type !== "vaccine" && (
+                <div style={{ marginBottom: 12 }}>
+                  {fLabel("Veterinario/a")}
+                  <input style={inputS} placeholder="Nombre del veterinario/a (opcional)"
+                    value={histForm.vet_name} onChange={e => setHistForm(f => ({ ...f, vet_name: e.target.value }))} />
+                </div>
+              )}
               {/* Notas */}
               <div style={{ marginBottom: 16 }}>
                 {fLabel("Notas")}
