@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 
 const FREQ_MAP = {
@@ -51,9 +51,24 @@ export default function AITab({ pet, medications, history }) {
   const [recipeError, setRecipeError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedTreatments, setSavedTreatments] = useState([]);
+  const [loadingTreatments, setLoadingTreatments] = useState(false);
   const fileRef = useRef();
 
   const today = new Date().toISOString().split("T")[0];
+
+  const loadTreatments = async () => {
+    setLoadingTreatments(true);
+    const { data: treats } = await supabase
+      .from("treatments")
+      .select("*, treatment_items(*)")
+      .eq("pet_id", pet.id)
+      .order("created_at", { ascending: false });
+    setSavedTreatments(treats || []);
+    setLoadingTreatments(false);
+  };
+
+  useEffect(() => { loadTreatments(); }, []);
 
   const analyze = async () => {
     setAnalyzing(true);
@@ -122,10 +137,23 @@ export default function AITab({ pet, medications, history }) {
   const updateItem = (id, field, value) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, [field]: value } : item));
   const toggleExpand = (id) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, expanded: !item.expanded } : item));
 
+  const parseDoseUnits = (doseStr) => {
+    if (!doseStr) return null;
+    const s = doseStr.toLowerCase().trim();
+    const decimal = parseFloat(s);
+    if (!isNaN(decimal) && s.match(/^\d+(\.\d+)?$/)) return decimal;
+    const fracMatch = s.match(/^(\d+)\/(\d+)$/);
+    if (fracMatch) return parseInt(fracMatch[1]) / parseInt(fracMatch[2]);
+    const mixedMatch = s.match(/(\d+)\s*[+\s]\s*(\d+)\/(\d+)/);
+    if (mixedMatch) return parseInt(mixedMatch[1]) + parseInt(mixedMatch[2]) / parseInt(mixedMatch[3]);
+    const numMatch = s.match(/^(\d+(\.\d+)?)/);
+    if (numMatch) return parseFloat(numMatch[1]);
+    return null;
+  };
+
   const calcUnitsPerDose = (item) => {
-    const mg = parseFloat(item.mg_per_unit);
-    const dose = parseFloat(item.prescribed_dose);
-    if (mg > 0 && dose > 0) return +(dose / mg).toFixed(2);
+    const doseUnits = parseDoseUnits(item.prescribed_dose);
+    if (doseUnits !== null) return +doseUnits.toFixed(4);
     return null;
   };
 
@@ -134,18 +162,13 @@ export default function AITab({ pet, medications, history }) {
     const days = parseInt(item.duration_days);
     const dpd = parseDosesPerDay(item.frequency);
     if (!upb || upb <= 0) return null;
-    const upd = calcUnitsPerDose(item);
-    if (upd !== null && dpd && days) {
-      const total = upd * dpd * days;
-      const boxes = Math.ceil(total / upb);
-      const remaining = (boxes * upb) - total;
-      return { total: +total.toFixed(2), boxes, remaining: +remaining.toFixed(2), mode: "exact" };
-    }
+    const upd = calcUnitsPerDose(item) ?? 1;
     if (dpd && days) {
-      const total = dpd * days;
-      const boxes = Math.ceil(total / upb);
-      const remaining = (boxes * upb) - total;
-      return { total: +total.toFixed(2), boxes, remaining: +remaining.toFixed(2), mode: "approx" };
+      const totalUnits = +(upd * dpd * days).toFixed(2);
+      const boxesNeeded = Math.ceil(totalUnits / upb);
+      const remaining = +((boxesNeeded * upb) - totalUnits).toFixed(2);
+      const daysPerBox = +(upb / (upd * dpd)).toFixed(1);
+      return { totalUnits, boxesNeeded, remaining, daysPerBox };
     }
     return null;
   };
@@ -173,7 +196,7 @@ export default function AITab({ pet, medications, history }) {
         duration_days: item.duration_days, start_date: item.start_date, start_time: startTime,
         mg_per_unit: parseFloat(item.mg_per_unit) || null,
         units_per_box: parseInt(item.units_per_box) || null,
-        units_per_dose: upd, boxes_needed: calc?.boxes || null,
+        units_per_dose: upd, boxes_needed: calc?.boxesNeeded || null,
         units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
       });
       if (item.lifelong) {
@@ -214,6 +237,38 @@ export default function AITab({ pet, medications, history }) {
           </div>
         </div>
       ))}
+
+      {savedTreatments.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Tratamientos guardados</div>
+          {savedTreatments.map(t => (
+            <div key={t.id} style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: "#C4845A", marginBottom: 6 }}>📋 Receta del {t.recipe_date ? new Date(t.recipe_date + "T12:00:00").toLocaleDateString("es-CL") : "—"}</div>
+              {t.treatment_items?.map(ti => {
+                const daysLeft = ti.duration_days && ti.start_date
+                  ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
+                  : null;
+                return (
+                  <div key={ti.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #f5f3ff" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+                      <div style={{ fontSize: 11, color: "#C4845A" }}>{ti.frequency}{ti.start_time ? ` · inicio ${ti.start_time}` : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      {ti.boxes_needed && <div style={{ fontSize: 12, fontWeight: 700, color: "#8B5CF6" }}>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</div>}
+                      {daysLeft !== null && (
+                        <div style={{ fontSize: 10, color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#059669", fontWeight: 700 }}>
+                          {daysLeft > 0 ? `${daysLeft}d restantes` : "Finalizado"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -362,10 +417,18 @@ export default function AITab({ pet, medications, history }) {
                             <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>mg por unidad (para cálculo de dosis)</div>
                             <input style={{ ...inputS, background: "#fff" }} type="number" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => updateItem(item.id, "mg_per_unit", e.target.value)} />
                           </div>
-                          {upd !== null && (
-                            <div style={{ background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#3D1F0A" }}>
-                              <strong style={{ color: "#8B5CF6" }}>{upd} unidades</strong> por toma
-                              {calc && <><br /><strong style={{ color: "#8B5CF6" }}>{calc.boxes} caja{calc.boxes !== 1 ? "s" : ""}</strong> necesarias ({calc.total} unidades totales){calc.remaining > 0 && <span style={{ color: "#C4845A" }}> · sobran {calc.remaining} unidades</span>}</>}
+                          {calc && (
+                            <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#3D1F0A", lineHeight: 1.8 }}>
+                              <div><strong style={{ color: "#8B5CF6" }}>{upd ?? 1} unidades</strong> por toma</div>
+                              <div><strong style={{ color: "#8B5CF6" }}>{+((upd ?? 1) * (parseDosesPerDay(item.frequency) || 1)).toFixed(2)}</strong> unidades por día</div>
+                              <div>Para <strong>{item.duration_days} días</strong> necesitas <strong style={{ color: "#8B5CF6" }}>{calc.totalUnits} unidades totales</strong></div>
+                              <div style={{ marginTop: 6, padding: "6px 10px", borderRadius: 8, background: calc.boxesNeeded > 1 ? "#FFF0EB" : "#E8FAF9", border: `1px solid ${calc.boxesNeeded > 1 ? "#FFD0BC" : "#9FE1CB"}` }}>
+                                {calc.boxesNeeded > 1
+                                  ? <span style={{ color: "#FF6B35", fontWeight: 700 }}>⚠️ Necesitas {calc.boxesNeeded} cajas — 1 caja alcanza para {calc.daysPerBox} días, faltan {Math.ceil(item.duration_days - calc.daysPerBox)} días más</span>
+                                  : <span style={{ color: "#059669", fontWeight: 700 }}>✓ 1 caja es suficiente</span>
+                                }
+                                {calc.remaining > 0 && <span style={{ color: "#C4845A" }}> · sobran {calc.remaining} unidades</span>}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -386,16 +449,27 @@ export default function AITab({ pet, medications, history }) {
                     return (
                       <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "6px 0", borderBottom: "1px solid #9FE1CB" }}>
                         <span style={{ color: "#3D1F0A", fontWeight: 700 }}>{item.name}</span>
-                        <span style={{ color: "#0F6E56", fontWeight: 700 }}>{calc.boxes} caja{calc.boxes !== 1 ? "s" : ""}</span>
+                        <span style={{ color: "#0F6E56", fontWeight: 700 }}>{calc.boxesNeeded} caja{calc.boxesNeeded !== 1 ? "s" : ""}</span>
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              <button onClick={saveTreatment} disabled={saving || saved} style={{ width: "100%", padding: 14, borderRadius: 13, background: saved ? "#2EC4B6" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
-                {saved ? "✓ Tratamiento guardado" : saving ? "Guardando..." : "✓ Guardar tratamiento"}
-              </button>
+              {!saved && (
+                <button onClick={saveTreatment} disabled={saving} style={{ width: "100%", padding: 14, borderRadius: 13, background: "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+                  {saving ? "Guardando..." : "✓ Guardar tratamiento"}
+                </button>
+              )}
+              {saved && (
+                <div style={{ background: "#E8FAF9", borderRadius: 14, border: "1.5px solid #2EC4B6", padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#0F6E56", marginBottom: 10 }}>✓ Tratamiento guardado correctamente</div>
+                  <button onClick={() => { setSaved(false); setRecipeItems([]); setPreview(null); setB64(null); loadTreatments(); setActiveSection(null); }}
+                    style={{ width: "100%", padding: 10, borderRadius: 10, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    Ver tratamientos guardados
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
