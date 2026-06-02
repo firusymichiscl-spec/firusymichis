@@ -76,6 +76,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [clinicSuggestions, setClinicSuggestions] = useState([]);
   const [clinicSearching, setClinicSearching] = useState(false);
   const [histErrors, setHistErrors] = useState({});
+  const [editingHistId, setEditingHistId] = useState(null);
+  const [histExpanded, setHistExpanded] = useState(false);
 
   const activeMeds = meds.filter(m => m.active);
   const historyMeds = meds.filter(m => !m.active);
@@ -137,6 +139,21 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     setHistoryData(data || []);
   };
 
+  const openHistModal = (item = null) => {
+    if (item) {
+      setHistForm({ type: item.type || "exam", event: item.event || "", event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "" });
+      setClinicQuery(item.vet_clinic || "");
+      setEditingHistId(item.id);
+    } else {
+      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
+      setClinicQuery("");
+      setEditingHistId(null);
+    }
+    setHistErrors({});
+    setHistSaved(false);
+    setShowHistModal(true);
+  };
+
   const handleHistSave = async () => {
     const errors = {};
     if (!histForm.event.trim()) errors.event = true;
@@ -144,15 +161,16 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     if (Object.keys(errors).length > 0) { setHistErrors(errors); return; }
     setHistErrors({});
     setHistSaving(true);
-    await supabase.from("medical_history").insert({
-      pet_id: pet.id, type: histForm.type, event: histForm.event,
-      event_date: histForm.event_date, vet_name: histForm.vet_name || null,
-      vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null,
-    });
+    const payload = { type: histForm.type, event: histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null };
+    if (editingHistId) {
+      await supabase.from("medical_history").update(payload).eq("id", editingHistId);
+    } else {
+      await supabase.from("medical_history").insert({ pet_id: pet.id, ...payload });
+    }
     setHistSaving(false); setHistSaved(true);
     await reloadHistory();
     setTimeout(() => {
-      setShowHistModal(false); setHistSaved(false); setHistErrors({});
+      setShowHistModal(false); setHistSaved(false); setHistErrors({}); setEditingHistId(null);
       setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
       setClinicQuery(""); setClinicSuggestions([]);
     }, 800);
@@ -193,6 +211,43 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); };
+
+  const groupByMonthYear = (events) => {
+    const groups = {};
+    events.forEach(item => {
+      if (!item.event_date) return;
+      const [y, m] = item.event_date.split("-");
+      const key = `${y}-${m}`;
+      const label = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+      if (!groups[key]) groups[key] = { label, items: [] };
+      groups[key].items.push(item);
+    });
+    return Object.values(groups);
+  };
+
+  const renderTimelineItem = (item) => {
+    const s = TYPE_STYLES[item.type] || TYPE_STYLES.other;
+    return (
+      <div className="timeline-item" key={item.id}>
+        <div className="timeline-dot" style={{ background: s.dot }}>{s.icon}</div>
+        <div className="timeline-content" style={{ background: s.bg, border: `1px solid ${s.dot}22` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div className="timeline-type" style={{ color: s.text }}>{s.label} · {formatDate(item.event_date)}</div>
+            <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A", padding: "0 0 0 8px" }}>✏️</button>
+          </div>
+          <div className="timeline-event">{item.event}</div>
+          {(item.vet_clinic || item.vet_name) && (
+            <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4 }}>
+              {item.vet_clinic && <span>🏥 {item.vet_clinic}</span>}
+              {item.vet_clinic && item.vet_name && <span> · </span>}
+              {item.vet_name && <span>{item.vet_name}</span>}
+            </div>
+          )}
+          {item.notes && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 4 }}>{item.notes}</div>}
+        </div>
+      </div>
+    );
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "Sin fecha";
@@ -430,29 +485,33 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               {historyData.length === 0 ? (
                 <div className="card">
                   <div className="empty-state"><div className="empty-icon">📅</div><p>Sin historial médico registrado</p></div>
-                  <button className="add-btn" onClick={() => setShowHistModal(true)}>+ Agregar evento</button>
+                  <button className="add-btn" onClick={() => openHistModal()}>+ Agregar evento</button>
                 </div>
-              ) : (
-                <>
-                  <div className="timeline">
-                    {historyData.map(item => {
-                      const s = TYPE_STYLES[item.type] || TYPE_STYLES.other;
-                      return (
-                        <div className="timeline-item" key={item.id}>
-                          <div className="timeline-dot" style={{ background: s.dot }}>{s.icon}</div>
-                          <div className="timeline-content" style={{ background: s.bg, border: `1px solid ${s.dot}22` }}>
-                            <div className="timeline-type" style={{ color: s.text }}>{s.label} · {formatDate(item.event_date)}</div>
-                            <div className="timeline-event">{item.event}</div>
-                            {item.vet_clinic && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 2 }}>🏥 {item.vet_clinic}{item.vet_name ? ` · ${item.vet_name}` : ""}</div>}
-                            {item.notes && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 4 }}>{item.notes}</div>}
+              ) : (() => {
+                const recentEvents = historyData.slice(0, 2);
+                const olderEvents = historyData.slice(2);
+                const olderGroups = groupByMonthYear(olderEvents);
+                return (
+                  <>
+                    <div className="timeline">{recentEvents.map(item => renderTimelineItem(item))}</div>
+                    {olderEvents.length > 0 && (
+                      <>
+                        <button onClick={() => setHistExpanded(p => !p)}
+                          style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+                          {histExpanded ? "▲ Ocultar anteriores" : `▼ Ver anteriores (${olderEvents.length})`}
+                        </button>
+                        {histExpanded && olderGroups.map(group => (
+                          <div key={group.label}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8, marginTop: 4 }}>📅 {group.label}</div>
+                            <div className="timeline">{group.items.map(item => renderTimelineItem(item))}</div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button className="add-btn" onClick={() => setShowHistModal(true)}>+ Agregar evento</button>
-                </>
-              )}
+                        ))}
+                      </>
+                    )}
+                    <button className="add-btn" onClick={() => openHistModal()}>+ Agregar evento</button>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -600,8 +659,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" }}>
             <div style={{ background: "linear-gradient(135deg,#FF6B35,#e85d2e)", padding: "16px 20px", borderRadius: "24px 24px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#fff" }}>📅 Nuevo evento médico</div>
-              <button onClick={() => { setShowHistModal(false); setHistErrors({}); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "" , notes: "" }); setClinicQuery(""); setClinicSuggestions([]); }}
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#fff" }}>{editingHistId ? "✏️ Editar evento médico" : "📅 Nuevo evento médico"}</div>
+              <button onClick={() => { setShowHistModal(false); setHistErrors({}); setEditingHistId(null); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "" , notes: "" }); setClinicQuery(""); setClinicSuggestions([]); }}
                 style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>✕ Cerrar</button>
             </div>
             <div style={{ padding: 20 }}>
@@ -623,7 +682,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                 <input style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
                   placeholder="ej: Control rutinario, Otitis bilateral..."
                   value={histForm.event}
-                  onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); if (histErrors.event) setHistErrors(p => ({ ...p, event: false })); }} />
+                  onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); setHistErrors(p => ({ ...p, event: false })); }} />
                 {histErrors.event && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La descripción es obligatoria</div>}
               </div>
               {/* Fecha */}
@@ -632,7 +691,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                 <input type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
                   max={new Date().toISOString().split("T")[0]}
                   value={histForm.event_date}
-                  onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); if (histErrors.event_date) setHistErrors(p => ({ ...p, event_date: false })); }} />
+                  onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); setHistErrors(p => ({ ...p, event_date: false })); }} />
                 {histErrors.event_date && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La fecha es obligatoria</div>}
               </div>
               {/* Veterinaria */}
@@ -669,7 +728,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               </div>
               <button onClick={handleHistSave} disabled={histSaving || !histForm.event || !histForm.event_date}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
-                {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : "✓ Guardar evento"}
+                {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
               </button>
             </div>
           </div>
