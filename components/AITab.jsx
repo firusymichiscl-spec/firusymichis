@@ -51,6 +51,7 @@ export default function AITab({ pet, medications, history }) {
   const [recipeError, setRecipeError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [treatmentMeta, setTreatmentMeta] = useState({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
   const [savedTreatments, setSavedTreatments] = useState([]);
   const [loadingTreatments, setLoadingTreatments] = useState(false);
   const [deletingTreatment, setDeletingTreatment] = useState(null);
@@ -62,7 +63,7 @@ export default function AITab({ pet, medications, history }) {
     setLoadingTreatments(true);
     const { data: treats } = await supabase
       .from("treatments")
-      .select("*, treatment_items(*)")
+      .select("id, recipe_date, diagnostico, doctor, vet_clinic, emission_date, created_at, treatment_items(*)")
       .eq("pet_id", pet.id)
       .order("created_at", { ascending: false });
     setSavedTreatments(treats || []);
@@ -194,7 +195,14 @@ export default function AITab({ pet, medications, history }) {
     setSaving(true);
     const { data: treatment, error: tErr } = await supabase
       .from("treatments")
-      .insert({ pet_id: pet.id, recipe_date: today })
+      .insert({
+        pet_id: pet.id,
+        recipe_date: today,
+        diagnostico: treatmentMeta.diagnostico || null,
+        doctor: treatmentMeta.doctor || null,
+        vet_clinic: treatmentMeta.vet_clinic || null,
+        emission_date: treatmentMeta.emission_date || null,
+      })
       .select()
       .single();
     if (tErr || !treatment) {
@@ -227,6 +235,7 @@ export default function AITab({ pet, medications, history }) {
     }
     setSaving(false);
     setSaved(true);
+    setTreatmentMeta({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
   };
 
   const inputS = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#fff", fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" };
@@ -260,12 +269,17 @@ export default function AITab({ pet, medications, history }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Tratamientos guardados</div>
           {savedTreatments.map(t => (
             <div key={t.id} style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 11, color: "#C4845A" }}>📋 Receta del {t.recipe_date ? new Date(t.recipe_date + "T12:00:00").toLocaleDateString("es-CL") : "—"}</div>
-                <button onClick={() => deleteTreatment(t.id)} disabled={deletingTreatment === t.id}
-                  style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>
-                  {deletingTreatment === t.id ? "..." : "🗑️ Eliminar"}
-                </button>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                  <div style={{ fontSize: 11, color: "#C4845A" }}>📋 Receta del {t.emission_date ? new Date(t.emission_date + "T12:00:00").toLocaleDateString("es-CL") : t.recipe_date ? new Date(t.recipe_date + "T12:00:00").toLocaleDateString("es-CL") : "—"}</div>
+                  <button onClick={() => deleteTreatment(t.id)} disabled={deletingTreatment === t.id}
+                    style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>
+                    {deletingTreatment === t.id ? "..." : "🗑️"}
+                  </button>
+                </div>
+                {t.diagnostico && <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A", marginBottom: 3 }}>🩺 {t.diagnostico}</div>}
+                {t.doctor && <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 2 }}>👨‍⚕️ {t.doctor}</div>}
+                {t.vet_clinic && <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 6 }}>🏥 {t.vet_clinic}</div>}
               </div>
               {t.treatment_items?.map(ti => {
                 const daysLeft = ti.duration_days && ti.start_date
@@ -498,6 +512,27 @@ export default function AITab({ pet, medications, history }) {
                   </div>
                 );
               })}
+
+              {/* Datos de la receta */}
+              <div style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #FFD9C8", padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Datos de la receta</div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Diagnóstico</div>
+                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Neuropatía, dermatitis..." value={treatmentMeta.diagnostico} onChange={e => setTreatmentMeta(f => ({ ...f, diagnostico: e.target.value }))} />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Doctor que recetó</div>
+                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Dr. Juan Rosas" value={treatmentMeta.doctor} onChange={e => setTreatmentMeta(f => ({ ...f, doctor: e.target.value }))} />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Veterinaria</div>
+                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Nervet, Clínica El Roble..." value={treatmentMeta.vet_clinic} onChange={e => setTreatmentMeta(f => ({ ...f, vet_clinic: e.target.value }))} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
+                  <input type="date" style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date} onChange={e => setTreatmentMeta(f => ({ ...f, emission_date: e.target.value }))} />
+                </div>
+              </div>
 
               {/* Resumen de compra */}
               {recipeItems.some(i => calcBoxes(i)) && (

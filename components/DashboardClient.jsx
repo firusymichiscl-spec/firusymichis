@@ -94,7 +94,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const loadTreatmentItems = async () => {
     const { data } = await supabase
       .from("treatment_items")
-      .select("*")
+      .select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)")
       .eq("pet_id", pet.id)
       .eq("active", true)
       .order("created_at", { ascending: false });
@@ -146,7 +146,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   const getMomentoActual = () => {
-    const h = new Date().getHours();
+    const now = new Date();
+    const h = now.getHours(); // hora local del browser, no UTC
     if (h >= 6 && h < 12) return "mañana";
     if (h >= 12 && h < 15) return "mediodia";
     if (h >= 15 && h < 19) return "tarde";
@@ -683,6 +684,14 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                                           setEditingTreatmentItem(ti); setTiSaved(false);
                                         }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                                       </div>
+                                      {ti.treatments?.diagnostico && <div style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>🩺 {ti.treatments.diagnostico}</div>}
+                                      {(ti.treatments?.doctor || ti.treatments?.vet_clinic) && (
+                                        <div style={{ fontSize: 10, color: "#C4845A", marginBottom: 6 }}>
+                                          {ti.treatments?.doctor && <span>👨‍⚕️ {ti.treatments.doctor}</span>}
+                                          {ti.treatments?.doctor && ti.treatments?.vet_clinic && <span> · </span>}
+                                          {ti.treatments?.vet_clinic && <span>🏥 {ti.treatments.vet_clinic}</span>}
+                                        </div>
+                                      )}
                                       {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
                                       {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
                                       {prog && (
