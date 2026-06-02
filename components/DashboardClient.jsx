@@ -622,7 +622,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               <div style={{ marginBottom: 12, position: "relative" }}>
                 {fLabel("Veterinaria")}
                 <input style={inputS} placeholder="Buscar clínica veterinaria..."
-                  value={clinicQuery} onChange={e => searchClinics(e.target.value)} />
+                  value={clinicQuery} onChange={e => searchClinics(e.target.value)}
+                  spellCheck={false} autoCorrect="off" autoCapitalize="off" lang="es" />
                 {clinicSearching && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 4 }}>Buscando...</div>}
                 {clinicSuggestions.length > 0 && (
                   <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #FF6B35", borderRadius: 11, maxHeight: 180, overflowY: "auto", zIndex: 10, boxShadow: "0 4px 16px rgba(61,31,10,0.1)" }}>
