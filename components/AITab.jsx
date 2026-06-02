@@ -138,6 +138,7 @@ export default function AITab({ pet, medications, history }) {
           box_unit: "comp.",
           brand_name: "",
           dose_unit: "mg",
+          stock_at_home: "",
           lifelong: false,
           expanded: i === 0,
         })));
@@ -177,10 +178,14 @@ export default function AITab({ pet, medications, history }) {
     const upd = calcUnitsPerDose(item) ?? 1;
     if (dpd && days) {
       const totalUnits = +(upd * dpd * days).toFixed(2);
-      const boxesNeeded = Math.ceil(totalUnits / upb);
-      const remaining = +((boxesNeeded * upb) - totalUnits).toFixed(2);
+      const stockHome = parseFloat(item.stock_at_home) || 0;
+      const unitsToBuy = Math.max(0, totalUnits - stockHome);
+      const boxesNeeded = Math.ceil(unitsToBuy / upb);
+      const unitsWithBoxes = boxesNeeded * upb;
+      const remaining = +(unitsWithBoxes - unitsToBuy).toFixed(2);
       const daysPerBox = +(upb / (upd * dpd)).toFixed(1);
-      return { totalUnits, boxesNeeded, remaining, daysPerBox };
+      const daysFromHome = +(stockHome / (upd * dpd)).toFixed(1);
+      return { totalUnits, unitsToBuy, boxesNeeded, remaining, daysPerBox, daysFromHome, stockHome };
     }
     return null;
   };
@@ -434,9 +439,16 @@ export default function AITab({ pet, medications, history }) {
                             <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Prestat, Genérico..." value={item.brand_name || ""} onChange={e => updateItem(item.id, "brand_name", e.target.value)} />
                           </div>
                           <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Stock disponible en casa (opcional)</div>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <input style={{ ...inputS, background: "#fff", width: 100, flexShrink: 0 }} type="number" min="0" placeholder="ej: 20" value={item.stock_at_home || ""} onChange={e => { const v = parseFloat(e.target.value); updateItem(item.id, "stock_at_home", v >= 0 ? e.target.value : ""); }} />
+                              <div style={{ fontSize: 11, color: "#7A4522" }}>unidades ya disponibles</div>
+                            </div>
+                          </div>
+                          <div style={{ marginBottom: 8 }}>
                             <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Contenido de la caja</div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" placeholder="ej: 30" value={item.units_per_box} onChange={e => updateItem(item.id, "units_per_box", e.target.value)} />
+                              <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" min="1" placeholder="ej: 30" value={item.units_per_box} onChange={e => { const v = parseInt(e.target.value); if (v > 0) updateItem(item.id, "units_per_box", e.target.value); else updateItem(item.id, "units_per_box", ""); }} />
                               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                                 {["comp.", "cáps."].map(u => (
                                   <div key={u} onClick={() => updateItem(item.id, "box_unit", u)}
@@ -450,7 +462,7 @@ export default function AITab({ pet, medications, history }) {
                           <div style={{ marginBottom: 8 }}>
                             <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Concentración por unidad (para cálculo de dosis)</div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => updateItem(item.id, "mg_per_unit", e.target.value)} />
+                              <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" min="0.001" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => { const v = parseFloat(e.target.value); if (v > 0) updateItem(item.id, "mg_per_unit", e.target.value); else updateItem(item.id, "mg_per_unit", ""); }} />
                               <div style={{ display: "flex", gap: 5 }}>
                                 {["mg", "g", "ml"].map(u => (
                                   <div key={u} onClick={() => updateItem(item.id, "dose_unit", u)}
@@ -463,15 +475,19 @@ export default function AITab({ pet, medications, history }) {
                           </div>
                           {calc && (
                             <div style={{ background: "#fff", borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#3D1F0A", lineHeight: 1.8 }}>
-                              <div><strong style={{ color: "#8B5CF6" }}>{upd ?? 1} unidades</strong> por toma</div>
-                              <div><strong style={{ color: "#8B5CF6" }}>{+((upd ?? 1) * (parseDosesPerDay(item.frequency) || 1)).toFixed(2)}</strong> unidades por día</div>
-                              <div>Para <strong>{item.duration_days} días</strong> necesitas <strong style={{ color: "#8B5CF6" }}>{calc.totalUnits} unidades totales</strong></div>
-                              <div style={{ marginTop: 6, padding: "6px 10px", borderRadius: 8, background: calc.boxesNeeded > 1 ? "#FFF0EB" : "#E8FAF9", border: `1px solid ${calc.boxesNeeded > 1 ? "#FFD0BC" : "#9FE1CB"}` }}>
-                                {calc.boxesNeeded > 1
-                                  ? <span style={{ color: "#FF6B35", fontWeight: 700 }}>⚠️ Necesitas {calc.boxesNeeded} cajas — 1 caja alcanza para {calc.daysPerBox} días, faltan {Math.ceil(item.duration_days - calc.daysPerBox)} días más</span>
-                                  : <span style={{ color: "#059669", fontWeight: 700 }}>✓ 1 caja es suficiente</span>
+                              <div><strong style={{ color: "#8B5CF6" }}>{upd ?? 1} unidades</strong> por toma · <strong style={{ color: "#8B5CF6" }}>{+((upd ?? 1) * (parseDosesPerDay(item.frequency) || 1)).toFixed(2)}</strong> por día</div>
+                              <div>Total necesario: <strong style={{ color: "#8B5CF6" }}>{calc.totalUnits} unidades</strong> para {item.duration_days} días</div>
+                              {calc.stockHome > 0 && (
+                                <div style={{ color: "#059669" }}>Stock en casa: <strong>{calc.stockHome} unidades</strong> → cubren {calc.daysFromHome} días</div>
+                              )}
+                              <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 8, background: calc.boxesNeeded === 0 ? "#E8FAF9" : "#FFF0EB", border: `1px solid ${calc.boxesNeeded === 0 ? "#9FE1CB" : "#FFD0BC"}` }}>
+                                {calc.boxesNeeded === 0
+                                  ? <span style={{ color: "#059669", fontWeight: 700 }}>✓ Tu stock en casa es suficiente para el tratamiento completo</span>
+                                  : calc.boxesNeeded === 1
+                                    ? <span style={{ color: "#FF6B35", fontWeight: 700 }}>🛒 Compra 1 caja ({item.units_per_box} unidades){calc.stockHome > 0 ? " además de tu stock" : ""}</span>
+                                    : <span style={{ color: "#FF6B35", fontWeight: 700 }}>🛒 Compra {calc.boxesNeeded} cajas — 1 caja alcanza para {calc.daysPerBox} días{calc.stockHome > 0 ? `, con tu stock cubres ${calc.daysFromHome} días más` : ""}</span>
                                 }
-                                {calc.remaining > 0 && <span style={{ color: "#C4845A" }}> · sobran {calc.remaining} unidades</span>}
+                                {calc.remaining > 0 && calc.boxesNeeded > 0 && <span style={{ color: "#C4845A" }}> · sobran {calc.remaining} unidades</span>}
                               </div>
                             </div>
                           )}
