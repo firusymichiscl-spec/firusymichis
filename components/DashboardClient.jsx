@@ -729,7 +729,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                   placeholder="Observaciones, tratamiento indicado, etc. (opcional)"
                   value={histForm.notes} onChange={e => setHistForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
-              <button onClick={handleHistSave} disabled={histSaving || !histForm.event || !histForm.event_date}
+              <button onClick={handleHistSave}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
               </button>
