@@ -124,9 +124,9 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     if (q.length < 2) { setClinicSuggestions([]); return; }
     setClinicSearching(true);
     try {
-      const res = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=veterinaria+${encodeURIComponent(q)}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}`);
+      const res = await fetch(`/api/places?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      setClinicSuggestions(data.results?.slice(0, 5) || []);
+      setClinicSuggestions(data.results || []);
     } catch { setClinicSuggestions([]); }
     setClinicSearching(false);
   };
