@@ -83,6 +83,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [histErrors, setHistErrors] = useState({});
   const [editingHistId, setEditingHistId] = useState(null);
   const [histExpanded, setHistExpanded] = useState(false);
+  const [histFilter, setHistFilter] = useState("all");
 
   const activeMeds = meds.filter(m => m.active);
   const historyMeds = meds.filter(m => !m.active);
@@ -512,30 +513,57 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {/* HISTORIAL MÉDICO */}
           {tab === "historial" && (
             <div className="fade-up">
+              {/* Pills de filtro */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                {[
+                  { value: "all", icon: "📋", label: "Todos" },
+                  { value: "exam", icon: "🧪", label: "Examen" },
+                  { value: "illness", icon: "🤒", label: "Enfermedad" },
+                  { value: "surgery", icon: "🔪", label: "Cirugía" },
+                  { value: "procedure", icon: "⚕️", label: "Procedimiento" },
+                  { value: "vaccine", icon: "💉", label: "Vacuna" },
+                  { value: "other", icon: "📝", label: "Otro" },
+                ].map(f => (
+                  <div key={f.value} onClick={() => { setHistFilter(f.value); setHistExpanded(false); }}
+                    style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histFilter === f.value ? "#FF6B35" : "#FFD9C8"}`, background: histFilter === f.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: histFilter === f.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    {f.icon} {f.label}
+                  </div>
+                ))}
+              </div>
+
               {historyData.length === 0 ? (
                 <div className="card">
                   <div className="empty-state"><div className="empty-icon">📅</div><p>Sin historial médico registrado</p></div>
                   <button className="add-btn" onClick={() => openHistModal()}>+ Agregar evento</button>
                 </div>
               ) : (() => {
-                const recentEvents = historyData.slice(0, 2);
-                const olderEvents = historyData.slice(2);
+                const filteredHistory = histFilter === "all" ? historyData : historyData.filter(h => h.type === histFilter);
+                const recentEvents = filteredHistory.slice(0, 2);
+                const olderEvents = filteredHistory.slice(2);
                 const olderGroups = groupByMonthYear(olderEvents);
                 return (
                   <>
-                    <div className="timeline">{recentEvents.map(item => renderTimelineItem(item))}</div>
-                    {olderEvents.length > 0 && (
+                    {filteredHistory.length === 0 ? (
+                      <div className="card">
+                        <div className="empty-state"><div className="empty-icon">🔍</div><p>Sin eventos de este tipo</p></div>
+                      </div>
+                    ) : (
                       <>
-                        <button onClick={() => setHistExpanded(p => !p)}
-                          style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
-                          {histExpanded ? "▲ Ocultar anteriores" : `▼ Ver anteriores (${olderEvents.length})`}
-                        </button>
-                        {histExpanded && olderGroups.map(group => (
-                          <div key={group.label}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8, marginTop: 4 }}>📅 {group.label}</div>
-                            <div className="timeline">{group.items.map(item => renderTimelineItem(item))}</div>
-                          </div>
-                        ))}
+                        <div className="timeline">{recentEvents.map(item => renderTimelineItem(item))}</div>
+                        {olderEvents.length > 0 && (
+                          <>
+                            <button onClick={() => setHistExpanded(p => !p)}
+                              style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+                              {histExpanded ? "▲ Ocultar anteriores" : `▼ Ver anteriores (${olderEvents.length})`}
+                            </button>
+                            {histExpanded && olderGroups.map(group => (
+                              <div key={group.label}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8, marginTop: 4 }}>📅 {group.label}</div>
+                                <div className="timeline">{group.items.map(item => renderTimelineItem(item))}</div>
+                              </div>
+                            ))}
+                          </>
+                        )}
                       </>
                     )}
                     <button className="add-btn" onClick={() => openHistModal()}>+ Agregar evento</button>
