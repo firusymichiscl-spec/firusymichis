@@ -88,6 +88,20 @@ export default function DashboardClient({ pet, medications: initialMeds, history
 
   const activeMeds = meds.filter(m => m.active);
   const historyMeds = meds.filter(m => !m.active);
+  const [medsView, setMedsView] = useState("todos");
+  const [treatmentItems, setTreatmentItems] = useState([]);
+
+  const loadTreatmentItems = async () => {
+    const { data } = await supabase
+      .from("treatment_items")
+      .select("*")
+      .eq("pet_id", pet.id)
+      .eq("active", true)
+      .order("created_at", { ascending: false });
+    setTreatmentItems(data || []);
+  };
+
+  useEffect(() => { loadTreatmentItems(); }, []);
 
   const reloadMeds = async () => {
     const { data } = await supabase.from('medications').select('*').eq('pet_id', pet.id).order('created_at', { ascending: false });
@@ -463,51 +477,190 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {/* MEDICAMENTOS */}
           {tab === "medicamentos" && (
             <div className="fade-up">
-              {/* Activos */}
-              {activeMeds.length === 0 ? (
-                <div className="card">
-                  <div className="empty-state"><div className="empty-icon">💊</div><p>Sin medicamentos activos</p></div>
-                  <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
-                </div>
-              ) : (
+              {/* Selector de vista */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                {[{ id: "todos", label: "🔀 Todos" }, { id: "tratamiento", label: "💊 Tratamiento" }, { id: "habituales", label: "📋 Habituales" }].map(v => (
+                  <div key={v.id} onClick={() => setMedsView(v.id)}
+                    style={{ flex: 1, padding: "8px 6px", borderRadius: 12, border: `1.5px solid ${medsView === v.id ? "#FF6B35" : "#FFD9C8"}`, background: medsView === v.id ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 11, fontWeight: 700, color: medsView === v.id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    {v.label}
+                  </div>
+                ))}
+              </div>
+
+              {/* VISTA: TODOS */}
+              {medsView === "todos" && (
                 <>
-                  {activeMeds.map(med => (
-                    <div key={med.id} style={{ background: "#fff", borderRadius: 18, padding: "14px 16px", marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
-                      <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "#FF6B35", borderRadius: "18px 0 0 18px" }} />
-                      <div style={{ paddingLeft: 14, flex: 1 }}>
-                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
-                        {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
-                        {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
-                        {med.stock != null && (
-                          <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>
-                        )}
-                        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                          <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
-                          <button onClick={() => setMedActive(med.id, false)} style={{ padding: "5px 12px", borderRadius: 8, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Marcar inactivo</button>
+                  {treatmentItems.length === 0 && activeMeds.length === 0 ? (
+                    <div className="card">
+                      <div className="empty-state"><div className="empty-icon">💊</div><p>Sin medicamentos activos</p></div>
+                      <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
+                    </div>
+                  ) : (
+                    <>
+                      {treatmentItems.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>En tratamiento activo</div>
+                          {treatmentItems.map(ti => {
+                            const daysLeft = ti.duration_days && ti.start_date
+                              ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
+                              : null;
+                            return (
+                              <div key={ti.id} style={{ background: "#fff", borderRadius: 16, padding: "12px 16px", marginBottom: 10, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
+                                <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "16px 0 0 16px" }} />
+                                <div style={{ paddingLeft: 14, flex: 1 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                                    {daysLeft !== null && (
+                                      <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: daysLeft < 3 ? "#fef2f2" : daysLeft < 7 ? "#fff7ed" : "#f0fdf4", color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#059669" }}>
+                                        {daysLeft > 0 ? `${daysLeft}d` : "Fin"}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {ti.prescribed_dose}</div>}
+                                  {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {ti.frequency}</div>}
+                                  {ti.start_time && <div style={{ fontSize: 12, color: "#C4845A" }}>⏰ Inicio: {ti.start_time}</div>}
+                                  {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
+                      )}
+                      {activeMeds.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          {treatmentItems.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Medicamentos habituales</div>}
+                          {activeMeds.map(med => (
+                            <div key={med.id} style={{ background: "#fff", borderRadius: 16, padding: "12px 16px", marginBottom: 10, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
+                              <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "#FF6B35", borderRadius: "16px 0 0 16px" }} />
+                              <div style={{ paddingLeft: 14, flex: 1 }}>
+                                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
+                                {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
+                                {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
+                                {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
+                                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                                  <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                                  <button onClick={() => setMedActive(med.id, false)} style={{ padding: "5px 12px", borderRadius: 8, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Inactivo</button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
+                    </>
+                  )}
+                  {historyMeds.length > 0 && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Historial</div>
+                      <div className="card" style={{ padding: "4px 16px" }}>
+                        {historyMeds.map((med, i) => (
+                          <div key={med.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < historyMeds.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}</div>
+                              {med.dose && <div style={{ fontSize: 11, color: "#C4845A" }}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ""}</div>}
+                            </div>
+                            <button onClick={() => setMedActive(med.id, true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#e8faf4", color: "#059669", border: "1px solid #a7f3d0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reactivar</button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                  <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
+                  )}
                 </>
               )}
 
-              {/* Historial */}
-              {historyMeds.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Historial</div>
-                  <div className="card" style={{ padding: "4px 16px" }}>
-                    {historyMeds.map((med, i) => (
-                      <div key={med.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < historyMeds.length - 1 ? "1px solid #FFF0EB" : "none" }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}</div>
-                          {med.dose && <div style={{ fontSize: 11, color: "#C4845A" }}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ""}</div>}
-                        </div>
-                        <button onClick={() => setMedActive(med.id, true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#e8faf4", color: "#059669", border: "1px solid #a7f3d0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reactivar</button>
+              {/* VISTA: TRATAMIENTO ACTIVO */}
+              {medsView === "tratamiento" && (
+                <>
+                  {treatmentItems.length === 0 ? (
+                    <div className="card">
+                      <div className="empty-state">
+                        <div className="empty-icon">💊</div>
+                        <p>Sin tratamientos activos</p>
+                        <p style={{ fontSize: 11, marginTop: 4 }}>Sube una receta en el tab IA para comenzar</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  ) : treatmentItems.map(ti => {
+                    const daysLeft = ti.duration_days && ti.start_date
+                      ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
+                      : null;
+                    const totalDays = ti.duration_days || 0;
+                    const progress = daysLeft !== null && totalDays > 0 ? Math.max(0, Math.min(100, Math.round((1 - daysLeft / totalDays) * 100))) : null;
+                    return (
+                      <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 18, marginBottom: 14, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
+                        <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
+                        <div style={{ paddingLeft: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                            {daysLeft !== null && (
+                              <div style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 12, background: daysLeft < 3 ? "#fef2f2" : daysLeft < 7 ? "#fff7ed" : "#f5f3ff", color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#7c3aed" }}>
+                                {daysLeft > 0 ? `${daysLeft} días restantes` : "Finalizado"}
+                              </div>
+                            )}
+                          </div>
+                          {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
+                          {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
+                          {ti.start_date && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>📅 Inicio: {ti.start_date.split("-").reverse().join("/")} {ti.start_time ? `a las ${ti.start_time}` : ""}</div>}
+                          {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
+                          {progress !== null && (
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A", marginBottom: 4 }}><span>Progreso</span><span>{progress}%</span></div>
+                              <div style={{ height: 6, borderRadius: 4, background: "#f5f3ff", overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${progress}%`, background: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#8B5CF6", borderRadius: 4, transition: "width 0.3s" }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* VISTA: HABITUALES */}
+              {medsView === "habituales" && (
+                <>
+                  {activeMeds.length === 0 ? (
+                    <div className="card">
+                      <div className="empty-state"><div className="empty-icon">📋</div><p>Sin medicamentos habituales</p></div>
+                      <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
+                    </div>
+                  ) : (
+                    <>
+                      {activeMeds.map(med => (
+                        <div key={med.id} style={{ background: "#fff", borderRadius: 18, padding: "14px 16px", marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
+                          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "#FF6B35", borderRadius: "18px 0 0 18px" }} />
+                          <div style={{ paddingLeft: 14, flex: 1 }}>
+                            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
+                            {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
+                            {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
+                            {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
+                            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                              <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                              <button onClick={() => setMedActive(med.id, false)} style={{ padding: "5px 12px", borderRadius: 8, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Marcar inactivo</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <button className="add-btn" onClick={() => openMedModal()}>+ Agregar medicamento</button>
+                    </>
+                  )}
+                  {historyMeds.length > 0 && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Historial</div>
+                      <div className="card" style={{ padding: "4px 16px" }}>
+                        {historyMeds.map((med, i) => (
+                          <div key={med.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < historyMeds.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}</div>
+                              {med.dose && <div style={{ fontSize: 11, color: "#C4845A" }}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ""}</div>}
+                            </div>
+                            <button onClick={() => setMedActive(med.id, true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#e8faf4", color: "#059669", border: "1px solid #a7f3d0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reactivar</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
