@@ -295,7 +295,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               </div>
 
               <DietTimeline pet={petData} />
-              <WeightChart pet={pet} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
+              <WeightChart pet={petData} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
