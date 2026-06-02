@@ -67,7 +67,7 @@ export default function EditPetModal({ pet, onClose, onSave }) {
       conditions: form.conditions, diet: form.diet,
       allergies: form.allergies.length > 0 ? form.allergies : null,
     }).eq("id", pet.id);
-    if (!error) onSave(form);
+    if (!error) onSave();
     setLoading(false);
   };
 
