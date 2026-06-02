@@ -75,6 +75,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [clinicQuery, setClinicQuery] = useState("");
   const [clinicSuggestions, setClinicSuggestions] = useState([]);
   const [clinicSearching, setClinicSearching] = useState(false);
+  const [histErrors, setHistErrors] = useState({});
 
   const activeMeds = meds.filter(m => m.active);
   const historyMeds = meds.filter(m => !m.active);
@@ -137,7 +138,11 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   const handleHistSave = async () => {
-    if (!histForm.event || !histForm.event_date) return;
+    const errors = {};
+    if (!histForm.event.trim()) errors.event = true;
+    if (!histForm.event_date) errors.event_date = true;
+    if (Object.keys(errors).length > 0) { setHistErrors(errors); return; }
+    setHistErrors({});
     setHistSaving(true);
     await supabase.from("medical_history").insert({
       pet_id: pet.id, type: histForm.type, event: histForm.event,
@@ -147,7 +152,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
     setHistSaving(false); setHistSaved(true);
     await reloadHistory();
     setTimeout(() => {
-      setShowHistModal(false); setHistSaved(false);
+      setShowHistModal(false); setHistSaved(false); setHistErrors({});
       setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "" });
       setClinicQuery(""); setClinicSuggestions([]);
     }, 800);
@@ -596,7 +601,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" }}>
             <div style={{ background: "linear-gradient(135deg,#FF6B35,#e85d2e)", padding: "16px 20px", borderRadius: "24px 24px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#fff" }}>📅 Nuevo evento médico</div>
-              <button onClick={() => { setShowHistModal(false); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "" , notes: "" }); setClinicQuery(""); setClinicSuggestions([]); }}
+              <button onClick={() => { setShowHistModal(false); setHistErrors({}); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "" , notes: "" }); setClinicQuery(""); setClinicSuggestions([]); }}
                 style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>✕ Cerrar</button>
             </div>
             <div style={{ padding: 20 }}>
@@ -615,14 +620,20 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               {/* Descripción */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Descripción *")}
-                <input style={inputS} placeholder="ej: Control rutinario, Otitis bilateral..."
-                  value={histForm.event} onChange={e => setHistForm(f => ({ ...f, event: e.target.value }))} />
+                <input style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
+                  placeholder="ej: Control rutinario, Otitis bilateral..."
+                  value={histForm.event}
+                  onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); if (histErrors.event) setHistErrors(p => ({ ...p, event: false })); }} />
+                {histErrors.event && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La descripción es obligatoria</div>}
               </div>
               {/* Fecha */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Fecha *")}
-                <input type="date" style={inputS} max={new Date().toISOString().split("T")[0]}
-                  value={histForm.event_date} onChange={e => setHistForm(f => ({ ...f, event_date: e.target.value }))} />
+                <input type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
+                  max={new Date().toISOString().split("T")[0]}
+                  value={histForm.event_date}
+                  onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); if (histErrors.event_date) setHistErrors(p => ({ ...p, event_date: false })); }} />
+                {histErrors.event_date && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La fecha es obligatoria</div>}
               </div>
               {/* Veterinaria */}
               <div style={{ marginBottom: 12, position: "relative" }}>
