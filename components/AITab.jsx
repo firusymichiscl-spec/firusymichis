@@ -110,7 +110,8 @@ export default function AITab({ pet, medications, history }) {
           start_min: "00",
           mg_per_unit: "",
           units_per_box: "",
-          add_to_meds: true,
+          box_unit: "comp.",
+          lifelong: false,
           expanded: i === 0,
         })));
       }
@@ -129,21 +130,39 @@ export default function AITab({ pet, medications, history }) {
   };
 
   const calcBoxes = (item) => {
-    const upd = calcUnitsPerDose(item);
-    const dpd = parseDosesPerDay(item.frequency);
-    const days = item.duration_days;
     const upb = parseInt(item.units_per_box);
-    if (!upd || !dpd || !days || !upb) return null;
-    const total = upd * dpd * days;
-    const boxes = Math.ceil(total / upb);
-    const remaining = (boxes * upb) - total;
-    return { total: Math.ceil(total), boxes, remaining: Math.floor(remaining) };
+    const days = parseInt(item.duration_days);
+    const dpd = parseDosesPerDay(item.frequency);
+    if (!upb || upb <= 0) return null;
+    const upd = calcUnitsPerDose(item);
+    if (upd !== null && dpd && days) {
+      const total = upd * dpd * days;
+      const boxes = Math.ceil(total / upb);
+      const remaining = (boxes * upb) - total;
+      return { total: +total.toFixed(2), boxes, remaining: +remaining.toFixed(2), mode: "exact" };
+    }
+    if (dpd && days) {
+      const total = dpd * days;
+      const boxes = Math.ceil(total / upb);
+      const remaining = (boxes * upb) - total;
+      return { total: +total.toFixed(2), boxes, remaining: +remaining.toFixed(2), mode: "approx" };
+    }
+    return null;
   };
 
   const saveTreatment = async () => {
     setSaving(true);
-    const { data: treatment } = await supabase.from("treatments").insert({ pet_id: pet.id, recipe_date: today }).select().single();
-    if (!treatment) { setSaving(false); return; }
+    const { data: treatment, error: tErr } = await supabase
+      .from("treatments")
+      .insert({ pet_id: pet.id, recipe_date: today })
+      .select()
+      .single();
+    if (tErr || !treatment) {
+      console.error("Error creando treatment:", tErr);
+      setSaving(false);
+      alert("Error al guardar. Verifica tu conexión e intenta de nuevo.");
+      return;
+    }
     for (const item of recipeItems) {
       const upd = calcUnitsPerDose(item);
       const calc = calcBoxes(item);
@@ -155,14 +174,14 @@ export default function AITab({ pet, medications, history }) {
         mg_per_unit: parseFloat(item.mg_per_unit) || null,
         units_per_box: parseInt(item.units_per_box) || null,
         units_per_dose: upd, boxes_needed: calc?.boxes || null,
-        units_remaining: calc?.remaining || null, add_to_meds: item.add_to_meds, active: true,
+        units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
       });
-      if (item.add_to_meds) {
+      if (item.lifelong) {
         await supabase.from("medications").insert({
           pet_id: pet.id, name: item.name, dose: item.prescribed_dose,
           frequency: item.frequency,
           stock: calc ? calc.boxes * parseInt(item.units_per_box) : null,
-          unit: "comp.", color: "#8B5CF6", active: true,
+          unit: item.box_unit || "comp.", color: "#8B5CF6", active: true,
         });
       }
     }
@@ -176,6 +195,7 @@ export default function AITab({ pet, medications, history }) {
 
   if (!activeSection) return (
     <div className="fade-up">
+      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <div style={{ background: "#FFD166", color: "#7A4522", fontSize: 10, fontWeight: 700, padding: "3px 12px", borderRadius: 20 }}>✦ PRO</div>
       </div>
@@ -199,6 +219,7 @@ export default function AITab({ pet, medications, history }) {
 
   return (
     <div className="fade-up">
+      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
       <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: "#FF6B35", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16, padding: 0 }}>← Volver</button>
 
       {/* ANÁLISIS */}
@@ -234,7 +255,20 @@ export default function AITab({ pet, medications, history }) {
               {preview ? <img src={preview} alt="Receta" style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 10, objectFit: "contain" }} /> : <><div style={{ fontSize: 32, marginBottom: 6 }}>📋</div><div style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>Toca para subir receta</div><div style={{ fontSize: 11, color: "#8B5CF6", marginTop: 3 }}>Foto JPG o PNG</div></>}
               <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
             </div>
-            {preview && <button onClick={analyzeRecipe} disabled={recipeLoading} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>{recipeLoading ? "Analizando receta..." : "🔍 Analizar receta"}</button>}
+            {preview && (
+              <button onClick={analyzeRecipe} disabled={recipeLoading} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                {recipeLoading ? (
+                  <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    Analizando receta
+                    <span style={{ display: "inline-flex", gap: 4 }}>
+                      {[0,1,2].map(i => (
+                        <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite ease-in-out", animationDelay: `${i * 0.2}s` }} />
+                      ))}
+                    </span>
+                  </span>
+                ) : "🔍 Analizar receta"}
+              </button>
+            )}
             {recipeError && <div style={{ background: "#fef2f2", borderRadius: 12, padding: 14, marginTop: 12, color: "#dc2626", fontSize: 13, fontWeight: 600, border: "1px solid #fecaca" }}>⚠️ {recipeError}</div>}
           </div>
 
@@ -270,6 +304,14 @@ export default function AITab({ pet, medications, history }) {
                           <div>
                             <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Días de tratamiento</div>
                             <input style={inputS} type="number" placeholder="ej: 30" value={item.duration_days || ""} onChange={e => updateItem(item.id, "duration_days", parseInt(e.target.value) || null)} />
+                            <div style={{ marginTop: 6 }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7A4522", cursor: "pointer" }}>
+                                <input type="checkbox" checked={item.lifelong || false}
+                                  onChange={e => { updateItem(item.id, "lifelong", e.target.checked); if (e.target.checked) updateItem(item.id, "duration_days", null); }}
+                                  style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
+                                Agregar también a meds de por vida
+                              </label>
+                            </div>
                           </div>
                         </div>
 
@@ -302,15 +344,23 @@ export default function AITab({ pet, medications, history }) {
                         {/* Farmacia */}
                         <div style={{ background: "#f5f3ff", borderRadius: 12, padding: 12, marginBottom: 10 }}>
                           <div style={{ fontSize: 9, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Volviste de la farmacia</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-                            <div>
-                              <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>mg por unidad</div>
-                              <input style={{ ...inputS, background: "#fff" }} type="number" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => updateItem(item.id, "mg_per_unit", e.target.value)} />
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Contenido de la caja</div>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" placeholder="ej: 30" value={item.units_per_box} onChange={e => updateItem(item.id, "units_per_box", e.target.value)} />
+                              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                {["comp.", "cáps.", "ml", "mg", "g"].map(u => (
+                                  <div key={u} onClick={() => updateItem(item.id, "box_unit", u)}
+                                    style={{ padding: "5px 10px", borderRadius: 8, border: `${(item.box_unit || "comp.") === u ? "2px solid #8B5CF6" : "1.5px solid #C4B5FD"}`, background: (item.box_unit || "comp.") === u ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: (item.box_unit || "comp.") === u ? 700 : 400, color: (item.box_unit || "comp.") === u ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
+                                    {u}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div>
-                              <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Unidades por caja</div>
-                              <input style={{ ...inputS, background: "#fff" }} type="number" placeholder="ej: 30" value={item.units_per_box} onChange={e => updateItem(item.id, "units_per_box", e.target.value)} />
-                            </div>
+                          </div>
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>mg por unidad (para cálculo de dosis)</div>
+                            <input style={{ ...inputS, background: "#fff" }} type="number" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => updateItem(item.id, "mg_per_unit", e.target.value)} />
                           </div>
                           {upd !== null && (
                             <div style={{ background: "#fff", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#3D1F0A" }}>
@@ -320,12 +370,6 @@ export default function AITab({ pet, medications, history }) {
                           )}
                         </div>
 
-                        {/* Decisión */}
-                        <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>¿Agregar a medicamentos habituales?</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                          <div onClick={() => updateItem(item.id, "add_to_meds", true)} style={{ padding: 10, borderRadius: 10, border: `${item.add_to_meds ? "2px solid #2EC4B6" : "1.5px solid #FFD9C8"}`, background: item.add_to_meds ? "#E8FAF9" : "#fff", textAlign: "center", fontSize: 11, fontWeight: item.add_to_meds ? 700 : 400, color: item.add_to_meds ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>+ Agregar a Meds</div>
-                          <div onClick={() => updateItem(item.id, "add_to_meds", false)} style={{ padding: 10, borderRadius: 10, border: `${!item.add_to_meds ? "2px solid #FF6B35" : "1.5px solid #FFD9C8"}`, background: !item.add_to_meds ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 11, fontWeight: !item.add_to_meds ? 700 : 400, color: !item.add_to_meds ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>Solo seguimiento</div>
-                        </div>
                       </div>
                     )}
                   </div>
