@@ -8,6 +8,7 @@ import PetPhotoUpload from "@/components/PetPhotoUpload";
 import EditPetModal from "@/components/EditPetModal";
 import DietTimeline from "@/components/DietTimeline";
 import TutorTab from "@/components/TutorTab";
+import AITab from "@/components/AITab";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -382,6 +383,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               { id: "historial", icon: "📅", label: "Historial" },
               { id: "tutor", icon: "👤", label: "Tutor" },
               { id: "operaciones", icon: "🔪", label: "Ops" },
+              { id: "ia", icon: "🤖", label: "IA" },
             ].map(t => (
               <button key={t.id} className={`tab${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)}>
                 <span className="tab-icon">{t.icon}</span>
@@ -575,6 +577,9 @@ export default function DashboardClient({ pet, medications: initialMeds, history
 
           {/* TUTOR */}
           {tab === "tutor" && <TutorTab pet={petData} />}
+
+          {/* IA */}
+          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} />}
 
           {/* OPERACIONES */}
           {tab === "operaciones" && (
