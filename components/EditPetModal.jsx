@@ -40,14 +40,12 @@ export default function EditPetModal({ pet, onClose, onSave }) {
   });
   const [breedQuery, setBreedQuery] = useState(pet.breed || "");
   const [breedDropdown, setBreedDropdown] = useState(false);
-  const [dietQuery, setDietQuery] = useState(pet.diet || "");
-  const [dietDropdown, setDietDropdown] = useState(false);
   const [allergyInput, setAllergyInput] = useState("");
+  const [conditionInput, setConditionInput] = useState("");
   const [loading, setLoading] = useState(false);
 
   const breeds = form.species === "cat" ? BREEDS_CAT : form.species === "other" ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
-  const filteredDiets = dietQuery ? DIETS.filter(d => d.toLowerCase().includes(dietQuery.toLowerCase())) : DIETS.slice(0, 6);
 
   const toggleCondition = (cond) => setForm(f => ({ ...f, conditions: f.conditions.includes(cond) ? f.conditions.filter(c => c !== cond) : [...f.conditions, cond] }));
 
@@ -171,6 +169,29 @@ export default function EditPetModal({ pet, onClose, onSave }) {
           })}
         </div>
 
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <input
+            style={{ ...css.input, flex: 1 }}
+            placeholder="Agregar condición personalizada..."
+            value={conditionInput}
+            onChange={e => setConditionInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                const val = conditionInput.trim();
+                if (val && !form.conditions.includes(val)) setForm(f => ({ ...f, conditions: [...f.conditions, val] }));
+                setConditionInput("");
+              }
+            }}
+          />
+          <button
+            onClick={() => {
+              const val = conditionInput.trim();
+              if (val && !form.conditions.includes(val)) setForm(f => ({ ...f, conditions: [...f.conditions, val] }));
+              setConditionInput("");
+            }}
+            style={{ padding: "10px 14px", borderRadius: 11, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+</button>
+        </div>
+
         {/* ALERGIAS A MEDICAMENTOS */}
         <label style={css.label}>⚠️ Alergias a medicamentos</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, marginBottom: 10 }}>
@@ -195,25 +216,6 @@ export default function EditPetModal({ pet, onClose, onSave }) {
             ))}
           </div>
         )}
-
-        {/* DIETA */}
-        <label style={css.label}>Dieta especial</label>
-        <div style={{ position: "relative" }}>
-          <input style={css.input} placeholder="Buscar o escribir dieta..." value={dietQuery}
-            onChange={e => { setDietQuery(e.target.value); setDietDropdown(true); setForm(f => ({ ...f, diet: e.target.value })); }}
-            onFocus={() => setDietDropdown(true)}
-            onBlur={() => setTimeout(() => setDietDropdown(false), 200)} />
-          {dietDropdown && (
-            <div style={css.dropdown}>
-              {filteredDiets.map(d => (
-                <div key={d} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, diet: d })); setDietQuery(d); setDietDropdown(false); }}>{d}</div>
-              ))}
-              {dietQuery && !DIETS.find(d => d.toLowerCase() === dietQuery.toLowerCase()) && (
-                <div style={{ ...css.dropItem, color: "#2EC4B6", fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, diet: dietQuery })); setDietDropdown(false); }}>+ Usar "{dietQuery}"</div>
-              )}
-            </div>
-          )}
-        </div>
 
         <button style={css.saveBtn} onClick={save} disabled={loading}>{loading ? "Guardando..." : "✓ Guardar cambios"}</button>
         <button style={css.cancelBtn} onClick={onClose}>Cancelar</button>

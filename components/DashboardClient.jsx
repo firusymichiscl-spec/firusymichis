@@ -541,7 +541,11 @@ export default function DashboardClient({ pet, medications: initialMeds, history
         <EditPetModal
           pet={petData}
           onClose={() => setEditingPet(false)}
-          onSave={(updated) => { setPetData(p => ({ ...p, ...updated })); setEditingPet(false); }}
+          onSave={async () => {
+              const { data } = await supabase.from("pets").select("*").eq("id", pet.id).single();
+              if (data) setPetData(data);
+              setEditingPet(false);
+            }}
         />
       )}
     </>
