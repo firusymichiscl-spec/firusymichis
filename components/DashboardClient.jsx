@@ -155,6 +155,9 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   const handleHistSave = async () => {
+    console.log("histForm al guardar:", histForm);
+    console.log("event trim:", histForm.event.trim());
+    console.log("event_date:", histForm.event_date);
     const errors = {};
     if (!histForm.event.trim()) errors.event = true;
     if (!histForm.event_date) errors.event_date = true;
