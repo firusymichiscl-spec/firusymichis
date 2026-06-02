@@ -14,7 +14,8 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
     ? new Date(pet.birth_date).getFullYear()
     : new Date().getFullYear() - 5;
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: currentYear - birthYear }, (_, i) => currentYear - 1 - i);
+  const yearsCount = Math.max(currentYear - birthYear, 1);
+const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
 
   const [annualData, setAnnualData] = useState(Object.fromEntries(years.map(y => [y, ""])));
   const [semYear, setSemYear] = useState(years[0] || currentYear - 1);
@@ -34,7 +35,7 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const loadExisting = async () => {
     setLoadingData(true);
     const firstDay = `${birthYear}-01-01`;
-    const lastDay = `${currentYear - 1}-12-31`;
+    const lastDay = `${currentYear}-12-31`;
 
     const { data } = await supabase
       .from("weight_logs")
@@ -161,7 +162,7 @@ const resetAll = async () => {
   if (!confirm("¿Eliminar TODOS los registros históricos de peso? Esta acción no se puede deshacer.")) return;
   setLoading(true);
   const firstDay = `${birthYear}-01-01`;
-  const lastDay = `${currentYear - 1}-12-31`;
+  const lastDay = `${currentYear}-12-31`;
   await supabase
     .from("weight_logs")
     .delete()
