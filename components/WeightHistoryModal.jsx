@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return "Sin fecha";
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y}`;
+};
+
 export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const supabase = createClient();
   const [mode, setMode] = useState("annual");
@@ -342,7 +348,7 @@ const resetAll = async () => {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
                           {existingSporadic.map((s, i) => (
                             <span key={i} style={{ background: "#E8FAF9", color: "#0F6E56", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>
-                              {s.date} · {s.kg} kg
+                              {formatDate(s.date)} · {s.kg} kg
                             </span>
                           ))}
                         </div>

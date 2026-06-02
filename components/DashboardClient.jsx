@@ -189,6 +189,12 @@ export default function DashboardClient({ pet, medications: initialMeds, history
 
   const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); };
 
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Sin fecha";
+    const [y, m, d] = dateStr.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
   const inputS = { width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #FFD9C8', background:'#fff', fontFamily:"'Nunito', sans-serif", fontSize:14, color:'#3D1F0A', outline:'none', boxSizing:'border-box' };
   const fLabel = (t) => <div style={{ fontSize:11, fontWeight:700, color:'#7A4522', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:4 }}>{t}</div>;
 
@@ -351,7 +357,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                     <div className="vaccine-row" key={v.id}>
                       <div>
                         <div className="vaccine-name">{v.name}</div>
-                        <div className="vaccine-date">Próx: {v.next_date || "Sin fecha"}</div>
+                        <div className="vaccine-date">Próx: {formatDate(v.next_date)}</div>
                       </div>
                       <div className={`badge badge-${cls}`}>{label}</div>
                     </div>
@@ -430,7 +436,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                         <div className="timeline-item" key={item.id}>
                           <div className="timeline-dot" style={{ background: s.dot }}>{s.icon}</div>
                           <div className="timeline-content" style={{ background: s.bg, border: `1px solid ${s.dot}22` }}>
-                            <div className="timeline-type" style={{ color: s.text }}>{s.label} · {item.event_date}</div>
+                            <div className="timeline-type" style={{ color: s.text }}>{s.label} · {formatDate(item.event_date)}</div>
                             <div className="timeline-event">{item.event}</div>
                             {item.vet_clinic && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 2 }}>🏥 {item.vet_clinic}{item.vet_name ? ` · ${item.vet_name}` : ""}</div>}
                             {item.notes && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 4 }}>{item.notes}</div>}
