@@ -12,14 +12,15 @@ export async function POST(req) {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: imageBase64 } },
-          { type: "text", text: `Eres asistente veterinario. Analiza esta receta veterinaria y devuelve SOLO un objeto JSON válido sin backticks ni markdown, con estos campos exactos: {"medicamento":"","dosis":"","frecuencia":"","duracion":"","indicaciones":"","veterinario":"","fecha":"","notas":""}` }
+          { type: "text", text: `Eres asistente veterinario. Analiza esta receta veterinaria y devuelve SOLO un array JSON válido sin backticks ni markdown. Cada elemento del array representa un medicamento con estos campos exactos: [{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":""}]. Si hay múltiples medicamentos en la receta, incluye todos en el array.` }
         ]
       }]
     });
     const txt = message.content[0].text;
     try {
-      const json = JSON.parse(txt.replace(/```json|```/g, "").trim());
-      return Response.json({ result: json });
+      const clean = txt.replace(/```json|```/g, "").trim();
+      const arr = JSON.parse(clean);
+      return Response.json({ result: Array.isArray(arr) ? arr : [arr] });
     } catch {
       return Response.json({ error: "No se pudo procesar la receta" });
     }
