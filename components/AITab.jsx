@@ -244,7 +244,7 @@ export default function AITab({ pet, medications, history }) {
 
   if (!activeSection) return (
     <div className="fade-up">
-      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
+      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0.7);opacity:0.5}40%{transform:scale(1);opacity:1}}`}</style>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <div style={{ background: "#FFD166", color: "#7A4522", fontSize: 10, fontWeight: 700, padding: "3px 12px", borderRadius: 20 }}>✦ PRO</div>
       </div>
@@ -311,7 +311,7 @@ export default function AITab({ pet, medications, history }) {
 
   return (
     <div className="fade-up">
-      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0)}40%{transform:scale(1)}}`}</style>
+      <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0.7);opacity:0.5}40%{transform:scale(1);opacity:1}}`}</style>
       <button onClick={() => setActiveSection(null)} style={{ background: "none", border: "none", color: "#FF6B35", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16, padding: 0 }}>← Volver</button>
 
       {/* ANÁLISIS */}
@@ -320,7 +320,16 @@ export default function AITab({ pet, medications, history }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Análisis personalizado</div>
           <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 12, lineHeight: 1.6 }}>La IA analiza la ficha completa de {pet.name} y genera recomendaciones según su edad, raza, condiciones y medicamentos actuales.</div>
           <button onClick={analyze} disabled={analyzing} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-            {analyzing ? "Analizando..." : `🔍 Analizar a ${pet.name}`}
+            {analyzing ? (
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                Analizando
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {[0,1,2].map(i => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite ease-in-out", animationDelay: `${i * 0.2}s` }} />
+                  ))}
+                </span>
+              </span>
+            ) : `🔍 Analizar a ${pet.name}`}
           </button>
           {analyzeResult && <><div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, marginTop: 12, borderLeft: "3px solid #FF6B35" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>Recomendaciones para {pet.name}</div><div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{analyzeResult}</div></div>{disclaimer}</>}
         </div>
@@ -332,7 +341,16 @@ export default function AITab({ pet, medications, history }) {
           <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Consulta de síntomas</div>
           <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={`Ej: ${pet.name} se está rascando mucho las orejas...`} value={symptom} onChange={e => setSymptom(e.target.value)} />
           <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim()} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
-            {symptomLoading ? "Consultando..." : "🩺 Consultar"}
+            {symptomLoading ? (
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                Consultando
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {[0,1,2].map(i => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite ease-in-out", animationDelay: `${i * 0.2}s` }} />
+                  ))}
+                </span>
+              </span>
+            ) : "🩺 Consultar"}
           </button>
           {symptomResult && <><div style={{ background: "#E8FAF9", borderRadius: 12, padding: 14, marginTop: 12, borderLeft: "3px solid #2EC4B6" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#0F6E56", marginBottom: 8 }}>Análisis de síntomas</div><div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{symptomResult}</div></div>{disclaimer}</>}
         </div>

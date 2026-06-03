@@ -20,7 +20,7 @@ Historial médico: ${history?.slice(0, 8).map(h => `${h.event_date} (${h.type}):
       max_tokens: 1024,
       messages: [{
         role: "user",
-        content: `Eres un asistente veterinario experto. El tutor describe este síntoma: "${symptom}". Analiza considerando el historial completo de la mascota. Responde en español con: 1) Posible causa considerando el historial, 2) Qué hacer de inmediato (productos, cuidados), 3) Si debe ir al veterinario y con qué urgencia, 4) Si tiene historial en alguna clínica específica, recomienda volver ahí. Sé directo y práctico. Incluye siempre un aviso de que esto no reemplaza la consulta veterinaria. Contexto: ${petContext}`
+        content: `Eres un asistente veterinario experto. El tutor describe este síntoma: "${symptom}". Analiza considerando el historial completo de la mascota y responde en español latinoamericano con buena ortografía y gramática. Estructura tu respuesta en 4 secciones claramente separadas: 1) Posible causa considerando el historial, 2) Qué hacer de inmediato (productos y cuidados concretos), 3) Urgencia de ir al veterinario, 4) Si tiene historial en alguna clínica conocida, recomienda volver ahí. Finaliza siempre con un aviso de que esto no reemplaza la consulta veterinaria. Contexto: ${petContext}`
       }]
     });
     return Response.json({ result: message.content[0].text });

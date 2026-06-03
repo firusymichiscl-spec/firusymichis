@@ -21,7 +21,7 @@ Historial reciente: ${history?.slice(0, 5).map(h => `${h.event_date}: ${h.event}
       max_tokens: 1024,
       messages: [{
         role: "user",
-        content: `Eres un asistente veterinario experto. Analiza esta mascota y da recomendaciones prácticas y personalizadas en español. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y tips según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones claras. Contexto: ${petContext}`
+        content: `Eres un asistente veterinario experto. Analiza esta mascota y entrega recomendaciones prácticas y personalizadas en español latinoamericano, con buena ortografía y gramática. Usa formato claro con puntos numerados. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y consejos según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones. Contexto: ${petContext}`
       }]
     });
     return Response.json({ result: message.content[0].text });

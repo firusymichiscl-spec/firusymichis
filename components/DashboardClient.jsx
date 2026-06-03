@@ -463,8 +463,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               { id: "medicamentos", icon: "💊", label: "Meds" },
               { id: "historial", icon: "📅", label: "Historial" },
               { id: "tutor", icon: "👤", label: "Tutor" },
-              { id: "operaciones", icon: "🔪", label: "Ops" },
               { id: "ia", icon: "🤖", label: "IA" },
+              { id: "actividad", icon: "📊", label: "Actividad" },
             ].map(t => (
               <button key={t.id} className={`tab${tab === t.id ? " active" : ""}`} onClick={() => setTab(t.id)}>
                 <span className="tab-icon">{t.icon}</span>
@@ -848,14 +848,14 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {/* IA */}
           {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} />}
 
-          {/* OPERACIONES */}
-          {tab === "operaciones" && (
+          {/* ACTIVIDAD */}
+          {tab === "actividad" && (
             <div className="fade-up">
               <div className="card">
                 <div className="empty-state">
-                  <div className="empty-icon">🔪</div>
-                  <p style={{ fontWeight: 700, marginBottom: 4 }}>Próximamente</p>
-                  <p>Historial de intervenciones quirúrgicas</p>
+                  <div className="empty-icon">📊</div>
+                  <p style={{ fontWeight: 700, marginBottom: 4 }}>Últimos movimientos</p>
+                  <p style={{ fontSize: 11 }}>Registro de toda la actividad de {petData.name}</p>
                 </div>
               </div>
             </div>
