@@ -107,6 +107,10 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   useEffect(() => { loadTreatmentItems(); }, []);
 
   useEffect(() => {
+    if (tab === "actividad") loadActivity();
+  }, [tab]);
+
+  useEffect(() => {
     if (treatmentItems.length > 0 && !selectedTreatmentGroupId) {
       setSelectedTreatmentGroupId(treatmentItems[0].treatment_id);
     }
@@ -116,6 +120,44 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [tiForm, setTiForm] = useState({});
   const [tiSaving, setTiSaving] = useState(false);
   const [tiSaved, setTiSaved] = useState(false);
+
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  const loadActivity = async () => {
+    setActivityLoading(true);
+    const [histRes, medsRes, weightsRes, treatRes] = await Promise.all([
+      supabase.from("medical_history").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(10),
+      supabase.from("medications").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(10),
+      supabase.from("weight_logs").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(5),
+      supabase.from("treatment_items").select("*, treatments(diagnostico, vet_clinic, recipe_date)").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(5),
+    ]);
+    const items = [];
+    histRes.data?.forEach(h => items.push({
+      id: `hist-${h.id}`, type: h.type === "vaccine" ? "vaccine" : "history",
+      icon: h.type === "vaccine" ? "💉" : h.type === "surgery" ? "🔪" : h.type === "illness" ? "🤒" : h.type === "exam" ? "🧪" : "📝",
+      title: h.event, subtitle: h.vet_clinic ? `🏥 ${h.vet_clinic}` : null, date: h.created_at, color: "#FF6B35",
+    }));
+    medsRes.data?.forEach(m => items.push({
+      id: `med-${m.id}`, type: "medication", icon: "💊",
+      title: `${m.active ? "Medicamento agregado" : "Medicamento inactivado"}: ${m.name}`,
+      subtitle: m.dose ? `${m.dose}${m.frequency ? ` · ${m.frequency}` : ""}` : null,
+      date: m.created_at, color: m.color || "#2EC4B6",
+    }));
+    weightsRes.data?.forEach(w => items.push({
+      id: `weight-${w.id}`, type: "weight", icon: "⚖️",
+      title: `Peso registrado: ${w.weight_kg} kg`, subtitle: null, date: w.created_at, color: "#FFD166",
+    }));
+    treatRes.data?.forEach(t => items.push({
+      id: `treat-${t.id}`, type: "treatment", icon: "📋",
+      title: `Tratamiento: ${t.name}`,
+      subtitle: t.treatments?.diagnostico || t.treatments?.vet_clinic || null,
+      date: t.created_at, color: "#8B5CF6",
+    }));
+    items.sort((a, b) => new Date(b.date) - new Date(a.date));
+    setActivityFeed(items.slice(0, 20));
+    setActivityLoading(false);
+  };
 
   const calcTreatmentProgress = (ti) => {
     if (!ti.start_date || !ti.start_time || !ti.frequency) return null;
@@ -928,13 +970,48 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
             <div className="fade-up">
-              <div className="card">
-                <div className="empty-state">
-                  <div className="empty-icon">📊</div>
-                  <p style={{ fontWeight: 700, marginBottom: 4 }}>Últimos movimientos</p>
-                  <p style={{ fontSize: 11 }}>Registro de toda la actividad de {petData.name}</p>
-                </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#FF6B35" }}>Últimos movimientos</div>
+                <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
               </div>
+              {activityLoading ? (
+                <div style={{ textAlign: "center", padding: 32, color: "#C4845A", fontSize: 13 }}>Cargando actividad...</div>
+              ) : activityFeed.length === 0 ? (
+                <div className="card">
+                  <div className="empty-state">
+                    <div className="empty-icon">📊</div>
+                    <p>Sin actividad registrada aún</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="card" style={{ padding: "4px 16px" }}>
+                  {activityFeed.map((item, i) => {
+                    const date = new Date(item.date);
+                    const now = new Date();
+                    const diffMs = now - date;
+                    const diffMins = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
+                    const diffDays = Math.floor(diffMs / 86400000);
+                    const timeLabel = diffMins < 1 ? "Ahora mismo" :
+                      diffMins < 60 ? `Hace ${diffMins} min` :
+                      diffHours < 24 ? `Hace ${diffHours}h` :
+                      diffDays < 7 ? `Hace ${diffDays} día${diffDays !== 1 ? "s" : ""}` :
+                      date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+                    return (
+                      <div key={item.id} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: i < activityFeed.length - 1 ? "1px solid #FFF0EB" : "none", alignItems: "flex-start" }}>
+                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: `${item.color}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, border: `1.5px solid ${item.color}33` }}>
+                          {item.icon}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{item.title}</div>
+                          {item.subtitle && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 2 }}>{item.subtitle}</div>}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#C4845A", flexShrink: 0, marginTop: 2 }}>{timeLabel}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
