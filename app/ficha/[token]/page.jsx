@@ -125,8 +125,8 @@ export default async function FichaPublica({ params }) {
                 pet.weight_kg ? ["Peso", `${pet.weight_kg} kg`] : null,
               ].filter(Boolean).map(([l, v]) => (
                 <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F5E6DA", fontSize: 13 }}>
-                  <span style={{ color: "#C4845A", fontSize: 12 }}>{l}</span>
-                  <span style={{ fontWeight: 700 }}>{v}</span>
+                  <span style={{ color: "#7A4522", fontSize: 12 }}>{l}</span>
+                  <span style={{ fontWeight: 700, color: "#3D1F0A" }}>{v}</span>
                 </div>
               ))}
             </div>
