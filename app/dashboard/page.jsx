@@ -27,10 +27,14 @@ export default async function Dashboard() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: pets } = await supabase
+  const { data: pets, error: petsError } = await supabase
     .from("pets")
     .select("*")
     .eq("user_id", user.id);
+
+  console.log("user.id:", user.id);
+  console.log("pets:", pets);
+  console.log("petsError:", petsError);
 
   if (!pets || pets.length === 0) redirect("/nueva-mascota");
 
