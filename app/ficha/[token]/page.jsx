@@ -215,6 +215,15 @@ export default async function FichaPublica({ params }) {
             </div>
           )}
 
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <a
+              href={`/api/ficha-pdf/${token}`}
+              download
+              style={{ display: "inline-block", padding: "12px 28px", borderRadius: 13, background: "#FF6B35", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, textDecoration: "none", boxShadow: "0 4px 16px rgba(255,107,53,0.3)" }}>
+              📄 Descargar ficha PDF
+            </a>
+          </div>
+
           <div style={{ textAlign: "center", padding: "16px 0", fontSize: 11, color: "#C4845A" }}>
             Ficha generada por Firus&Michis · firusymichis.cl
           </div>
