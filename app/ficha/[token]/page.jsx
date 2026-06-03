@@ -17,7 +17,7 @@ const calcAge = (birthDate) => {
 };
 
 export default async function FichaPublica({ params }) {
-  const { token } = params;
+  const { token } = await params;
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
