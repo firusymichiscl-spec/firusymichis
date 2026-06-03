@@ -10,6 +10,7 @@ import DietTimeline from "@/components/DietTimeline";
 import TutorTab from "@/components/TutorTab";
 import AITab from "@/components/AITab";
 import VetMapTab from "@/components/VetMapTab";
+import QRShareModal from "@/components/QRShareModal";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -62,6 +63,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const supabase = createClient();
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [petData, setPetData] = useState(pet);
   const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || pet.weight_kg);
 
@@ -535,7 +537,10 @@ export default function DashboardClient({ pet, medications: initialMeds, history
               <div className="card">
                 <div className="card-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>🐶 Datos básicos</span>
-                  <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                    <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#2EC4B6", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
+                  </div>
                 </div>
                 {[
                   ["Nombre", petData.name],
@@ -1343,6 +1348,8 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           </div>
         </div>
       )}
+
+      {showQRModal && <QRShareModal pet={petData} onClose={() => setShowQRModal(false)} />}
 
       {/* MODAL EDITAR MASCOTA */}
       {editingPet && (
