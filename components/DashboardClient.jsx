@@ -90,6 +90,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const historyMeds = meds.filter(m => !m.active);
   const [medsView, setMedsView] = useState("todos");
   const [treatmentItems, setTreatmentItems] = useState([]);
+  const [momentosExpanded, setMomentosExpanded] = useState({});
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -660,17 +661,20 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                           const items = treatmentItems.filter(ti => calcTreatmentProgress(ti)?.momento === momento.id);
                           if (items.length === 0) return null;
                           const isNow = momento.id === momentoActual;
+                          const isExpanded = isNow || momentosExpanded[momento.id];
                           return (
-                            <div key={momento.id} style={{ marginBottom: 20 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                            <div key={momento.id} style={{ marginBottom: 16 }}>
+                              <div onClick={() => !isNow && setMomentosExpanded(p => ({ ...p, [momento.id]: !p[momento.id] }))}
+                                style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: isExpanded ? 10 : 0, padding: "10px 14px", borderRadius: 12, background: isNow ? "#FFF0EB" : "#fff", border: `1.5px solid ${isNow ? "#FFD0BC" : "#FFD9C8"}`, cursor: isNow ? "default" : "pointer" }}>
                                 <div style={{ fontSize: 18 }}>{momento.icon}</div>
-                                <div>
-                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: isNow ? "#FF6B35" : "#7A4522" }}>{momento.label}</div>
-                                  <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range}</div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: isNow ? "#FF6B35" : "#7A4522" }}>{momento.label}</div>
+                                  <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range} · {items.length} medicamento{items.length !== 1 ? "s" : ""}</div>
                                 </div>
-                                {isNow && <div style={{ background: "#FFF0EB", color: "#FF6B35", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, border: "1px solid #FFD0BC" }}>Ahora</div>}
+                                {isNow && <div style={{ background: "#FF6B35", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>Ahora</div>}
+                                {!isNow && <div style={{ fontSize: 12, color: "#C4845A" }}>{isExpanded ? "▲" : "▼"}</div>}
                               </div>
-                              {items.map(ti => {
+                              {isExpanded && items.map(ti => {
                                 const prog = calcTreatmentProgress(ti);
                                 return (
                                   <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
