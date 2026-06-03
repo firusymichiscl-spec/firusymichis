@@ -23,6 +23,9 @@ export default async function FichaPublica({ params }) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
+  console.log("SERVICE_KEY exists:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+  console.log("token buscado:", token);
+
   const { data: share, error: shareError } = await supabaseAdmin
     .from("pet_shares")
     .select("*")
@@ -30,7 +33,8 @@ export default async function FichaPublica({ params }) {
     .eq("active", true)
     .single();
 
-  console.log("share:", share, "error:", shareError);
+  console.log("share result:", share);
+  console.log("share error:", shareError);
 
   if (!share) {
     return (
