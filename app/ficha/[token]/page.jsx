@@ -1,10 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabasePublic = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
 const formatDate = (d) => {
   if (!d) return "Sin fecha";
   const [y, m, day] = d.split("-");
@@ -23,8 +18,12 @@ const calcAge = (birthDate) => {
 
 export default async function FichaPublica({ params }) {
   const { token } = params;
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
-  const { data: share, error: shareError } = await supabasePublic
+  const { data: share, error: shareError } = await supabaseAdmin
     .from("pet_shares")
     .select("*")
     .eq("token", token)
@@ -57,12 +56,12 @@ export default async function FichaPublica({ params }) {
     );
   }
 
-  const { data: pet } = await supabasePublic.from("pets").select("*").eq("id", share.pet_id).single();
+  const { data: pet } = await supabaseAdmin.from("pets").select("*").eq("id", share.pet_id).single();
   const { data: meds } = share.show_medications
-    ? await supabasePublic.from("medications").select("*").eq("pet_id", share.pet_id).eq("active", true)
+    ? await supabaseAdmin.from("medications").select("*").eq("pet_id", share.pet_id).eq("active", true)
     : { data: [] };
   const { data: history } = share.show_history || share.show_vaccines
-    ? await supabasePublic.from("medical_history").select("*").eq("pet_id", share.pet_id).order("event_date", { ascending: false }).limit(20)
+    ? await supabaseAdmin.from("medical_history").select("*").eq("pet_id", share.pet_id).order("event_date", { ascending: false }).limit(20)
     : { data: [] };
 
   const vaccines = history?.filter(h => h.type === "vaccine") || [];
