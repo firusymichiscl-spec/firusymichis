@@ -119,6 +119,11 @@ export default function QRShareModal({ pet, onClose }) {
                     {copied ? "✓ Enlace copiado" : "📋 Copiar enlace"}
                   </button>
 
+                  <a href={`/api/ficha-pdf/${share.token}`} download
+                    style={{ display: "block", width: "100%", padding: 12, borderRadius: 12, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 8, textAlign: "center", textDecoration: "none", boxSizing: "border-box" }}>
+                    📄 Descargar ficha PDF
+                  </a>
+
                   <button onClick={revokeShare} style={{ width: "100%", padding: 11, borderRadius: 12, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
                     🗑️ Revocar acceso
                   </button>
