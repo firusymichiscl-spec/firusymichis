@@ -56,6 +56,10 @@ export default function AITab({ pet, medications, history }) {
   const [loadingTreatments, setLoadingTreatments] = useState(false);
   const [deletingTreatment, setDeletingTreatment] = useState(null);
   const [selectedTreatmentId, setSelectedTreatmentId] = useState(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const [clinicQuery, setClinicQuery] = useState("");
+  const [clinicSuggestions, setClinicSuggestions] = useState([]);
+  const [clinicSearching, setClinicSearching] = useState(false);
   const fileRef = useRef();
 
   const today = new Date().toISOString().split("T")[0];
@@ -73,11 +77,41 @@ export default function AITab({ pet, medications, history }) {
 
   useEffect(() => { loadTreatments(); }, []);
 
+  const searchClinics = async (q) => {
+    setClinicQuery(q);
+    setTreatmentMeta(f => ({ ...f, vet_clinic: q }));
+    if (q.length < 2) { setClinicSuggestions([]); return; }
+    setClinicSearching(true);
+    try {
+      const res = await fetch(`/api/places?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setClinicSuggestions(data.results || []);
+    } catch { setClinicSuggestions([]); }
+    setClinicSearching(false);
+  };
+
   useEffect(() => {
     if (savedTreatments.length > 0 && !selectedTreatmentId) {
       setSelectedTreatmentId(savedTreatments[0].id);
     }
   }, [savedTreatments]);
+
+  const SYMPTOM_PLACEHOLDERS = [
+    `${pet.name} se está rascando mucho las orejas`,
+    `${pet.name} vomitó esta mañana`,
+    `${pet.name} estornudó muchas veces`,
+    `${pet.name} hoy le picó una abeja`,
+    `${pet.name} no quiere comer desde esta mañana`,
+    `${pet.name} está cojeando de la pata trasera`,
+    `${pet.name} tiene los ojos llorosos y rojos`,
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlaceholderIdx(i => (i + 1) % SYMPTOM_PLACEHOLDERS.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
 
   const deleteTreatment = async (id) => {
     if (!confirm("¿Eliminar este tratamiento?")) return;
@@ -263,6 +297,8 @@ export default function AITab({ pet, medications, history }) {
       setRecipeItems([]);
       setRecipeError(null);
       setTreatmentMeta({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
+      setClinicQuery("");
+      setClinicSuggestions([]);
     }, 1500);
   };
 
@@ -277,6 +313,10 @@ export default function AITab({ pet, medications, history }) {
         <div style={{ background: "#FFD166", color: "#7A4522", fontSize: 10, fontWeight: 700, padding: "3px 12px", borderRadius: 20 }}>✦ PRO</div>
       </div>
       <div style={{ fontSize: 13, color: "#7A4522", marginBottom: 16, lineHeight: 1.6 }}>¿Qué quieres hacer hoy con {pet.name}?</div>
+      <div style={{ background: "#FFF0EB", borderRadius: 12, padding: "10px 14px", marginBottom: 12, border: "1.5px solid #FFD0BC" }}>
+        <div style={{ fontSize: 11, color: "#FF6B35", fontWeight: 700, marginBottom: 2 }}>🔜 Próximamente</div>
+        <div style={{ fontSize: 11, color: "#7A4522" }}>Envío del resumen de compra por WhatsApp o correo</div>
+      </div>
       {[
         { id: "analyze", icon: "🔍", title: `Analizar a ${pet.name}`, sub: "Recomendaciones personalizadas según su historial", color: "#FF6B35", bg: "#FFF0EB", border: "#FFD0BC" },
         { id: "symptom", icon: "🩺", title: "Consultar síntomas", sub: "Describe lo que le pasa y la IA analiza con su historial", color: "#2EC4B6", bg: "#E8FAF9", border: "#9FE1CB" },
@@ -383,7 +423,7 @@ export default function AITab({ pet, medications, history }) {
       {activeSection === "symptom" && (
         <div style={card}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Consulta de síntomas</div>
-          <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={`Ej: ${pet.name} se está rascando mucho las orejas...`} value={symptom} onChange={e => setSymptom(e.target.value)} />
+          <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={SYMPTOM_PLACEHOLDERS[placeholderIdx]} value={symptom} onChange={e => setSymptom(e.target.value)} />
           <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim()} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
             {symptomLoading ? (
               <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
@@ -439,11 +479,38 @@ export default function AITab({ pet, medications, history }) {
                 </div>
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Doctor que recetó</div>
-                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Dr. Juan Rosas" value={treatmentMeta.doctor} onChange={e => setTreatmentMeta(f => ({ ...f, doctor: e.target.value }))} />
+                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Juan Rosas" value={treatmentMeta.doctor}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\b\w/g, l => l.toUpperCase());
+                      setTreatmentMeta(f => ({ ...f, doctor: val }));
+                    }}
+                    onBlur={e => {
+                      let val = e.target.value.trim();
+                      if (val && !val.match(/^Dr[a]?\./i)) {
+                        const firstName = val.split(" ")[0].toLowerCase();
+                        const title = firstName.endsWith("a") ? "Dra." : "Dr.";
+                        val = `${title} ${val}`;
+                      }
+                      setTreatmentMeta(f => ({ ...f, doctor: val }));
+                    }} />
                 </div>
-                <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 8, position: "relative" }}>
                   <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Veterinaria</div>
-                  <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Nervet, Clínica El Roble..." value={treatmentMeta.vet_clinic} onChange={e => setTreatmentMeta(f => ({ ...f, vet_clinic: e.target.value }))} />
+                  <input style={{ ...inputS, background: "#fff" }} placeholder="Buscar o escribir veterinaria..."
+                    value={clinicQuery} spellCheck={false} autoCorrect="off"
+                    onChange={e => searchClinics(e.target.value)} />
+                  {clinicSearching && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 4 }}>Buscando...</div>}
+                  {clinicSuggestions.length > 0 && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #8B5CF6", borderRadius: 11, maxHeight: 160, overflowY: "auto", zIndex: 10, boxShadow: "0 4px 16px rgba(61,31,10,0.1)" }}>
+                      {clinicSuggestions.map((c, i) => (
+                        <div key={i} onClick={() => { setClinicQuery(c.name); setTreatmentMeta(f => ({ ...f, vet_clinic: c.name })); setClinicSuggestions([]); }}
+                          style={{ padding: "9px 13px", fontSize: 13, cursor: "pointer", color: "#3D1F0A", borderBottom: "1px solid #f5f3ff" }}>
+                          <div style={{ fontWeight: 700 }}>{c.name}</div>
+                          <div style={{ fontSize: 11, color: "#C4845A" }}>{c.formatted_address}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
