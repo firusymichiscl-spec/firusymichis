@@ -32,7 +32,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-export default function AITab({ pet, medications, history }) {
+export default function AITab({ pet, medications, history, onTreatmentSaved }) {
   const supabase = createClient();
   const [activeSection, setActiveSection] = useState(null);
 
@@ -299,6 +299,7 @@ export default function AITab({ pet, medications, history }) {
       setTreatmentMeta({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
       setClinicQuery("");
       setClinicSuggestions([]);
+      onTreatmentSaved?.();
     }, 1500);
   };
 

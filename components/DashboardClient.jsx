@@ -914,7 +914,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {tab === "tutor" && <TutorTab pet={petData} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); }} />}
+          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
