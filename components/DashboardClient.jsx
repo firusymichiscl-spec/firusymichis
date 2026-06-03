@@ -92,6 +92,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [treatmentItems, setTreatmentItems] = useState([]);
   const [momentosExpanded, setMomentosExpanded] = useState({});
   const [selectedTreatmentGroupId, setSelectedTreatmentGroupId] = useState(null);
+  const [dosisMsg, setDosisMsg] = useState({});
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -771,20 +772,28 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                                         </div>
                                       )}
                                       {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
-                                      <button onClick={async () => {
-                                        const med = meds.find(m => m.name.toLowerCase() === ti.name.toLowerCase() && m.active);
-                                        if (med && med.stock > 0) {
+                                      <div style={{ marginTop: 10 }}>
+                                        {dosisMsg[ti.id] && (
+                                          <div style={{ background: "#E8FAF9", borderRadius: 8, padding: "6px 12px", marginBottom: 6, fontSize: 11, fontWeight: 700, color: "#059669", textAlign: "center" }}>
+                                            {dosisMsg[ti.id]}
+                                          </div>
+                                        )}
+                                        <button onClick={async () => {
                                           const upd = ti.units_per_dose || 1;
-                                          const newStock = Math.max(0, parseFloat(med.stock) - upd);
-                                          await supabase.from("medications").update({ stock: newStock }).eq("id", med.id);
-                                          await reloadMeds();
-                                          alert(`✓ Dosis marcada. Stock actualizado: ${newStock} ${med.unit}`);
-                                        } else {
-                                          alert("✓ Dosis marcada.");
-                                        }
-                                      }} style={{ width: "100%", padding: "8px", borderRadius: 10, background: "#E8FAF9", color: "#059669", border: "1.5px solid #9FE1CB", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
-                                        ✓ Marcar dosis dada
-                                      </button>
+                                          const med = meds.find(m => m.name.toLowerCase() === ti.name.toLowerCase() && m.active);
+                                          if (med && med.stock > 0) {
+                                            const newStock = Math.max(0, parseFloat(med.stock) - upd);
+                                            await supabase.from("medications").update({ stock: newStock }).eq("id", med.id);
+                                            await reloadMeds();
+                                            setDosisMsg(p => ({ ...p, [ti.id]: `✓ Dosis marcada · Stock: ${newStock} ${med.unit}` }));
+                                          } else {
+                                            setDosisMsg(p => ({ ...p, [ti.id]: "✓ Dosis marcada" }));
+                                          }
+                                          setTimeout(() => setDosisMsg(p => ({ ...p, [ti.id]: null })), 3000);
+                                        }} style={{ width: "100%", padding: "8px", borderRadius: 10, background: "#E8FAF9", color: "#059669", border: "1.5px solid #9FE1CB", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                          ✓ Marcar dosis dada
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 );
