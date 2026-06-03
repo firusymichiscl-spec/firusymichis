@@ -91,6 +91,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [medsView, setMedsView] = useState("todos");
   const [treatmentItems, setTreatmentItems] = useState([]);
   const [momentosExpanded, setMomentosExpanded] = useState({});
+  const [selectedTreatmentGroupId, setSelectedTreatmentGroupId] = useState(null);
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -103,6 +104,12 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   useEffect(() => { loadTreatmentItems(); }, []);
+
+  useEffect(() => {
+    if (treatmentItems.length > 0 && !selectedTreatmentGroupId) {
+      setSelectedTreatmentGroupId(treatmentItems[0].treatment_id);
+    }
+  }, [treatmentItems]);
 
   const [editingTreatmentItem, setEditingTreatmentItem] = useState(null);
   const [tiForm, setTiForm] = useState({});
@@ -648,6 +655,15 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                       </div>
                     </div>
                   ) : (() => {
+                    const uniqueTreatments = treatmentItems.reduce((acc, ti) => {
+                      if (!acc.find(t => t.treatment_id === ti.treatment_id)) {
+                        acc.push({ treatment_id: ti.treatment_id, diagnostico: ti.treatments?.diagnostico, vet_clinic: ti.treatments?.vet_clinic, emission_date: ti.treatments?.emission_date, recipe_date: ti.treatments?.recipe_date, items: treatmentItems.filter(x => x.treatment_id === ti.treatment_id) });
+                      }
+                      return acc;
+                    }, []);
+                    const filteredTreatmentItems = selectedTreatmentGroupId
+                      ? treatmentItems.filter(ti => ti.treatment_id === selectedTreatmentGroupId)
+                      : treatmentItems;
                     const momentos = [
                       { id: "mañana", icon: "🌅", label: "Mañana", range: "06:00 – 11:59" },
                       { id: "mediodia", icon: "☀️", label: "Mediodía", range: "12:00 – 14:59" },
@@ -657,22 +673,56 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                     const momentoActual = getMomentoActual();
                     return (
                       <>
+                        {uniqueTreatments.length > 1 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                            {uniqueTreatments.map(t => {
+                              const label = t.diagnostico || (t.emission_date ? new Date(t.emission_date + "T12:00:00").toLocaleDateString("es-CL") : new Date((t.recipe_date || Date.now()) + "T12:00:00").toLocaleDateString("es-CL"));
+                              const meds = t.items.slice(0, 2).map(i => i.name).join(", ");
+                              const isSelected = selectedTreatmentGroupId === t.treatment_id;
+                              return (
+                                <div key={t.treatment_id} onClick={() => setSelectedTreatmentGroupId(t.treatment_id)}
+                                  style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
+                                  {label}
+                                  {meds && <span style={{ color: "#C4845A", fontSize: 10 }}> ({meds}{t.items.length > 2 ? "..." : ""})</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {filteredTreatmentItems.some(ti => ti.boxes_needed) && (
+                          <div style={{ background: "#E8FAF9", borderRadius: 14, border: "1.5px solid #2EC4B6", padding: 14, marginBottom: 16 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🛒 Recomendación de compra</div>
+                            {filteredTreatmentItems.filter(ti => ti.boxes_needed).map(ti => (
+                              <div key={ti.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #9FE1CB" }}>
+                                <div>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+                                  {ti.units_per_box && <div style={{ fontSize: 10, color: "#C4845A" }}>{ti.units_per_box} unidades por caja</div>}
+                                </div>
+                                <div style={{ textAlign: "right" }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: "#0F6E56" }}>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</div>
+                                  {ti.units_remaining > 0 && <div style={{ fontSize: 10, color: "#C4845A" }}>sobran {ti.units_remaining} unidades</div>}
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ marginTop: 8, fontSize: 10, color: "#C4845A", fontStyle: "italic" }}>🔜 Envío por WhatsApp/correo próximamente</div>
+                          </div>
+                        )}
                         {momentos.map(momento => {
-                          const items = treatmentItems.filter(ti => calcTreatmentProgress(ti)?.momento === momento.id);
+                          const items = filteredTreatmentItems.filter(ti => calcTreatmentProgress(ti)?.momento === momento.id);
                           if (items.length === 0) return null;
                           const isNow = momento.id === momentoActual;
-                          const isExpanded = isNow || momentosExpanded[momento.id];
+                          const isExpanded = momentosExpanded[momento.id] !== undefined ? momentosExpanded[momento.id] : isNow;
                           return (
                             <div key={momento.id} style={{ marginBottom: 16 }}>
-                              <div onClick={() => !isNow && setMomentosExpanded(p => ({ ...p, [momento.id]: !p[momento.id] }))}
-                                style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: isExpanded ? 10 : 0, padding: "10px 14px", borderRadius: 12, background: isNow ? "#FFF0EB" : "#fff", border: `1.5px solid ${isNow ? "#FFD0BC" : "#FFD9C8"}`, cursor: isNow ? "default" : "pointer" }}>
+                              <div onClick={() => setMomentosExpanded(p => ({ ...p, [momento.id]: !isExpanded }))}
+                                style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: isExpanded ? 10 : 0, padding: "10px 14px", borderRadius: 12, background: isNow ? "#FFF0EB" : "#fff", border: `1.5px solid ${isNow ? "#FFD0BC" : "#FFD9C8"}`, cursor: "pointer" }}>
                                 <div style={{ fontSize: 18 }}>{momento.icon}</div>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: isNow ? "#FF6B35" : "#7A4522" }}>{momento.label}</div>
                                   <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range} · {items.length} medicamento{items.length !== 1 ? "s" : ""}</div>
                                 </div>
                                 {isNow && <div style={{ background: "#FF6B35", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>Ahora</div>}
-                                {!isNow && <div style={{ fontSize: 12, color: "#C4845A" }}>{isExpanded ? "▲" : "▼"}</div>}
+                                <div style={{ fontSize: 12, color: "#C4845A" }}>{isExpanded ? "▲" : "▼"}</div>
                               </div>
                               {isExpanded && items.map(ti => {
                                 const prog = calcTreatmentProgress(ti);
@@ -721,6 +771,20 @@ export default function DashboardClient({ pet, medications: initialMeds, history
                                         </div>
                                       )}
                                       {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
+                                      <button onClick={async () => {
+                                        const med = meds.find(m => m.name.toLowerCase() === ti.name.toLowerCase() && m.active);
+                                        if (med && med.stock > 0) {
+                                          const upd = ti.units_per_dose || 1;
+                                          const newStock = Math.max(0, parseFloat(med.stock) - upd);
+                                          await supabase.from("medications").update({ stock: newStock }).eq("id", med.id);
+                                          await reloadMeds();
+                                          alert(`✓ Dosis marcada. Stock actualizado: ${newStock} ${med.unit}`);
+                                        } else {
+                                          alert("✓ Dosis marcada.");
+                                        }
+                                      }} style={{ width: "100%", padding: "8px", borderRadius: 10, background: "#E8FAF9", color: "#059669", border: "1.5px solid #9FE1CB", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
+                                        ✓ Marcar dosis dada
+                                      </button>
                                     </div>
                                   </div>
                                 );
@@ -850,7 +914,7 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           {tab === "tutor" && <TutorTab pet={petData} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} />}
+          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); }} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
