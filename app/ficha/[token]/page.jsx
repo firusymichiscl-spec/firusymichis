@@ -24,12 +24,14 @@ const calcAge = (birthDate) => {
 export default async function FichaPublica({ params }) {
   const { token } = params;
 
-  const { data: share } = await supabasePublic
+  const { data: share, error: shareError } = await supabasePublic
     .from("pet_shares")
     .select("*")
     .eq("token", token)
     .eq("active", true)
     .single();
+
+  console.log("share:", share, "error:", shareError);
 
   if (!share) {
     return (
