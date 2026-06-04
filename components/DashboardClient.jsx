@@ -117,6 +117,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
     setSwitchingPet(true);
     setShowPetSwitcher(false);
+
+    // Reset inmediato de todos los estados
     setHistoryData([]);
     setMeds([]);
     setCurrentWeight(null);
@@ -129,18 +131,22 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setShowQRModal(false);
     setShowHistModal(false);
     setShowMedModal(false);
-    const { data: newPet } = await supabase.from("pets").select("*").eq("id", newPetId).single();
-    const { data: newMeds } = await supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false });
-    const { data: newHistory } = await supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false });
-    const { data: newWeight } = await supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).single();
-    const { data: newTreatments } = await supabase.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", newPetId).eq("active", true).order("created_at", { ascending: false });
-    setPetData(newPet);
-    setMeds(newMeds || []);
-    setHistoryData(newHistory || []);
-    setCurrentWeight(newWeight?.weight_kg || newPet?.weight_kg);
-    setTreatmentItems(newTreatments || []);
+
+    // Cargar datos de la nueva mascota
+    const [petRes, medsRes, histRes, weightRes, treatRes] = await Promise.all([
+      supabase.from("pets").select("*").eq("id", newPetId).single(),
+      supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false }),
+      supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false }),
+      supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).single(),
+      supabase.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", newPetId).eq("active", true).order("created_at", { ascending: false }),
+    ]);
+
+    setPetData(petRes.data);
+    setMeds(medsRes.data || []);
+    setHistoryData(histRes.data || []);
+    setCurrentWeight(weightRes.data?.weight_kg || petRes.data?.weight_kg || null);
+    setTreatmentItems(treatRes.data || []);
     setActivePetId(newPetId);
-    setTab("ficha");
     setSwitchingPet(false);
   };
 
@@ -641,6 +647,27 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                     <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#2EC4B6", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
+                    <button onClick={async () => {
+                      if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
+                      if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
+                      const pid = petData.id;
+                      await supabase.from("medication_logs").delete().eq("pet_id", pid);
+                      await supabase.from("medications").delete().eq("pet_id", pid);
+                      await supabase.from("medical_history").delete().eq("pet_id", pid);
+                      await supabase.from("vaccines").delete().eq("pet_id", pid);
+                      await supabase.from("weight_logs").delete().eq("pet_id", pid);
+                      await supabase.from("treatment_items").delete().eq("pet_id", pid);
+                      await supabase.from("treatments").delete().eq("pet_id", pid);
+                      await supabase.from("pet_shares").delete().eq("pet_id", pid);
+                      await supabase.from("tutors").delete().eq("pet_id", pid);
+                      setMeds([]);
+                      setHistoryData([]);
+                      setCurrentWeight(null);
+                      setTreatmentItems([]);
+                      alert("✓ Datos eliminados correctamente");
+                    }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
+                      🗑️ Limpiar datos
+                    </button>
                   </div>
                 </div>
                 {[
