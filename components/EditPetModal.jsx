@@ -37,6 +37,8 @@ export default function EditPetModal({ pet, onClose, onSave }) {
     conditions: pet.conditions || [],
     diet: pet.diet || "",
     allergies: pet.allergies || [],
+    chip_number: pet.chip_number || "",
+    chip_registry: pet.chip_registry || "",
   });
   const [breedQuery, setBreedQuery] = useState(pet.breed || "");
   const [breedDropdown, setBreedDropdown] = useState(false);
@@ -66,6 +68,8 @@ export default function EditPetModal({ pet, onClose, onSave }) {
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions, diet: form.diet,
       allergies: form.allergies.length > 0 ? form.allergies : null,
+      chip_number: form.chip_number || null,
+      chip_registry: form.chip_registry || null,
     }).eq("id", pet.id);
     if (!error) onSave();
     setLoading(false);
@@ -154,6 +158,15 @@ export default function EditPetModal({ pet, onClose, onSave }) {
         <label style={css.label}>Peso actual (kg)</label>
         <input style={css.input} type="number" step="0.1" placeholder="ej: 12.5"
           value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} />
+
+        {/* CHIP */}
+        <label style={css.label}>Número de chip</label>
+        <input style={css.input} placeholder="ej: 985112345678901"
+          value={form.chip_number} onChange={e => setForm(f => ({ ...f, chip_number: e.target.value }))} />
+
+        <label style={css.label}>Empresa registradora</label>
+        <input style={css.input} placeholder="ej: RNPA, Virbac, Animalink..."
+          value={form.chip_registry} onChange={e => setForm(f => ({ ...f, chip_registry: e.target.value }))} />
 
         {/* CONDICIONES */}
         <label style={css.label}>Condiciones de salud</label>

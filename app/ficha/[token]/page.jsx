@@ -123,6 +123,7 @@ export default async function FichaPublica({ params }) {
                 sexLabel ? ["Sexo", sexLabel] : null,
                 ["Edad", calcAge(pet.birth_date)],
                 pet.weight_kg ? ["Peso", `${pet.weight_kg} kg`] : null,
+                pet?.chip_number ? ["Chip", `${pet.chip_number}${pet.chip_registry ? ` · ${pet.chip_registry}` : ""}`] : null,
               ].filter(Boolean).map(([l, v]) => (
                 <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F5E6DA", fontSize: 13 }}>
                   <span style={{ color: "#7A4522", fontSize: 12 }}>{l}</span>
