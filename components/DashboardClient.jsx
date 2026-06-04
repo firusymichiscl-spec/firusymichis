@@ -172,10 +172,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const loadActivity = async () => {
     setActivityLoading(true);
     const [histRes, medsRes, weightsRes, treatRes] = await Promise.all([
-      supabase.from("medical_history").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(10),
-      supabase.from("medications").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(10),
-      supabase.from("weight_logs").select("*").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(5),
-      supabase.from("treatment_items").select("*, treatments(diagnostico, vet_clinic, recipe_date)").eq("pet_id", pet.id).order("created_at", { ascending: false }).limit(5),
+      supabase.from("medical_history").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(10),
+      supabase.from("medications").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(10),
+      supabase.from("weight_logs").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(5),
+      supabase.from("treatment_items").select("*, treatments(diagnostico, vet_clinic, recipe_date)").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(5),
     ]);
     const items = [];
     histRes.data?.forEach(h => items.push({
@@ -536,7 +536,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           </div>
 
           <div className="pet-card">
-            <PetPhotoUpload pet={petData} />
+            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
