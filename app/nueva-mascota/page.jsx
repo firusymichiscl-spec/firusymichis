@@ -24,16 +24,13 @@ export default function NuevaMascota() {
   const [form, setForm] = useState({
     species: 'dog', speciesIcon: '🐶', speciesLabel: 'Perro',
     name: '', breed: '', birth_date: '', weight_kg: '',
-    sex: '', conditions: [], diet: '',
+    sex: '', conditions: [],
   });
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
-  const [dietQuery, setDietQuery] = useState('');
-  const [dietDropdown, setDietDropdown] = useState(false);
 
   const breeds = form.species === 'cat' ? BREEDS_CAT : form.species === 'other' ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
-  const filteredDiets = dietQuery ? DIETS.filter(d => d.toLowerCase().includes(dietQuery.toLowerCase())) : DIETS.slice(0, 6);
 
   const toggleCondition = (cond) => {
     setForm(f => ({
@@ -54,7 +51,7 @@ export default function NuevaMascota() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
-    const { error } = await supabase.from('pets').insert({
+    const { data: newPet, error } = await supabase.from('pets').insert({
       user_id: user.id,
       name: form.name,
       species: form.species,
@@ -63,10 +60,20 @@ export default function NuevaMascota() {
       birth_date: form.birth_date || null,
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions,
-      diet: form.diet,
-    });
+    }).select().single();
 
-    if (!error) { setStep(4); }
+    if (!error && newPet) {
+      if (form.weight_kg) {
+        await supabase.from("weight_logs").insert({
+          pet_id: newPet.id,
+          weight_kg: parseFloat(form.weight_kg),
+          logged_date: new Date().toISOString().split("T")[0],
+          granularity: "sporadic",
+          week_of_month: null,
+        });
+      }
+      setStep(4);
+    }
     setLoading(false);
   };
 
@@ -192,23 +199,6 @@ export default function NuevaMascota() {
                   );
                 })}
               </div>
-              <label style={css.label}>Dieta especial</label>
-              <div style={{ position: 'relative' }}>
-                <input style={css.input} placeholder="Buscar o escribir dieta..." value={dietQuery}
-                  onChange={e => { setDietQuery(e.target.value); setDietDropdown(true); setForm(f => ({ ...f, diet: e.target.value })); }}
-                  onFocus={() => setDietDropdown(true)}
-                  onBlur={() => setTimeout(() => setDietDropdown(false), 200)} />
-                {dietDropdown && (
-                  <div style={css.dropdown}>
-                    {filteredDiets.map(d => (
-                      <div key={d} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, diet: d })); setDietQuery(d); setDietDropdown(false); }}>{d}</div>
-                    ))}
-                    {dietQuery && !DIETS.find(d => d.toLowerCase() === dietQuery.toLowerCase()) && (
-                      <div style={{ ...css.dropItem, color: '#2EC4B6', fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, diet: dietQuery })); setDietDropdown(false); }}>+ Usar "{dietQuery}"</div>
-                    )}
-                  </div>
-                )}
-              </div>
               <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>
               <button style={css.btnBack} onClick={() => setStep(2)}>← Volver</button>
             </div>
@@ -237,7 +227,6 @@ export default function NuevaMascota() {
             ['Raza', form.breed],
             ['Nacimiento', form.birth_date ? new Date(form.birth_date).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : ''],
             ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
-            ['Dieta', form.diet],
           ].filter(([, v]) => v).map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
               <span style={{ color: '#C4845A' }}>{k}</span>
