@@ -117,6 +117,18 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
     setSwitchingPet(true);
     setShowPetSwitcher(false);
+    setHistoryData([]);
+    setMeds([]);
+    setCurrentWeight(null);
+    setTreatmentItems([]);
+    setTab("ficha");
+    setMedsView("todos");
+    setHistFilter("all");
+    setHistExpanded(false);
+    setEditingPet(false);
+    setShowQRModal(false);
+    setShowHistModal(false);
+    setShowMedModal(false);
     const { data: newPet } = await supabase.from("pets").select("*").eq("id", newPetId).single();
     const { data: newMeds } = await supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false });
     const { data: newHistory } = await supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false });
@@ -528,9 +540,22 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 </button>
               )}
             </div>
-            <div className="today-badge">
-              <div className="today-num">{activeMeds.length}</div>
-              <div className="today-label">meds activos</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+              <div className="today-badge">
+                <div className="today-num">{activeMeds.length}</div>
+                <div className="today-label">meds activos</div>
+              </div>
+              {(userPlan !== "free" || allPetsData.length < 3) ? (
+                <button onClick={() => window.location.href = "/nueva-mascota"}
+                  style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  + Mascota
+                </button>
+              ) : (
+                <button onClick={() => setShowPetSwitcher(true)}
+                  style={{ background: "rgba(255,209,102,0.3)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#FFD166", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  ✦ PRO
+                </button>
+              )}
             </div>
           </div>
 
