@@ -58,7 +58,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet, medications: initialMeds, history, vaccines, user, lastWeight }) {
+export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan }) {
   const router = useRouter();
   const supabase = createClient();
   const [tab, setTab] = useState("ficha");
@@ -66,6 +66,10 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   const [showQRModal, setShowQRModal] = useState(false);
   const [petData, setPetData] = useState(pet);
   const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || pet.weight_kg);
+  const [activePetId, setActivePetId] = useState(pet.id);
+  const [allPetsData, setAllPetsData] = useState(allPets || []);
+  const [showPetSwitcher, setShowPetSwitcher] = useState(false);
+  const [switchingPet, setSwitchingPet] = useState(false);
 
   // Medications
   const [meds, setMeds] = useState(initialMeds);
@@ -108,6 +112,25 @@ export default function DashboardClient({ pet, medications: initialMeds, history
   };
 
   useEffect(() => { loadTreatmentItems(); }, []);
+
+  const switchPet = async (newPetId) => {
+    if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
+    setSwitchingPet(true);
+    setShowPetSwitcher(false);
+    const { data: newPet } = await supabase.from("pets").select("*").eq("id", newPetId).single();
+    const { data: newMeds } = await supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false });
+    const { data: newHistory } = await supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false });
+    const { data: newWeight } = await supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).single();
+    const { data: newTreatments } = await supabase.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", newPetId).eq("active", true).order("created_at", { ascending: false });
+    setPetData(newPet);
+    setMeds(newMeds || []);
+    setHistoryData(newHistory || []);
+    setCurrentWeight(newWeight?.weight_kg || newPet?.weight_kg);
+    setTreatmentItems(newTreatments || []);
+    setActivePetId(newPetId);
+    setTab("ficha");
+    setSwitchingPet(false);
+  };
 
   useEffect(() => {
     if (tab === "actividad") loadActivity();
@@ -494,10 +517,16 @@ export default function DashboardClient({ pet, medications: initialMeds, history
           </div>
 
           <div className="pet-card">
-            <PetPhotoUpload pet={pet} />
+            <PetPhotoUpload pet={petData} />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
+              {allPetsData.length > 1 && (
+                <button onClick={() => setShowPetSwitcher(true)}
+                  style={{ marginTop: 4, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "2px 8px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                  Cambiar mascota ▾
+                </button>
+              )}
             </div>
             <div className="today-badge">
               <div className="today-num">{activeMeds.length}</div>
@@ -528,6 +557,53 @@ export default function DashboardClient({ pet, medications: initialMeds, history
             ))}
           </div>
         </div>
+
+        {showPetSwitcher && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, padding: 20 }}>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#3D1F0A", marginBottom: 16 }}>🐾 Mis mascotas</div>
+              {allPetsData.map(p => (
+                <div key={p.id} onClick={() => switchPet(p.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: p.id === activePetId ? "#FFF0EB" : "#fff", border: `1.5px solid ${p.id === activePetId ? "#FF6B35" : "#FFD9C8"}`, cursor: "pointer" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#FFD166", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
+                    {p.photo_url
+                      ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : p.species === "cat" ? "🐱" : "🐶"}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: "#C4845A" }}>{p.breed} · {calcAge(p.birth_date)}</div>
+                  </div>
+                  {p.id === activePetId && <div style={{ fontSize: 12, color: "#FF6B35", fontWeight: 700 }}>✓ Activa</div>}
+                </div>
+              ))}
+              {(userPlan !== "free" || allPetsData.length < 3) ? (
+                <button onClick={() => { setShowPetSwitcher(false); window.location.href = "/nueva-mascota"; }}
+                  style={{ width: "100%", padding: 13, borderRadius: 13, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
+                  + Agregar nueva mascota
+                </button>
+              ) : (
+                <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, marginTop: 8, border: "1.5px solid #FFD0BC", textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#FF6B35", marginBottom: 4 }}>✦ Función PRO</div>
+                  <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 10 }}>Agrega hasta 3 mascotas con el plan PRO. Próximamente disponible.</div>
+                </div>
+              )}
+              <button onClick={() => setShowPetSwitcher(false)}
+                style={{ width: "100%", padding: 11, borderRadius: 13, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {switchingPet && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(255,248,243,0.9)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🐾</div>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 700, color: "#FF6B35" }}>Cargando mascota...</div>
+            </div>
+          </div>
+        )}
 
         <div className="content">
 

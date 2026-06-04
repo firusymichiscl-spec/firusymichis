@@ -16,9 +16,7 @@ export default async function Dashboard() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          } catch {
-            // Server Components no pueden modificar cookies — se ignora silenciosamente
-          }
+          } catch {}
         },
       },
     }
@@ -27,50 +25,53 @@ export default async function Dashboard() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: pets, error: petsError } = await supabase
+  const { data: pets } = await supabase
     .from("pets")
     .select("*")
-    .eq("user_id", user.id);
-
-  console.log("user.id:", user.id);
-  console.log("pets:", pets);
-  console.log("petsError:", petsError);
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
 
   if (!pets || pets.length === 0) redirect("/nueva-mascota");
+
+  const firstPet = pets[0];
 
   const { data: medications } = await supabase
     .from("medications")
     .select("*")
-    .eq("pet_id", pets[0].id)
-    .eq("active", true);
+    .eq("pet_id", firstPet.id)
+    .order("created_at", { ascending: false });
 
   const { data: history } = await supabase
     .from("medical_history")
     .select("*")
-    .eq("pet_id", pets[0].id)
+    .eq("pet_id", firstPet.id)
     .order("event_date", { ascending: false });
 
   const { data: vaccines } = await supabase
     .from("vaccines")
     .select("*")
-    .eq("pet_id", pets[0].id);
+    .eq("pet_id", firstPet.id);
 
   const { data: lastWeight } = await supabase
     .from("weight_logs")
     .select("weight_kg, logged_date")
-    .eq("pet_id", pets[0].id)
+    .eq("pet_id", firstPet.id)
     .order("logged_date", { ascending: false })
     .limit(1)
     .single();
 
+  const userPlan = "free";
+
   return (
     <DashboardClient
-      pet={pets[0]}
+      pet={firstPet}
+      allPets={pets}
       medications={medications || []}
       history={history || []}
       vaccines={vaccines || []}
       user={user}
       lastWeight={lastWeight}
+      userPlan={userPlan}
     />
   );
 }
