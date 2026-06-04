@@ -749,10 +749,6 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   });
                 })()}
               </div>
-              <button onClick={() => window.location.href = "/nueva-mascota"}
-                style={{ width: "100%", padding: 12, borderRadius: 13, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 4 }}>
-                + Agregar otra mascota
-              </button>
             </div>
           )}
 
