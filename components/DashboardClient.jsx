@@ -669,6 +669,30 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
                       🗑️ Limpiar datos
                     </button>
+                    <button onClick={async () => {
+                      if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
+                      if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
+                      const pid = petData.id;
+                      await supabase.from("medication_logs").delete().eq("pet_id", pid);
+                      await supabase.from("medications").delete().eq("pet_id", pid);
+                      await supabase.from("medical_history").delete().eq("pet_id", pid);
+                      await supabase.from("vaccines").delete().eq("pet_id", pid);
+                      await supabase.from("weight_logs").delete().eq("pet_id", pid);
+                      await supabase.from("treatment_items").delete().eq("pet_id", pid);
+                      await supabase.from("treatments").delete().eq("pet_id", pid);
+                      await supabase.from("pet_shares").delete().eq("pet_id", pid);
+                      await supabase.from("tutors").delete().eq("pet_id", pid);
+                      await supabase.from("pets").delete().eq("id", pid);
+                      const remaining = allPetsData.filter(p => p.id !== pid);
+                      if (remaining.length === 0) {
+                        window.location.href = "/nueva-mascota";
+                      } else {
+                        setAllPetsData(remaining);
+                        await switchPet(remaining[0].id);
+                      }
+                    }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
+                      🗑️ Eliminar mascota
+                    </button>
                   </div>
                 </div>
                 {[
@@ -725,6 +749,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   });
                 })()}
               </div>
+              <button onClick={() => window.location.href = "/nueva-mascota"}
+                style={{ width: "100%", padding: 12, borderRadius: 13, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 4 }}>
+                + Agregar otra mascota
+              </button>
             </div>
           )}
 

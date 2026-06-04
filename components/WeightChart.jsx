@@ -58,6 +58,16 @@ export default function WeightChart({ pet, onWeightUpdate }) {
       .lt("logged_date", firstDay)
       .order("logged_date", { ascending: true });
 
+    const { data: sporadic } = await supabase
+      .from("weight_logs")
+      .select("*")
+      .eq("pet_id", pet.id)
+      .eq("granularity", "sporadic")
+      .gte("logged_date", firstDay)
+      .lte("logged_date", lastDay);
+
+    const allHist = [...(hist || []), ...(sporadic || [])];
+
     const weeks = Array.from({ length: Math.min(totalWeeks, 4) }, (_, i) => {
       const wk = i + 1;
       const found = current?.find(w => w.week_of_month === wk);
@@ -75,7 +85,7 @@ export default function WeightChart({ pet, onWeightUpdate }) {
     setWeekData(weeks);
 
     const byYear = {};
-    hist?.forEach(w => {
+    allHist.forEach(w => {
       const y = w.logged_date.slice(0, 4);
       if (!byYear[y]) byYear[y] = [];
       byYear[y].push(parseFloat(w.weight_kg));
