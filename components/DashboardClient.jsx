@@ -552,29 +552,29 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
-              {allPetsData.length > 1 && (
-                <button onClick={() => setShowPetSwitcher(true)}
-                  style={{ marginTop: 4, background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "2px 8px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-                  Cambiar mascota ▾
-                </button>
-              )}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
-              <div className="today-badge">
-                <div className="today-num">{activeMeds.length}</div>
-                <div className="today-label">meds activos</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                {allPetsData.length > 1 && (
+                  <button onClick={() => setShowPetSwitcher(true)}
+                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                    🐾 Cambiar ▾
+                  </button>
+                )}
+                {(userPlan !== "free" || allPetsData.length < 3) ? (
+                  <button onClick={() => window.location.href = "/nueva-mascota"}
+                    style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                    + Mascota
+                  </button>
+                ) : (
+                  <button onClick={() => setShowPetSwitcher(true)}
+                    style={{ background: "rgba(255,209,102,0.3)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "#FFD166", fontWeight: 700, cursor: "pointer" }}>
+                    ✦ PRO
+                  </button>
+                )}
               </div>
-              {(userPlan !== "free" || allPetsData.length < 3) ? (
-                <button onClick={() => window.location.href = "/nueva-mascota"}
-                  style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  + Mascota
-                </button>
-              ) : (
-                <button onClick={() => setShowPetSwitcher(true)}
-                  style={{ background: "rgba(255,209,102,0.3)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 8, padding: "4px 10px", fontSize: 10, color: "#FFD166", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  ✦ PRO
-                </button>
-              )}
+            </div>
+            <div className="today-badge">
+              <div className="today-num">{activeMeds.length}</div>
+              <div className="today-label">meds activos</div>
             </div>
           </div>
 
