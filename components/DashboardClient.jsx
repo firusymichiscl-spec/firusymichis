@@ -11,6 +11,7 @@ import TutorTab from "@/components/TutorTab";
 import AITab from "@/components/AITab";
 import VetMapTab from "@/components/VetMapTab";
 import QRShareModal from "@/components/QRShareModal";
+import NotificationSettings from "@/components/NotificationSettings";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -64,6 +65,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
   const [petData, setPetData] = useState(pet);
   const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || pet.weight_kg);
   const [activePetId, setActivePetId] = useState(pet.id);
@@ -676,6 +678,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                     <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#2EC4B6", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
+                    <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
                     <button onClick={async () => {
                       if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
                       if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
@@ -1535,6 +1538,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
       )}
 
       {showQRModal && <QRShareModal pet={petData} onClose={() => setShowQRModal(false)} />}
+
+      {showNotifSettings && <NotificationSettings pet={petData} user={user} onClose={() => setShowNotifSettings(false)} />}
 
       {/* MODAL EDITAR MASCOTA */}
       {editingPet && (
