@@ -550,6 +550,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div className="brand-logo">🐾</div>
               <div className="brand-name">Firus<span>&</span>Michis</div>
             </div>
+            <button onClick={() => router.push("/marketplace")}
+              style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+              💊 Market
+            </button>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{user.email}</div>
               <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
