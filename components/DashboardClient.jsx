@@ -730,8 +730,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   ["Sexo", petData.sex === 'male' ? '♂️ Macho' : petData.sex === 'female' ? '♀️ Hembra' : 'Sin datos'],
                   ["Edad", calcAge(petData.birth_date)],
                   ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
-                  petData.chip_number ? ["Chip", `${petData.chip_number}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}`] : null,
-                ].filter(Boolean).map(([l, v]) => (
+                  ["Chip", petData.chip_number ? `${petData.chip_number}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
+                ].map(([l, v]) => (
                   <div className="row" key={l}>
                     <span className="row-label">{l}</span>
                     <span className="row-value">{v}</span>
