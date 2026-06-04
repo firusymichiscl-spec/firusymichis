@@ -110,7 +110,7 @@ export default function WeightChart({ pet, onWeightUpdate }) {
       chartInstanceRef.current = null;
     }
 
-    const allYears = Array.from({ length: year - birthYear }, (_, i) => birthYear + i);
+    const allYears = Array.from({ length: year - birthYear + 1 }, (_, i) => birthYear + i);
     const monthShort = now.toLocaleDateString("es-CL", { month: "short" });
     const currentWeekPoints = weekData.filter(w => w.kg !== null);
 

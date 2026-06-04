@@ -113,6 +113,15 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
 
   useEffect(() => { loadTreatmentItems(); }, []);
 
+  useEffect(() => {
+    if (allPetsData.length > 1) {
+      const newest = allPetsData.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
+      if (newest.id !== activePetId) {
+        switchPet(newest.id);
+      }
+    }
+  }, []);
+
   const switchPet = async (newPetId) => {
     if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
     setSwitchingPet(true);
@@ -530,7 +539,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div className="brand-name">Firus<span>&</span>Michis</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>{user.email}</div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{user.email}</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
+                {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {new Date(user.last_sign_in_at).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </div>
               <button className="signout-btn" onClick={handleSignOut}>Cerrar sesión</button>
             </div>
           </div>
