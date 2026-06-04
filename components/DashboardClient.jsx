@@ -146,13 +146,14 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setHistoryData(histRes.data || []);
     setCurrentWeight(weightRes.data?.weight_kg || petRes.data?.weight_kg || null);
     setTreatmentItems(treatRes.data || []);
+    setActivityFeed([]);
     setActivePetId(newPetId);
     setSwitchingPet(false);
   };
 
   useEffect(() => {
     if (tab === "actividad") loadActivity();
-  }, [tab]);
+  }, [tab, activePetId]);
 
   useEffect(() => {
     if (treatmentItems.length > 0 && !selectedTreatmentGroupId) {
@@ -1107,7 +1108,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
             <div className="fade-up">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#FF6B35" }}>Últimos movimientos</div>
-                <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
+                  <button onClick={() => setActivityFeed([])} style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>🗑️ Limpiar</button>
+                </div>
               </div>
               {activityLoading ? (
                 <div style={{ textAlign: "center", padding: 32, color: "#C4845A", fontSize: 13 }}>Cargando actividad...</div>
