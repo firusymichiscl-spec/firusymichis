@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 
-export default function PetPhotoUpload({ pet, onUpdate }) {
+export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji }) {
   const supabase = createClient();
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(pet.photo_url || null);
@@ -101,7 +101,7 @@ export default function PetPhotoUpload({ pet, onUpdate }) {
     }, "image/jpeg", 0.9);
   };
 
-  const speciesIcon = pet.species === "cat" ? "🐱" : pet.species === "other" ? "🐰" : "🐶";
+  const speciesIcon = avatarEmoji || (pet.species === "cat" ? "🐱" : pet.species === "other" ? "🐰" : "🐶");
 
   return (
     <>

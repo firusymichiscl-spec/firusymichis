@@ -398,6 +398,18 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const speciesIcon = petData.species === "cat" ? "🐱" : petData.species === "other" ? "🐰" : "🐶";
   const sexSymbol = petData.sex === 'male' ? ' ♂' : petData.sex === 'female' ? ' ♀' : '';
 
+  const getPetAvatar = (species, breed, photoUrl) => {
+    if (photoUrl) return null;
+    if (species === "cat") return "🐱";
+    if (species === "dog") return "🐶";
+    const breedEmojis = {
+      "conejo enano": "🐰", "hámster sirio": "🐹", "cobaya": "🐹",
+      "chinchilla": "🐭", "hurón": "🦡", "tortuga": "🐢",
+      "loro": "🦜", "canario": "🐦", "periquito": "🐦", "iguana": "🦎",
+    };
+    return breedEmojis[breed?.toLowerCase().trim()] || "🐾";
+  };
+
   const calcAge = (birthDate) => {
     if (!birthDate) return "Sin datos";
     const birth = new Date(birthDate);
@@ -548,7 +560,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           </div>
 
           <div className="pet-card">
-            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} />
+            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} avatarEmoji={getPetAvatar(petData.species, petData.breed, petData.photo_url)} />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
@@ -611,8 +623,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: p.id === activePetId ? "#FFF0EB" : "#fff", border: `1.5px solid ${p.id === activePetId ? "#FF6B35" : "#FFD9C8"}`, cursor: "pointer" }}>
                   <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#FFD166", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
                     {p.photo_url
-                      ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      : p.species === "cat" ? "🐱" : "🐶"}
+                      ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                      : getPetAvatar(p.species, p.breed, p.photo_url)}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
