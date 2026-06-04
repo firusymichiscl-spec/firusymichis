@@ -695,8 +695,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 )}
               </div>
 
-              <DietTimeline pet={petData} />
-              <WeightChart pet={petData} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
+              <DietTimeline key={`diet-${activePetId}`} pet={petData} />
+              <WeightChart key={`weight-${activePetId}`} pet={petData} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
@@ -1097,10 +1097,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           )}
 
           {/* TUTOR */}
-          {tab === "tutor" && <TutorTab pet={petData} />}
+          {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} />}
+          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
@@ -1150,7 +1150,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
             </div>
           )}
           {/* MAPA */}
-          {tab === "mapa" && <VetMapTab pet={petData} history={historyData} />}
+          {tab === "mapa" && <VetMapTab key={`mapa-${activePetId}`} pet={petData} history={historyData} />}
 
         </div>
       </div>
