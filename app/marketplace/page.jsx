@@ -223,6 +223,14 @@ export default function MarketplacePage() {
           </div>
         </div>
 
+        <div style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 12, padding: "10px 16px", margin: "12px 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 16 }}>🚧</span>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#FF6B35" }}>Módulo en desarrollo</div>
+            <div style={{ fontSize: 11, color: "#7A4522" }}>El marketplace estará disponible próximamente. Esta es una versión de prueba interna.</div>
+          </div>
+        </div>
+
         <div style={{ padding: "16px 16px", maxWidth: 520, margin: "0 auto" }}>
 
           {/* EXPLORAR */}
