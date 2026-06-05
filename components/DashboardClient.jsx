@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import WeightChart from "@/components/WeightChart";
@@ -83,7 +83,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const [customFreq, setCustomFreq] = useState(false);
 
   const [showHistModal, setShowHistModal] = useState(false);
-  const [histForm, setHistForm] = useState({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
+  const [histForm, setHistForm] = useState({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "", event_time: "", intensity: "", duration_minutes: "", photo: null, photoPreview: null, is_public: false });
+  const histPhotoRef = useRef();
   const [histSaving, setHistSaving] = useState(false);
   const [histSaved, setHistSaved] = useState(false);
   const [historyData, setHistoryData] = useState(history);
@@ -345,7 +346,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const openHistModal = (item = null) => {
     if (item) {
       const isVaccine = item.type === "vaccine";
-      setHistForm({ type: item.type || "exam", event: isVaccine ? "" : (item.event || ""), event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "", vaccine_name: isVaccine ? (item.event || "") : "", vaccine_next_date: isVaccine ? (item.next_date || "") : "" });
+      setHistForm({ type: item.type || "exam", event: isVaccine ? "" : (item.event || ""), event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "", vaccine_name: isVaccine ? (item.event || "") : "", vaccine_next_date: isVaccine ? (item.next_date || "") : "", event_time: item.event_time || "", intensity: item.intensity || "", duration_minutes: item.duration_minutes || "", photo: null, photoPreview: item.photo_url || null, is_public: item.is_public || false });
       setClinicQuery(item.vet_clinic || "");
       setEditingHistId(item.id);
     } else {
@@ -369,7 +370,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (Object.keys(errors).length > 0) { setHistErrors(errors); return; }
     setHistErrors({});
     setHistSaving(true);
-    const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null };
+    let photoUrl = histForm.photoPreview && !histForm.photo ? histForm.photoPreview : null;
+    if (histForm.photo) {
+      const ext = histForm.photo.name.split(".").pop();
+      const path = `events/${pet.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from("pet-photos").upload(path, histForm.photo);
+      if (!uploadError) {
+        const { data: urlData } = supabase.storage.from("pet-photos").getPublicUrl(path);
+        photoUrl = urlData.publicUrl;
+      }
+    }
+    const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null, event_time: histForm.event_time || null, intensity: histForm.intensity || null, duration_minutes: histForm.duration_minutes ? parseInt(histForm.duration_minutes) : null, photo_url: photoUrl, is_public: histForm.is_public };
     if (editingHistId) {
       await supabase.from("medical_history").update(payload).eq("id", editingHistId);
     } else {
@@ -379,7 +390,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     await reloadHistory();
     setTimeout(() => {
       setShowHistModal(false); setHistSaved(false); setHistErrors({}); setEditingHistId(null);
-      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
+      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "", event_time: "", intensity: "", duration_minutes: "", photo: null, photoPreview: null, is_public: false });
       setClinicQuery(""); setClinicSuggestions([]);
     }, 800);
   };
@@ -456,6 +467,18 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
             <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A", padding: "0 0 0 8px" }}>✏️</button>
           </div>
           <div className="timeline-event">{item.event}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+            {item.event_time && <span style={{ fontSize: 10, color: "#7A4522", background: "#FFF0EB", borderRadius: 6, padding: "2px 6px" }}>🕐 {item.event_time.slice(0,5)}</span>}
+            {item.intensity && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 6px", background: item.intensity === "grave" ? "#fef2f2" : item.intensity === "moderada" ? "#fff7ed" : "#f0fdf4", color: item.intensity === "grave" ? "#dc2626" : item.intensity === "moderada" ? "#d97706" : "#059669" }}>
+              {item.intensity === "grave" ? "🔴" : item.intensity === "moderada" ? "🟡" : "🟢"} {item.intensity}
+            </span>}
+            {item.duration_minutes && <span style={{ fontSize: 10, color: "#7A4522", background: "#FFF0EB", borderRadius: 6, padding: "2px 6px" }}>⏱ {item.duration_minutes} min</span>}
+            {item.is_public && <span style={{ fontSize: 10, color: "#0F6E56", background: "#E8FAF9", borderRadius: 6, padding: "2px 6px" }}>🌐 Público</span>}
+          </div>
+          {item.photo_url && (
+            <img src={item.photo_url} alt="evento" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 120, borderRadius: 8, objectFit: "cover", cursor: "pointer" }}
+              onClick={() => window.open(item.photo_url, "_blank")} />
+          )}
           {(item.vet_clinic || item.vet_name) && (
             <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4 }}>
               {item.vet_clinic && <span>🏥 {item.vet_clinic}</span>}
@@ -1342,7 +1365,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto" }}>
             <div style={{ background: "linear-gradient(135deg,#FF6B35,#e85d2e)", padding: "16px 20px", borderRadius: "24px 24px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#fff" }}>{editingHistId ? "✏️ Editar evento médico" : "📅 Nuevo evento médico"}</div>
-              <button onClick={() => { setShowHistModal(false); setHistErrors({}); setEditingHistId(null); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "" , notes: "" }); setClinicQuery(""); setClinicSuggestions([]); }}
+              <button onClick={() => { setShowHistModal(false); setHistErrors({}); setEditingHistId(null); setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "", event_time: "", intensity: "", duration_minutes: "", photo: null, photoPreview: null, is_public: false }); setClinicQuery(""); setClinicSuggestions([]); }}
                 style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, padding: "6px 12px", cursor: "pointer" }}>✕ Cerrar</button>
             </div>
             <div style={{ padding: 20 }}>
@@ -1449,6 +1472,68 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   placeholder="Observaciones, tratamiento indicado, etc. (opcional)"
                   value={histForm.notes} onChange={e => setHistForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
+
+              {/* Hora del evento */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Hora del evento</div>
+                <input type="time" style={{ ...inputS }} value={histForm.event_time} onChange={e => setHistForm(f => ({ ...f, event_time: e.target.value }))} />
+              </div>
+
+              {/* Intensidad */}
+              {(histForm.type === "illness" || histForm.type === "other") && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Intensidad</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[{ value: "leve", label: "🟢 Leve" }, { value: "moderada", label: "🟡 Moderada" }, { value: "grave", label: "🔴 Grave" }].map(i => (
+                      <div key={i.value} onClick={() => setHistForm(f => ({ ...f, intensity: f.intensity === i.value ? "" : i.value }))}
+                        style={{ flex: 1, padding: "8px 6px", borderRadius: 10, border: `1.5px solid ${histForm.intensity === i.value ? "#FF6B35" : "#FFD9C8"}`, background: histForm.intensity === i.value ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.intensity === i.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                        {i.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Duración */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Duración (minutos)</div>
+                <input style={inputS} type="number" min="1" placeholder="ej: 30" value={histForm.duration_minutes} onChange={e => setHistForm(f => ({ ...f, duration_minutes: e.target.value }))} />
+              </div>
+
+              {/* Foto */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>📸 Foto del evento (opcional)</div>
+                <div onClick={() => histPhotoRef.current.click()} style={{ border: "2px dashed #FFD9C8", borderRadius: 12, padding: 16, textAlign: "center", background: "#FFFAF7", cursor: "pointer" }}>
+                  {histForm.photoPreview
+                    ? <img src={histForm.photoPreview} alt="evento" style={{ maxWidth: "100%", maxHeight: 150, borderRadius: 8, objectFit: "contain" }} />
+                    : <><div style={{ fontSize: 28, marginBottom: 4 }}>📷</div><div style={{ fontSize: 12, color: "#C4845A", fontWeight: 700 }}>Toca para subir foto</div></>
+                  }
+                  <input ref={histPhotoRef} type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files[0]; if (f) setHistForm(p => ({ ...p, photo: f, photoPreview: URL.createObjectURL(f) })); }} />
+                </div>
+                {histForm.photoPreview && (
+                  <button onClick={() => setHistForm(f => ({ ...f, photo: null, photoPreview: null }))}
+                    style={{ marginTop: 6, fontSize: 11, color: "#dc2626", background: "transparent", border: "none", cursor: "pointer" }}>
+                    🗑️ Eliminar foto
+                  </button>
+                )}
+              </div>
+
+              {/* Visibilidad */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Visibilidad</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div onClick={() => setHistForm(f => ({ ...f, is_public: false }))}
+                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${!histForm.is_public ? "#FF6B35" : "#FFD9C8"}`, background: !histForm.is_public ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: !histForm.is_public ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    🔒 Privado
+                  </div>
+                  <div onClick={() => setHistForm(f => ({ ...f, is_public: true }))}
+                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${histForm.is_public ? "#2EC4B6" : "#FFD9C8"}`, background: histForm.is_public ? "#E8FAF9" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.is_public ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
+                    🌐 Público
+                  </div>
+                </div>
+              </div>
+
               <button onClick={handleHistSave}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
