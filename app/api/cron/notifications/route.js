@@ -121,10 +121,13 @@ export async function GET(req) {
   }
 
   // ── Heartbeat ─────────────────────────────────────────────────
-  await supabase.from("cron_heartbeats").insert({
+  const { error: hbError } = await supabase.from("cron_heartbeats").insert({
     emails_sent: results.sent,
     emails_skipped: results.skipped + results.idempotent,
   });
+  if (hbError) {
+    console.error("[cron] heartbeat insert error:", hbError.code, hbError.message);
+  }
 
   return Response.json({ ok: true, timestamp: now.toISOString(), ...results });
 }
@@ -135,8 +138,11 @@ async function tryInsertKey(supabase, key) {
   const { error } = await supabase
     .from("sent_notifications")
     .insert({ notification_key: key });
-  // error.code === '23505' = unique_violation → ya enviado
-  return !error;
+  if (!error) return true;
+  if (error.code === "23505") return false; // unique_violation → ya enviado, saltar en silencio
+  // cualquier otro error (tabla inexistente, red, etc.) — logueamos y NO enviamos
+  console.error("[cron] sent_notifications insert error:", error.code, error.message, "key:", key);
+  return false;
 }
 
 async function removeKey(supabase, key) {
