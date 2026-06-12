@@ -130,11 +130,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   useEffect(() => { loadTreatmentItems(); }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const petParam = params.get("pet");
+    if (petParam) {
+      const valid = allPetsData.find(p => p.id === petParam);
+      if (valid && valid.id !== activePetId) { switchPet(valid.id); return; }
+      if (valid) return; // ya es la activa, no hay nada que hacer
+    }
+    // Sin param válido: seleccionar la mascota más nueva (comportamiento original)
     if (allPetsData.length > 1) {
       const newest = allPetsData.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
-      if (newest.id !== activePetId) {
-        switchPet(newest.id);
-      }
+      if (newest.id !== activePetId) switchPet(newest.id);
     }
   }, []);
 
@@ -173,7 +179,33 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setTreatmentItems(treatRes.data || []);
     setActivityFeed([]);
     setActivePetId(newPetId);
+    router.replace(`/dashboard?pet=${newPetId}`, { scroll: false });
     setSwitchingPet(false);
+  };
+
+  // Borra todas las tablas hijas de una mascota en el orden correcto.
+  // treatments debe ir antes que pets (la política RLS de treatments requiere que pets exista).
+  // Retorna false y loguea si algún paso falla — el caller debe abortar sin borrar pets.
+  const deleteChildTables = async (pid) => {
+    const steps = [
+      ["medication_logs", "pet_id"],
+      ["medications",     "pet_id"],
+      ["medical_history", "pet_id"],
+      ["vaccines",        "pet_id"],
+      ["weight_logs",     "pet_id"],
+      ["treatment_items", "pet_id"],
+      ["treatments",      "pet_id"],
+      ["pet_shares",      "pet_id"],
+      ["tutors",          "pet_id"],
+    ];
+    for (const [table, col] of steps) {
+      const { error } = await supabase.from(table).delete().eq(col, pid);
+      if (error) {
+        console.error(`[deletePet] Error eliminando ${table}:`, error.message);
+        return false;
+      }
+    }
+    return true;
   };
 
   useEffect(() => {
@@ -718,15 +750,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                       if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
                       if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
                       const pid = petData.id;
-                      await supabase.from("medication_logs").delete().eq("pet_id", pid);
-                      await supabase.from("medications").delete().eq("pet_id", pid);
-                      await supabase.from("medical_history").delete().eq("pet_id", pid);
-                      await supabase.from("vaccines").delete().eq("pet_id", pid);
-                      await supabase.from("weight_logs").delete().eq("pet_id", pid);
-                      await supabase.from("treatment_items").delete().eq("pet_id", pid);
-                      await supabase.from("treatments").delete().eq("pet_id", pid);
-                      await supabase.from("pet_shares").delete().eq("pet_id", pid);
-                      await supabase.from("tutors").delete().eq("pet_id", pid);
+                      const ok = await deleteChildTables(pid);
+                      if (!ok) { alert("Error al limpiar datos. Revisa la consola."); return; }
                       setMeds([]);
                       setHistoryData([]);
                       setCurrentWeight(null);
@@ -739,16 +764,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                       if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
                       if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
                       const pid = petData.id;
-                      await supabase.from("medication_logs").delete().eq("pet_id", pid);
-                      await supabase.from("medications").delete().eq("pet_id", pid);
-                      await supabase.from("medical_history").delete().eq("pet_id", pid);
-                      await supabase.from("vaccines").delete().eq("pet_id", pid);
-                      await supabase.from("weight_logs").delete().eq("pet_id", pid);
-                      await supabase.from("treatment_items").delete().eq("pet_id", pid);
-                      await supabase.from("treatments").delete().eq("pet_id", pid);
-                      await supabase.from("pet_shares").delete().eq("pet_id", pid);
-                      await supabase.from("tutors").delete().eq("pet_id", pid);
-                      await supabase.from("pets").delete().eq("id", pid);
+                      const ok = await deleteChildTables(pid);
+                      if (!ok) { alert("Error al eliminar datos. La mascota no fue eliminada. Revisa la consola."); return; }
+                      const { error: petErr } = await supabase.from("pets").delete().eq("id", pid);
+                      if (petErr) { console.error("[deletePet] Error eliminando pets:", petErr.message); alert("Error al eliminar la mascota."); return; }
                       const remaining = allPetsData.filter(p => p.id !== pid);
                       if (remaining.length === 0) {
                         window.location.href = "/nueva-mascota";
@@ -1192,7 +1211,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} />}
+          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onTreatmentDeleted={() => loadTreatmentItems()} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (

@@ -33,7 +33,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-export default function AITab({ pet, medications, history, onTreatmentSaved }) {
+export default function AITab({ pet, medications, history, onTreatmentSaved, onTreatmentDeleted }) {
   const supabase = createClient();
   const [activeSection, setActiveSection] = useState(null);
 
@@ -121,6 +121,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
     await supabase.from("treatments").delete().eq("id", id);
     setDeletingTreatment(null);
     loadTreatments();
+    onTreatmentDeleted?.();
   };
 
   const analyze = async () => {
