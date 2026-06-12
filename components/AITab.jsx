@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { compressImage } from "@/lib/images/compress";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -128,7 +129,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
     try {
       const res = await fetch("/api/ai-analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history }) });
       const data = await res.json();
-      setAnalyzeResult(data.result);
+      setAnalyzeResult(data.error || data.result);
     } catch { setAnalyzeResult("Error al conectar con la IA. Intenta de nuevo."); }
     setAnalyzing(false);
   };
@@ -140,18 +141,24 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
     try {
       const res = await fetch("/api/ai-symptoms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history, symptom }) });
       const data = await res.json();
-      setSymptomResult(data.result);
+      setSymptomResult(data.error || data.result);
     } catch { setSymptomResult("Error al conectar con la IA. Intenta de nuevo."); }
     setSymptomLoading(false);
   };
 
-  const onFile = (e) => {
+  const onFile = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
-    setMediaType(f.type || "image/jpeg");
-    const r = new FileReader();
-    r.onload = (ev) => { setPreview(ev.target.result); setB64(ev.target.result.split(",")[1]); setRecipeItems([]); setRecipeError(null); setSaved(false); };
-    r.readAsDataURL(f);
+    setRecipeError(null);
+    try {
+      const { blob, mediaType: mt } = await compressImage(f);
+      setMediaType(mt);
+      const r = new FileReader();
+      r.onload = (ev) => { setPreview(ev.target.result); setB64(ev.target.result.split(",")[1]); setRecipeItems([]); setSaved(false); };
+      r.readAsDataURL(blob);
+    } catch (err) {
+      setRecipeError(err.message);
+    }
   };
 
   const analyzeRecipe = async () => {
@@ -166,7 +173,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
     try {
       const res = await fetch("/api/ai-recipe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageBase64: b64, mediaType }) });
       const data = await res.json();
-      if (data.error) { setRecipeError(data.error); }
+      if (data.error || !res.ok) { setRecipeError(data.error || "Error al procesar la receta"); }
       else {
         setRecipeItems(data.result.map((item, i) => ({
           id: i,
@@ -335,7 +342,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
 
       {savedTreatments.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Tratamientos guardados</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Tratamientos guardados</div>
           {savedTreatments.length > 1 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {savedTreatments.map(t => {
@@ -346,7 +353,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                   <div key={t.id} onClick={() => setSelectedTreatmentId(t.id)}
                     style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
                     {label}
-                    {meds && <span style={{ color: "#C4845A", fontSize: 10 }}> ({meds}{t.treatment_items?.length > 3 ? "..." : ""})</span>}
+                    {meds && <span style={{ color: "#C4845A", fontSize: 11 }}> ({meds}{t.treatment_items?.length > 3 ? "..." : ""})</span>}
                   </div>
                 );
               })}
@@ -475,11 +482,11 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
               <div style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #FFD9C8", padding: 14, marginBottom: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Datos de la receta</div>
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Diagnóstico</div>
+                  <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Diagnóstico</div>
                   <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Neuropatía, dermatitis..." value={treatmentMeta.diagnostico} onChange={e => setTreatmentMeta(f => ({ ...f, diagnostico: e.target.value }))} />
                 </div>
                 <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Doctor que recetó</div>
+                  <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Doctor que recetó</div>
                   <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Juan Rosas" value={treatmentMeta.doctor}
                     onChange={e => {
                       const val = e.target.value.replace(/\b\w/g, l => l.toUpperCase());
@@ -496,7 +503,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                     }} />
                 </div>
                 <div style={{ marginBottom: 8, position: "relative" }}>
-                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Veterinaria</div>
+                  <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Veterinaria</div>
                   <input style={{ ...inputS, background: "#fff" }} placeholder="Buscar o escribir veterinaria..."
                     value={clinicQuery} spellCheck={false} autoCorrect="off"
                     onChange={e => searchClinics(e.target.value)} />
@@ -514,7 +521,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                   )}
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
+                  <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
                   <input type="date" style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date} onChange={e => setTreatmentMeta(f => ({ ...f, emission_date: e.target.value }))} />
                 </div>
               </div>
@@ -540,12 +547,12 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                           {[["Medicamento","name"],["Dosis recetada","prescribed_dose"]].map(([label, field]) => (
                             <div key={field}>
-                              <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{label}</div>
+                              <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{label}</div>
                               <input style={inputS} value={item[field]} onChange={e => updateItem(item.id, field, e.target.value)} />
                             </div>
                           ))}
                           <div style={{ gridColumn: "1 / -1" }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Frecuencia</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Frecuencia</div>
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
                               {["cada 6 horas", "cada 8 horas", "cada 12 horas", "cada 24 horas"].map(f => (
                                 <div key={f} onClick={() => updateItem(item.id, "frequency", f)}
@@ -557,7 +564,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                             <input style={inputS} placeholder="O escribe frecuencia libre..." value={item.frequency} onChange={e => updateItem(item.id, "frequency", e.target.value)} />
                           </div>
                           <div>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Días de tratamiento</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Días de tratamiento</div>
                             <input style={inputS} type="number" min="1" placeholder="ej: 30" value={item.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); if (v > 0) updateItem(item.id, "duration_days", v); else updateItem(item.id, "duration_days", ""); }} />
                             <div style={{ marginTop: 6 }}>
                               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7A4522", cursor: "pointer" }}>
@@ -572,12 +579,12 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
 
                         {/* Inicio del tratamiento */}
                         <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                          <div style={{ fontSize: 9, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
+                          <div style={{ fontSize: 11, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Fecha</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Fecha</div>
                             <input type="date" style={{ ...inputS, background: "#fff" }} value={item.start_date} min={today} onChange={e => updateItem(item.id, "start_date", e.target.value)} />
                           </div>
-                          <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Hora</div>
+                          <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Hora</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
                             {HOURS.map(h => (
                               <div key={h} onClick={() => updateItem(item.id, "start_hour", h)}
@@ -586,7 +593,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                               </div>
                             ))}
                           </div>
-                          <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Minutos</div>
+                          <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Minutos</div>
                           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                             {["00", "30"].map(m => (
                               <div key={m} onClick={() => updateItem(item.id, "start_min", m)}
@@ -598,20 +605,20 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
 
                         {/* Farmacia */}
                         <div style={{ background: "#f5f3ff", borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                          <div style={{ fontSize: 9, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Volviste de la farmacia</div>
+                          <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Volviste de la farmacia</div>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Nombre comercial comprado</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Nombre comercial comprado</div>
                             <input style={{ ...inputS, background: "#fff" }} placeholder="ej: Prestat, Genérico..." value={item.brand_name || ""} onChange={e => updateItem(item.id, "brand_name", e.target.value)} />
                           </div>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Stock disponible en casa (opcional)</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Stock disponible en casa (opcional)</div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                               <input style={{ ...inputS, background: "#fff", width: 100, flexShrink: 0 }} type="number" min="0" placeholder="ej: 20" value={item.stock_at_home || ""} onChange={e => { const v = parseFloat(e.target.value); updateItem(item.id, "stock_at_home", v >= 0 ? e.target.value : ""); }} />
                               <div style={{ fontSize: 11, color: "#7A4522" }}>unidades ya disponibles</div>
                             </div>
                           </div>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Contenido de la caja</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Contenido de la caja</div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                               <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" min="1" placeholder="ej: 30" value={item.units_per_box} onChange={e => { const v = parseInt(e.target.value); if (v > 0) updateItem(item.id, "units_per_box", e.target.value); else updateItem(item.id, "units_per_box", ""); }} />
                               <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -625,7 +632,7 @@ export default function AITab({ pet, medications, history, onTreatmentSaved }) {
                             </div>
                           </div>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Concentración por unidad (para cálculo de dosis)</div>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Concentración por unidad (para cálculo de dosis)</div>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                               <input style={{ ...inputS, background: "#fff", width: 80, flexShrink: 0 }} type="number" min="0.001" placeholder="ej: 75" value={item.mg_per_unit} onChange={e => { const v = parseFloat(e.target.value); if (v > 0) updateItem(item.id, "mg_per_unit", e.target.value); else updateItem(item.id, "mg_per_unit", ""); }} />
                               <div style={{ display: "flex", gap: 5 }}>

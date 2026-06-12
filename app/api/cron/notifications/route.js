@@ -1,8 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 export async function GET(req) {
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // ── Auth ──────────────────────────────────────────────────────────
+  const token = req.headers.get("x-cron-secret");
+  if (token !== process.env.CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -12,7 +13,10 @@ export async function GET(req) {
   );
 
   const now = new Date();
-  const results = { sent: 0, errors: 0, skipped: 0 };
+  const dateHour = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}`;
+  const dateDay  = dateHour.slice(0, 10);
+
+  const results = { sent: 0, errors: 0, skipped: 0, idempotent: 0 };
 
   const { data: prefs } = await supabase
     .from("notification_preferences")
@@ -24,7 +28,7 @@ export async function GET(req) {
     const pet = pref.pets;
     if (!pet) { results.skipped++; continue; }
 
-    // 1. MEDICAMENTOS HABITUALES
+    // ── 1. MEDICAMENTOS HABITUALES ─────────────────────────────────
     if (pref.notify_medication_habitual) {
       const { data: meds } = await supabase
         .from("medications")
@@ -40,35 +44,31 @@ export async function GET(req) {
           const dpd = getDosesPerDay(med.frequency);
           const daysLeft = dpd > 0 ? Math.floor(med.stock / dpd) : null;
           if (daysLeft !== null && daysLeft <= 7) {
-            const logKey = `${pref.pet_id}-${med.id}-low_stock`;
-            const alreadySent = await checkRecentLog(supabase, pref.pet_id, "low_stock", logKey);
-            if (!alreadySent) {
-              const r = await sendNotif(pref.email, "low_stock", { petName: pet.name, medicationName: med.name, stockRemaining: med.stock });
-              if (!r.error) {
-                await logNotif(supabase, pref.user_id, pref.pet_id, "low_stock", logKey);
-                results.sent++;
-              } else results.errors++;
-            }
+            const key = `${pref.pet_id}:low_stock:${med.id}:${dateDay}`;
+            const ok = await tryInsertKey(supabase, key);
+            if (!ok) { results.idempotent++; continue; }
+            const r = await sendNotif(pref.email, "low_stock", { petName: pet.name, medicationName: med.name, stockRemaining: med.stock });
+            if (!r.error) results.sent++;
+            else { results.errors++; await removeKey(supabase, key); }
           }
         }
 
         // Toma programada
         if (!checkMedTime(med.frequency, now, pref.advance_minutes)) continue;
-        const logKey = `${pref.pet_id}-${med.id}-medication`;
-        const alreadySent = await checkRecentLog(supabase, pref.pet_id, "medication", logKey);
-        if (alreadySent) continue;
-
+        const key = `${pref.pet_id}:medication:${med.id}:${dateHour}`;
+        const ok = await tryInsertKey(supabase, key);
+        if (!ok) { results.idempotent++; continue; }
         const r = await sendNotif(pref.email, "medication", {
           petName: pet.name,
           medicationName: `${med.name}${med.dose ? ` — ${med.dose}` : ""}`,
           scheduledTime: now.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
         });
-        if (!r.error) { await logNotif(supabase, pref.user_id, pref.pet_id, "medication", logKey); results.sent++; }
-        else results.errors++;
+        if (!r.error) results.sent++;
+        else { results.errors++; await removeKey(supabase, key); }
       }
     }
 
-    // 2. VACUNAS PRÓXIMAS
+    // ── 2. VACUNAS PRÓXIMAS ────────────────────────────────────────
     if (pref.notify_vaccine) {
       const { data: vaccines } = await supabase
         .from("medical_history")
@@ -81,21 +81,20 @@ export async function GET(req) {
         const daysUntil = Math.ceil((new Date(vac.next_date) - now) / 86400000);
         if (![30, 7, 1].includes(daysUntil)) continue;
 
-        const logKey = `${pref.pet_id}-${vac.id}-vaccine-${daysUntil}d`;
-        const alreadySent = await checkRecentLog(supabase, pref.pet_id, "vaccine", logKey);
-        if (alreadySent) continue;
-
+        const key = `${pref.pet_id}:vaccine:${vac.id}-${daysUntil}d:${dateDay}`;
+        const ok = await tryInsertKey(supabase, key);
+        if (!ok) { results.idempotent++; continue; }
         const r = await sendNotif(pref.email, "vaccine", {
           petName: pet.name,
           medicationName: vac.event,
           scheduledTime: new Date(vac.next_date).toLocaleDateString("es-CL"),
         });
-        if (!r.error) { await logNotif(supabase, pref.user_id, pref.pet_id, "vaccine", logKey); results.sent++; }
-        else results.errors++;
+        if (!r.error) results.sent++;
+        else { results.errors++; await removeKey(supabase, key); }
       }
     }
 
-    // 3. TRATAMIENTOS
+    // ── 3. TRATAMIENTOS ───────────────────────────────────────────
     if (pref.notify_medication_treatment) {
       const { data: treatments } = await supabase
         .from("treatment_items")
@@ -107,39 +106,44 @@ export async function GET(req) {
         if (!ti.start_time || !ti.frequency) continue;
         if (!checkTreatmentTime(ti, now, pref.advance_minutes)) continue;
 
-        const logKey = `${pref.pet_id}-${ti.id}-treatment`;
-        const alreadySent = await checkRecentLog(supabase, pref.pet_id, "medication", logKey);
-        if (alreadySent) continue;
-
+        const key = `${pref.pet_id}:treatment:${ti.id}:${dateHour}`;
+        const ok = await tryInsertKey(supabase, key);
+        if (!ok) { results.idempotent++; continue; }
         const r = await sendNotif(pref.email, "medication", {
           petName: pet.name,
           medicationName: `${ti.name}${ti.prescribed_dose ? ` — ${ti.prescribed_dose}` : ""}`,
           scheduledTime: now.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" }),
         });
-        if (!r.error) { await logNotif(supabase, pref.user_id, pref.pet_id, "medication", logKey); results.sent++; }
-        else results.errors++;
+        if (!r.error) results.sent++;
+        else { results.errors++; await removeKey(supabase, key); }
       }
     }
   }
 
+  // ── Heartbeat ─────────────────────────────────────────────────
+  await supabase.from("cron_heartbeats").insert({
+    emails_sent: results.sent,
+    emails_skipped: results.skipped + results.idempotent,
+  });
+
   return Response.json({ ok: true, timestamp: now.toISOString(), ...results });
 }
 
-async function checkRecentLog(supabase, petId, type, referenceId) {
-  const { data } = await supabase
-    .from("notification_logs")
-    .select("id")
-    .eq("pet_id", petId)
-    .eq("type", type)
-    .eq("reference_id", referenceId)
-    .gte("sent_at", new Date(Date.now() - 2 * 3600000).toISOString())
-    .single();
-  return !!data;
+// ── Helpers de idempotencia ───────────────────────────────────────
+
+async function tryInsertKey(supabase, key) {
+  const { error } = await supabase
+    .from("sent_notifications")
+    .insert({ notification_key: key });
+  // error.code === '23505' = unique_violation → ya enviado
+  return !error;
 }
 
-async function logNotif(supabase, userId, petId, type, referenceId) {
-  await supabase.from("notification_logs").insert({ user_id: userId, pet_id: petId, type, reference_id: referenceId });
+async function removeKey(supabase, key) {
+  await supabase.from("sent_notifications").delete().eq("notification_key", key);
 }
+
+// ── Envío de emails ───────────────────────────────────────────────
 
 async function sendNotif(to, type, data) {
   try {
@@ -153,6 +157,8 @@ async function sendNotif(to, type, data) {
     return { error: e.message };
   }
 }
+
+// ── Helpers de tiempo ─────────────────────────────────────────────
 
 function getDosesPerDay(frequency) {
   const f = frequency.toLowerCase();

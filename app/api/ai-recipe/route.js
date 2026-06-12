@@ -1,7 +1,32 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createRouteSupabase } from "@/lib/supabase-route";
+import { checkAiQuota } from "@/lib/ai/quota";
+
+const BASE64_MAX_LENGTH = 7_000_000;
 
 export async function POST(req) {
-  const { imageBase64, mediaType } = await req.json();
+  // Auth
+  const supabase = await createRouteSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const body = await req.json();
+  const { imageBase64, mediaType } = body;
+
+  // Server-side payload size guard
+  if (!imageBase64 || imageBase64.length > BASE64_MAX_LENGTH) {
+    return Response.json({ error: "Imagen muy pesada" }, { status: 400 });
+  }
+
+  // Cuota
+  const quota = await checkAiQuota(user.id, "recipe");
+  if (!quota.allowed) {
+    return Response.json(
+      { error: "Alcanzaste tu límite diario de consultas IA. Vuelve mañana o pásate a PRO 🐾" },
+      { status: 429 }
+    );
+  }
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
@@ -16,11 +41,15 @@ export async function POST(req) {
         ]
       }]
     });
+
     const txt = message.content[0].text;
     try {
       const clean = txt.replace(/```json|```/g, "").trim();
       const arr = JSON.parse(clean);
-      return Response.json({ result: Array.isArray(arr) ? arr : [arr] });
+      return Response.json(
+        { result: Array.isArray(arr) ? arr : [arr] },
+        { headers: { "X-AI-Remaining": String(quota.remaining) } }
+      );
     } catch {
       return Response.json({ error: "No se pudo procesar la receta" });
     }

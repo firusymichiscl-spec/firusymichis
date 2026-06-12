@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { compressImage } from "@/lib/images/compress";
 
 export default function MarketplacePage() {
   const supabase = createClient();
@@ -19,6 +20,7 @@ export default function MarketplacePage() {
   const [userPets, setUserPets] = useState([]);
   const [priceChecking, setPriceChecking] = useState(false);
   const [priceAnalysis, setPriceAnalysis] = useState(null);
+  const [photoError, setPhotoError] = useState(null);
   const filePhotoRef = useRef();
   const fileReceiptRef = useRef();
 
@@ -85,10 +87,11 @@ export default function MarketplacePage() {
     setPriceChecking(false);
   };
 
-  const uploadFile = async (file, folder) => {
-    const ext = file.name.split(".").pop();
-    const path = `${folder}/${user.id}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("marketplace").upload(path, file);
+  const uploadFile = async (file, folder, ext = null) => {
+    const fileExt = ext || (file.name ? file.name.split(".").pop() : "jpg");
+    const path = `${folder}/${user.id}/${Date.now()}.${fileExt}`;
+    const opts = ext === "jpg" ? { contentType: "image/jpeg" } : {};
+    const { error } = await supabase.storage.from("marketplace").upload(path, file, opts);
     if (error) return null;
     const { data } = supabase.storage.from("marketplace").getPublicUrl(path);
     return data.publicUrl;
@@ -109,8 +112,30 @@ export default function MarketplacePage() {
     }
 
     setLoading(true);
-    const photoUrl = await uploadFile(listingForm.photo, "photos");
-    const receiptUrl = listingForm.receipt ? await uploadFile(listingForm.receipt, "receipts") : null;
+    setPhotoError(null);
+    let photoBlob = listingForm.photo;
+    try {
+      const { blob } = await compressImage(listingForm.photo);
+      photoBlob = blob;
+    } catch (err) {
+      setPhotoError(err.message);
+      setLoading(false);
+      return;
+    }
+    const photoUrl = await uploadFile(photoBlob, "photos", "jpg");
+    let receiptUrl = null;
+    if (listingForm.receipt) {
+      if (listingForm.receipt.type?.startsWith("image/")) {
+        try {
+          const { blob: rb } = await compressImage(listingForm.receipt);
+          receiptUrl = await uploadFile(rb, "receipts", "jpg");
+        } catch {
+          receiptUrl = await uploadFile(listingForm.receipt, "receipts");
+        }
+      } else {
+        receiptUrl = await uploadFile(listingForm.receipt, "receipts");
+      }
+    }
 
     const { data: newListing } = await supabase.from("marketplace_listings").insert({
       user_id: user.id,
@@ -500,9 +525,10 @@ export default function MarketplacePage() {
                   }
                   <input ref={filePhotoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
                     const f = e.target.files[0];
-                    if (f) setListingForm(p => ({ ...p, photo: f, photoPreview: URL.createObjectURL(f) }));
+                    if (f) { setPhotoError(null); setListingForm(p => ({ ...p, photo: f, photoPreview: URL.createObjectURL(f) })); }
                   }} />
                 </div>
+                {photoError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{photoError}</div>}
               </div>
 
               <div style={{ marginBottom: 16 }}>

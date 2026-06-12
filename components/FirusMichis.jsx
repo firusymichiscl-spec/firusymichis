@@ -521,25 +521,15 @@ export default function FirusMichis() {
     setAiLoading(true);
     setAiResult(null);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/ai-recipe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-              { type: "text", text: `Eres asistente veterinario. Analiza esta receta y devuelve SOLO JSON sin backticks:
-{"medicamento":"","dosis":"","frecuencia":"","duracion":"","indicaciones":"","veterinario":"","fecha":"","notas":""}` }
-            ]
-          }]
-        })
+        body: JSON.stringify({ imageBase64: b64, mediaType: "image/jpeg" }),
       });
       const data = await res.json();
-      const txt = data.content?.find(c => c.type === "text")?.text || "{}";
-      setAiResult(JSON.parse(txt.replace(/```json|```/g, "").trim()));
+      if (data.error) { setAiResult({ error: data.error }); return; }
+      const first = Array.isArray(data.result) ? data.result[0] : data.result;
+      setAiResult(first || {});
     } catch {
       setAiResult({ error: "No se pudo procesar. Intenta con una foto más clara." });
     }

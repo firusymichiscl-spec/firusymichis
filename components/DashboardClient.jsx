@@ -12,6 +12,7 @@ import AITab from "@/components/AITab";
 import VetMapTab from "@/components/VetMapTab";
 import QRShareModal from "@/components/QRShareModal";
 import NotificationSettings from "@/components/NotificationSettings";
+import { compressImage } from "@/lib/images/compress";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -86,6 +87,18 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const [histForm, setHistForm] = useState({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "", event_time: "", intensity: "", duration_minutes: "", photo: null, photoPreview: null, is_public: false });
   const histPhotoRef = useRef();
   const [histSaving, setHistSaving] = useState(false);
+
+  const onHistPhotoSelect = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const { blob } = await compressImage(f);
+      const preview = URL.createObjectURL(blob);
+      setHistForm(p => ({ ...p, photo: blob, photoPreview: preview }));
+    } catch (err) {
+      setHistErrors(prev => ({ ...prev, photo: err.message }));
+    }
+  };
   const [histSaved, setHistSaved] = useState(false);
   const [historyData, setHistoryData] = useState(history);
   const [clinicQuery, setClinicQuery] = useState("");
@@ -372,9 +385,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setHistSaving(true);
     let photoUrl = histForm.photoPreview && !histForm.photo ? histForm.photoPreview : null;
     if (histForm.photo) {
-      const ext = histForm.photo.name.split(".").pop();
-      const path = `events/${pet.id}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("pet-photos").upload(path, histForm.photo);
+      const path = `events/${pet.id}/${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from("pet-photos").upload(path, histForm.photo, { contentType: "image/jpeg" });
       if (!uploadError) {
         const { data: urlData } = supabase.storage.from("pet-photos").getPublicUrl(path);
         photoUrl = urlData.publicUrl;
@@ -489,7 +501,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           {item.next_date && (
             <div style={{ fontSize: 11, color: "#2EC4B6", fontWeight: 700, marginTop: 3 }}>💉 Próxima: {formatDate(item.next_date)}</div>
           )}
-          {item.notes && <div style={{ fontSize: 11, color: "var(--brown-light)", marginTop: 4 }}>{item.notes}</div>}
+          {item.notes && <div style={{ fontSize: 11, color: "var(--brown-soft)", marginTop: 4 }}>{item.notes}</div>}
         </div>
       </div>
     );
@@ -506,7 +518,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
-    :root { --orange:#FF6B35;--mint:#2EC4B6;--cream:#FFF8F3;--brown:#3D1F0A;--brown-light:#C4845A;--brown-pale:#F5E6DA;--yellow:#FFD166;--red:#FF4757;--green:#06D6A0;--card-shadow:0 4px 24px rgba(61,31,10,0.08); }
+    :root { --orange:#FF6B35;--mint:#2EC4B6;--cream:#FFF8F3;--brown:#3D1F0A;--brown-light:#C4845A;--brown-soft:#8A5530;--brown-pale:#F5E6DA;--yellow:#FFD166;--red:#FF4757;--green:#06D6A0;--card-shadow:0 4px 24px rgba(61,31,10,0.08); }
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Nunito',sans-serif;background:var(--cream);color:var(--brown);}
     .app{max-width:900px;margin:0 auto;min-height:100vh;}
@@ -529,11 +541,11 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     .pet-breed{font-size:12px;color:rgba(255,255,255,0.8);font-style:italic;}
     .today-badge{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:14px;padding:8px 14px;text-align:center;flex-shrink:0;}
     .today-num{font-family:'Baloo 2',cursive;font-size:22px;font-weight:800;color:#fff;line-height:1;}
-    .today-label{font-size:9px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;}
+    .today-label{font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;}
     .conditions-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;}
-    .condition-pill{background:rgba(255,255,255,0.18);color:#fff;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;border:1px solid rgba(255,255,255,0.25);}
+    .condition-pill{background:rgba(255,255,255,0.18);color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.25);}
     .tabs{display:flex;}
-    .tab{flex:1;padding:8px 4px;background:transparent;border:none;color:rgba(255,255,255,0.65);font-family:'Nunito',sans-serif;font-size:10px;font-weight:700;cursor:pointer;text-align:center;border-radius:10px 10px 0 0;}
+    .tab{flex:1;padding:8px 4px;background:transparent;border:none;color:rgba(255,255,255,0.85);font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;text-align:center;border-radius:10px 10px 0 0;}
     .tab.active{background:var(--cream);color:var(--orange);}
     .tab-icon{display:block;font-size:16px;margin-bottom:2px;}
     .content{padding:20px 16px;}
@@ -541,17 +553,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     .card-title{font-family:'Baloo 2',cursive;font-size:13px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;}
     .row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--brown-pale);font-size:13px;}
     .row:last-child{border-bottom:none;}
-    .row-label{color:var(--brown-light);font-size:12px;}
+    .row-label{color:var(--brown-soft);font-size:12px;}
     .row-value{font-weight:700;text-align:right;max-width:60%;font-size:13px;}
     .vaccine-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--brown-pale);}
     .vaccine-row:last-child{border-bottom:none;}
     .vaccine-name{font-weight:700;font-size:14px;}
-    .vaccine-date{font-size:11px;color:var(--brown-light);margin-top:2px;}
+    .vaccine-date{font-size:11px;color:var(--brown-soft);margin-top:2px;}
     .badge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;}
     .badge-ok{background:#e8faf4;color:#059669;}
     .badge-warn{background:#fff7ed;color:#d97706;}
     .badge-danger{background:#fef2f2;color:#dc2626;}
-    .empty-state{text-align:center;padding:32px 16px;color:var(--brown-light);font-size:13px;}
+    .empty-state{text-align:center;padding:32px 16px;color:var(--brown-soft);font-size:13px;}
     .empty-icon{font-size:40px;margin-bottom:8px;}
     .add-btn{width:100%;padding:13px;border-radius:13px;background:var(--orange);color:#fff;border:none;font-family:'Baloo 2',cursive;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px;}
     .timeline{position:relative;padding-left:36px;}
@@ -580,8 +592,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               💊 Market
             </button>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{user.email}</div>
-              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{user.email}</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
                 {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {new Date(user.last_sign_in_at).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
               </div>
               <button className="signout-btn" onClick={handleSignOut}>Cerrar sesión</button>
@@ -1509,8 +1521,9 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     : <><div style={{ fontSize: 28, marginBottom: 4 }}>📷</div><div style={{ fontSize: 12, color: "#C4845A", fontWeight: 700 }}>Toca para subir foto</div></>
                   }
                   <input ref={histPhotoRef} type="file" accept="image/*" style={{ display: "none" }}
-                    onChange={e => { const f = e.target.files[0]; if (f) setHistForm(p => ({ ...p, photo: f, photoPreview: URL.createObjectURL(f) })); }} />
+                    onChange={onHistPhotoSelect} />
                 </div>
+                {histErrors.photo && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{histErrors.photo}</div>}
                 {histForm.photoPreview && (
                   <button onClick={() => setHistForm(f => ({ ...f, photo: null, photoPreview: null }))}
                     style={{ marginTop: 6, fontSize: 11, color: "#dc2626", background: "transparent", border: "none", cursor: "pointer" }}>
@@ -1578,7 +1591,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <input style={inputS} type="number" min="1" placeholder="ej: 30" value={tiForm.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); setTiForm(f => ({ ...f, duration_days: v > 0 ? v : "" })); }} />
               </div>
               <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                <div style={{ fontSize: 9, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
+                <div style={{ fontSize: 11, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
                 <div style={{ marginBottom: 8 }}>
                   {fLabel("Fecha")}
                   <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
@@ -1601,7 +1614,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 </div>
               </div>
               <div style={{ background: "#f5f3ff", borderRadius: 12, padding: 12, marginBottom: 16 }}>
-                <div style={{ fontSize: 9, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Datos de la caja</div>
+                <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Datos de la caja</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
                     {fLabel("mg por unidad")}

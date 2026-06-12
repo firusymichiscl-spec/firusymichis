@@ -1,6 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createRouteSupabase } from "@/lib/supabase-route";
+import { checkAiQuota } from "@/lib/ai/quota";
 
 export async function POST(req) {
+  // Auth
+  const supabase = await createRouteSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return new Response("Unauthorized", { status: 401 });
+
+  // Cuota (no ownership check — listing doesn't exist yet at price-check time)
+  const quota = await checkAiQuota(user.id, "price_check");
+  if (!quota.allowed) {
+    return Response.json(
+      { error: "Alcanzaste tu límite diario de consultas IA. Vuelve mañana o pásate a PRO 🐾" },
+      { status: 429 }
+    );
+  }
+
   const { name, quantity, unit, price_clp } = await req.json();
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -37,7 +53,7 @@ export async function POST(req) {
   try {
     const txt = message.content[0].text;
     const json = JSON.parse(txt.replace(/```json|```/g, "").trim());
-    return Response.json(json);
+    return Response.json(json, { headers: { "X-AI-Remaining": String(quota.remaining) } });
   } catch {
     return Response.json({ error: "No se pudo analizar el precio" }, { status: 500 });
   }
