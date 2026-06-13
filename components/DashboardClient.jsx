@@ -60,7 +60,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan }) {
+export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -640,9 +640,19 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10,
                   letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px",
                 }}>
-                  {userPlan === "free" ? "FREE" : userPlan.toUpperCase()}
+                  {userPlan === "free" ? "FREE" : diasRestantes !== null ? `⏳ ${userPlan.toUpperCase()}` : userPlan.toUpperCase()}
                 </span>
               </div>
+              {diasRestantes !== null && (
+                <div style={{ fontSize: 10, color: diasRestantes <= 7 ? "#FF4444" : "#FF9500", textAlign: "right", marginBottom: 2 }}>
+                  ⏳ {diasRestantes} días de prueba
+                </div>
+              )}
+              {userPlan === "free" && (
+                <div style={{ fontSize: 10, color: "rgba(255,209,102,0.8)", textAlign: "right", marginBottom: 2, cursor: "pointer" }}>
+                  Pásate a PRO →
+                </div>
+              )}
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
                 {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {new Date(user.last_sign_in_at).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
               </div>

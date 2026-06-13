@@ -73,6 +73,11 @@ export default async function Dashboard() {
     (!profile.plan_expires_at || new Date(profile.plan_expires_at) > new Date());
   const userPlan = isActivePlan ? profile.plan : "free";
 
+  const diasRestantes =
+    isActivePlan && profile.plan_expires_at
+      ? Math.ceil((new Date(profile.plan_expires_at) - new Date()) / 86400000)
+      : null;
+
   return (
     <Suspense fallback={null}>
       <DashboardClient
@@ -84,6 +89,7 @@ export default async function Dashboard() {
         user={user}
         lastWeight={lastWeight}
         userPlan={userPlan}
+        diasRestantes={diasRestantes}
       />
     </Suspense>
   );
