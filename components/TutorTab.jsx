@@ -37,6 +37,7 @@ export default function TutorTab({ pet }) {
   const supabase = createClient();
   const [primary, setPrimary] = useState(null);
   const [secondary, setSecondary] = useState(null);
+  const [tertiary, setTertiary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingType, setEditingType] = useState(null);
   const [googleLoaded, setGoogleLoaded] = useState(false);
@@ -121,11 +122,12 @@ export default function TutorTab({ pet }) {
     const { data } = await supabase.from("tutors").select("*").eq("pet_id", pet.id);
     setPrimary(data?.find(t => t.type === "primary") || null);
     setSecondary(data?.find(t => t.type === "secondary") || null);
+    setTertiary(data?.find(t => t.type === "tertiary") || null);
     setLoading(false);
   };
 
   const openEdit = (type) => {
-    const tutor = type === "primary" ? primary : secondary;
+    const tutor = type === "primary" ? primary : type === "secondary" ? secondary : tertiary;
     setForm({
       full_name: tutor?.full_name || "",
       phone: parsePhone(tutor?.phone || ""),
@@ -173,7 +175,7 @@ export default function TutorTab({ pet }) {
   const handleSave = async () => {
     if (!form.full_name) return;
     setSaving(true);
-    const existing = editingType === "primary" ? primary : secondary;
+    const existing = editingType === "primary" ? primary : editingType === "secondary" ? secondary : tertiary;
     const payload = { ...form, phone: formatPhone(form.phone), pet_id: pet.id, type: editingType };
     if (existing?.id) {
       await supabase.from("tutors").update(payload).eq("id", existing.id);
@@ -187,7 +189,7 @@ export default function TutorTab({ pet }) {
   };
 
   const handleDelete = async () => {
-    const existing = editingType === "primary" ? primary : secondary;
+    const existing = editingType === "primary" ? primary : editingType === "secondary" ? secondary : tertiary;
     if (!existing?.id) return;
     if (!confirm(`¿Eliminar al tutor ${existing.full_name}? Esta acción no se puede deshacer.`)) return;
     await supabase.from("tutors").delete().eq("id", existing.id);
@@ -205,12 +207,11 @@ export default function TutorTab({ pet }) {
   );
 
   const renderCard = (type) => {
-    const tutor = type === "primary" ? primary : secondary;
-    const isPrimary = type === "primary";
-    const color = isPrimary ? "#FF6B35" : "#2EC4B6";
-    const bgBadge = isPrimary ? "#FFF0EB" : "#E8FAF9";
-    const label = isPrimary ? "Titular" : "Suplente";
-    const icon = isPrimary ? "👤" : "👥";
+    const tutor = type === "primary" ? primary : type === "secondary" ? secondary : tertiary;
+    const color = type === "primary" ? "#FF6B35" : type === "secondary" ? "#2EC4B6" : "#8B5CF6";
+    const bgBadge = type === "primary" ? "#FFF0EB" : type === "secondary" ? "#E8FAF9" : "#f5f3ff";
+    const label = type === "primary" ? "Titular" : type === "secondary" ? "Suplente" : "Adicional";
+    const icon = type === "primary" ? "👤" : type === "secondary" ? "👥" : "📞";
     const addressLine = tutor
       ? [tutor.street, tutor.street_number, tutor.comuna, tutor.ciudad].filter(Boolean).join(", ")
       : "";
@@ -267,14 +268,15 @@ export default function TutorTab({ pet }) {
     return <div style={{ textAlign: "center", padding: 40, color: "#C4845A", fontSize: 14 }}>Cargando tutores...</div>;
   }
 
-  const editingTutor = editingType === "primary" ? primary : secondary;
-  const editingLabel = editingType === "primary" ? "Titular" : "Suplente";
-  const showCopyAddress = editingType === "secondary" && hasAddress(primary);
+  const editingTutor = editingType === "primary" ? primary : editingType === "secondary" ? secondary : tertiary;
+  const editingLabel = editingType === "primary" ? "Titular" : editingType === "secondary" ? "Suplente" : "Adicional";
+  const showCopyAddress = (editingType === "secondary" || editingType === "tertiary") && hasAddress(primary);
 
   return (
     <div className="fade-up">
       {renderCard("primary")}
       {renderCard("secondary")}
+      {renderCard("tertiary")}
 
       {/* MODAL */}
       {editingType && (

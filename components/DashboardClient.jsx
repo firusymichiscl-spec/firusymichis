@@ -129,6 +129,14 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
 
   useEffect(() => { loadTreatmentItems(); }, []);
 
+  const deleteTreatmentGroup = async (treatmentId) => {
+    if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
+    await supabase.from("treatment_items").delete().eq("treatment_id", treatmentId);
+    await supabase.from("treatments").delete().eq("id", treatmentId);
+    if (selectedTreatmentGroupId === treatmentId) setSelectedTreatmentGroupId(null);
+    await loadTreatmentItems();
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const petParam = params.get("pet");
@@ -624,7 +632,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               💊 Market
             </button>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>{user.email}</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{user.email}</div>
+                <span style={{
+                  background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "#FFD166",
+                  color: userPlan === "free" ? "rgba(255,255,255,0.45)" : "#3D1F0A",
+                  fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10,
+                  letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px",
+                }}>
+                  {userPlan === "free" ? "FREE" : userPlan.toUpperCase()}
+                </span>
+              </div>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
                 {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {new Date(user.last_sign_in_at).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
               </div>
@@ -963,21 +981,45 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     return (
                       <>
                         {uniqueTreatments.length > 1 && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
                             {uniqueTreatments.map(t => {
                               const label = t.diagnostico || (t.emission_date ? new Date(t.emission_date + "T12:00:00").toLocaleDateString("es-CL") : new Date((t.recipe_date || Date.now()) + "T12:00:00").toLocaleDateString("es-CL"));
                               const meds = t.items.slice(0, 2).map(i => i.name).join(", ");
                               const isSelected = selectedTreatmentGroupId === t.treatment_id;
                               return (
-                                <div key={t.treatment_id} onClick={() => setSelectedTreatmentGroupId(t.treatment_id)}
-                                  style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
-                                  {label}
-                                  {meds && <span style={{ color: "#C4845A", fontSize: 10 }}> ({meds}{t.items.length > 2 ? "..." : ""})</span>}
+                                <div key={t.treatment_id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px 6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", cursor: "pointer" }}
+                                  onClick={() => setSelectedTreatmentGroupId(t.treatment_id)}>
+                                  <span style={{ fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522" }}>
+                                    {label}
+                                    {meds && <span style={{ color: "#C4845A", fontSize: 10 }}> ({meds}{t.items.length > 2 ? "..." : ""})</span>}
+                                  </span>
+                                  <button onClick={e => { e.stopPropagation(); deleteTreatmentGroup(t.treatment_id); }}
+                                    title="Eliminar este tratamiento"
+                                    style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 2px", fontSize: 12, color: "#C4B5FD", lineHeight: 1 }}>
+                                    🗑️
+                                  </button>
                                 </div>
                               );
                             })}
                           </div>
                         )}
+                        {(() => {
+                          const cur = uniqueTreatments.find(t => t.treatment_id === selectedTreatmentGroupId) || uniqueTreatments[0];
+                          if (!cur) return null;
+                          const info = [cur.diagnostico, cur.vet_clinic].filter(Boolean).join(" · ") || "Tratamiento activo";
+                          return (
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                              <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700 }}>{info}</div>
+                              {uniqueTreatments.length === 1 && (
+                                <button onClick={() => deleteTreatmentGroup(cur.treatment_id)}
+                                  title="Eliminar este tratamiento"
+                                  style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 13, color: "#C4845A", padding: "2px 4px" }}>
+                                  🗑️
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {filteredTreatmentItems.some(ti => ti.boxes_needed) && (
                           <div style={{ background: "#E8FAF9", borderRadius: 14, border: "1.5px solid #2EC4B6", padding: 14, marginBottom: 16 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🛒 Recomendación de compra</div>

@@ -171,7 +171,7 @@ export default function EditPetModal({ pet, onClose, onSave }) {
         {/* CONDICIONES */}
         <label style={css.label}>Condiciones de salud</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 6 }}>
-          {CONDITIONS.map(cond => {
+          {[...CONDITIONS].sort((a, b) => a.localeCompare(b, "es")).map(cond => {
             const sel = form.conditions.includes(cond);
             return (
               <div key={cond} style={css.tag(sel)} onClick={() => toggleCondition(cond)}>
@@ -208,7 +208,7 @@ export default function EditPetModal({ pet, onClose, onSave }) {
         {/* ALERGIAS A MEDICAMENTOS */}
         <label style={css.label}>⚠️ Alergias a medicamentos</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, marginBottom: 10 }}>
-          {MEDS_LIST.map(med => {
+          {[...MEDS_LIST].sort((a, b) => a.localeCompare(b, "es")).map(med => {
             const sel = form.allergies.includes(med);
             return <div key={med} style={css.allergyTag(sel)} onClick={() => toggleAllergy(med)}>{med}</div>;
           })}

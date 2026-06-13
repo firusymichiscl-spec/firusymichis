@@ -60,7 +60,17 @@ export default async function Dashboard() {
     .limit(1)
     .single();
 
-  const userPlan = "free";
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("plan, plan_expires_at")
+    .eq("id", user.id)
+    .single();
+
+  const isActivePlan =
+    profile &&
+    profile.plan !== "free" &&
+    (!profile.plan_expires_at || new Date(profile.plan_expires_at) > new Date());
+  const userPlan = isActivePlan ? profile.plan : "free";
 
   return (
     <DashboardClient
