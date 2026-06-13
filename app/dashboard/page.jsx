@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import DashboardClient from "@/components/DashboardClient";
+import ThemeProvider from "@/components/ThemeProvider";
 
 export default async function Dashboard() {
   const cookieStore = await cookies();
@@ -63,7 +64,7 @@ export default async function Dashboard() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, plan_expires_at")
+    .select("plan, plan_expires_at, theme, theme_custom_color")
     .eq("id", user.id)
     .single();
 
@@ -78,19 +79,26 @@ export default async function Dashboard() {
       ? Math.ceil((new Date(profile.plan_expires_at) - new Date()) / 86400000)
       : null;
 
+  const userTheme = profile?.theme || "clasico";
+  const userThemeCustomColor = profile?.theme_custom_color || null;
+
   return (
-    <Suspense fallback={null}>
-      <DashboardClient
-        pet={firstPet}
-        allPets={pets}
-        medications={medications || []}
-        history={history || []}
-        vaccines={vaccines || []}
-        user={user}
-        lastWeight={lastWeight}
-        userPlan={userPlan}
-        diasRestantes={diasRestantes}
-      />
-    </Suspense>
+    <ThemeProvider theme={userTheme} customColor={userThemeCustomColor}>
+      <Suspense fallback={null}>
+        <DashboardClient
+          pet={firstPet}
+          allPets={pets}
+          medications={medications || []}
+          history={history || []}
+          vaccines={vaccines || []}
+          user={user}
+          lastWeight={lastWeight}
+          userPlan={userPlan}
+          diasRestantes={diasRestantes}
+          initialTheme={userTheme}
+          initialCustomColor={userThemeCustomColor}
+        />
+      </Suspense>
+    </ThemeProvider>
   );
 }

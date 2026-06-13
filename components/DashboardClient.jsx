@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import ThemeSelector from "@/components/ThemeSelector";
 import WeightChart from "@/components/WeightChart";
 import PetPhotoUpload from "@/components/PetPhotoUpload";
 import EditPetModal from "@/components/EditPetModal";
@@ -60,10 +61,11 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes }) {
+export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -246,17 +248,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     histRes.data?.forEach(h => items.push({
       id: `hist-${h.id}`, type: h.type === "vaccine" ? "vaccine" : "history",
       icon: h.type === "vaccine" ? "💉" : h.type === "surgery" ? "🔪" : h.type === "illness" ? "🤒" : h.type === "exam" ? "🧪" : "📝",
-      title: h.event, subtitle: h.vet_clinic ? `🏥 ${h.vet_clinic}` : null, date: h.created_at, color: "#FF6B35",
+      title: h.event, subtitle: h.vet_clinic ? `🏥 ${h.vet_clinic}` : null, date: h.created_at, color: "var(--color-primary)",
     }));
     medsRes.data?.forEach(m => items.push({
       id: `med-${m.id}`, type: "medication", icon: "💊",
       title: `${m.active ? "Medicamento agregado" : "Medicamento inactivado"}: ${m.name}`,
       subtitle: m.dose ? `${m.dose}${m.frequency ? ` · ${m.frequency}` : ""}` : null,
-      date: m.created_at, color: m.color || "#2EC4B6",
+      date: m.created_at, color: m.color || "var(--color-secondary)",
     }));
     weightsRes.data?.forEach(w => items.push({
       id: `weight-${w.id}`, type: "weight", icon: "⚖️",
-      title: `Peso registrado: ${w.weight_kg} kg`, subtitle: null, date: w.created_at, color: "#FFD166",
+      title: `Peso registrado: ${w.weight_kg} kg`, subtitle: null, date: w.created_at, color: "var(--color-accent)",
     }));
     treatRes.data?.forEach(t => items.push({
       id: `treat-${t.id}`, type: "treatment", icon: "📋",
@@ -539,7 +541,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
             </div>
           )}
           {item.next_date && (
-            <div style={{ fontSize: 11, color: "#2EC4B6", fontWeight: 700, marginTop: 3 }}>💉 Próxima: {formatDate(item.next_date)}</div>
+            <div style={{ fontSize: 11, color: "var(--color-secondary)", fontWeight: 700, marginTop: 3 }}>💉 Próxima: {formatDate(item.next_date)}</div>
           )}
           {item.notes && <div style={{ fontSize: 11, color: "var(--brown-soft)", marginTop: 4 }}>{item.notes}</div>}
         </div>
@@ -558,7 +560,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
-    :root { --orange:#FF6B35;--mint:#2EC4B6;--cream:#FFF8F3;--brown:#3D1F0A;--brown-light:#C4845A;--brown-soft:#8A5530;--brown-pale:#F5E6DA;--yellow:#FFD166;--red:#FF4757;--green:#06D6A0;--card-shadow:0 4px 24px rgba(61,31,10,0.08); }
+    :root { --color-primary:#FF6B35;--color-secondary:#2EC4B6;--color-accent:#FFD166;--orange:var(--color-primary);--mint:var(--color-secondary);--yellow:var(--color-accent);--cream:#FFF8F3;--brown:#3D1F0A;--brown-light:#C4845A;--brown-soft:#8A5530;--brown-pale:#F5E6DA;--red:#FF4757;--green:#06D6A0;--card-shadow:0 4px 24px rgba(61,31,10,0.08); }
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'Nunito',sans-serif;background:var(--cream);color:var(--brown);}
     .app{max-width:900px;margin:0 auto;min-height:100vh;}
@@ -566,7 +568,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     .content{display:grid;grid-template-columns:1fr;gap:0;}
     @media(min-width:640px){.content{grid-template-columns:1fr 1fr;gap:20px;padding:24px;}.tabs{max-width:420px;}}
     @media(max-width:639px){.app{max-width:420px;}.header{border-radius:0;}}
-    .header{background:linear-gradient(160deg,#FF6B35 0%,#FF4500 60%,#E63900 100%);padding:20px 20px 0;position:relative;overflow:hidden;}
+    .header{background:linear-gradient(160deg,var(--color-primary) 0%,var(--color-primary) 100%);padding:20px 20px 0;position:relative;overflow:hidden;}
     .brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
     .brand-left{display:flex;align-items:center;gap:10px;}
     .brand-logo{width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
@@ -576,7 +578,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     .pet-card{display:flex;align-items:center;gap:14px;margin-bottom:20px;max-width:860px;margin-left:auto;margin-right:auto;}
     .brand{max-width:860px;margin-left:auto;margin-right:auto;}
     .conditions-row{max-width:860px;margin-left:auto;margin-right:auto;}
-    .pet-avatar{width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#FFD166,#FF8C5A);display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 6px 20px rgba(0,0,0,0.2),0 0 0 3px rgba(255,255,255,0.3);flex-shrink:0;}
+    .pet-avatar{width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,var(--color-accent),var(--color-primary));display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 6px 20px rgba(0,0,0,0.2),0 0 0 3px rgba(255,255,255,0.3);flex-shrink:0;}
     .pet-name{font-family:'Baloo 2',cursive;font-size:26px;font-weight:800;color:#fff;line-height:1;margin-bottom:3px;}
     .pet-breed{font-size:12px;color:rgba(255,255,255,0.8);font-style:italic;}
     .today-badge{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:14px;padding:8px 14px;text-align:center;flex-shrink:0;}
@@ -627,15 +629,27 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div className="brand-logo">🐾</div>
               <div className="brand-name">Firus<span>&</span>Michis</div>
             </div>
-            <button onClick={() => router.push("/marketplace")}
-              style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-              💊 Market
-            </button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => router.push("/marketplace")}
+                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                💊 Market
+              </button>
+              {allPetsData.length > 1 && (
+                <button onClick={() => router.push("/dashboard/overview")}
+                  style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  ⊞ General
+                </button>
+              )}
+              <button onClick={() => setShowThemeSelector(true)}
+                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                🎨
+              </button>
+            </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2 }}>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{user.email}</div>
                 <span style={{
-                  background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "#FFD166",
+                  background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "var(--color-accent)",
                   color: userPlan === "free" ? "rgba(255,255,255,0.45)" : "#3D1F0A",
                   fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10,
                   letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px",
@@ -679,7 +693,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   </button>
                 ) : (
                   <button onClick={() => setShowPetSwitcher(true)}
-                    style={{ background: "rgba(255,209,102,0.3)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "#FFD166", fontWeight: 700, cursor: "pointer" }}>
+                    style={{ background: "rgba(255,209,102,0.3)", border: "1px solid rgba(255,209,102,0.5)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "var(--color-accent)", fontWeight: 700, cursor: "pointer" }}>
                     ✦ PRO
                   </button>
                 )}
@@ -721,8 +735,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#3D1F0A", marginBottom: 16 }}>🐾 Mis mascotas</div>
               {allPetsData.map(p => (
                 <div key={p.id} onClick={() => switchPet(p.id)}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: p.id === activePetId ? "#FFF0EB" : "#fff", border: `1.5px solid ${p.id === activePetId ? "#FF6B35" : "#FFD9C8"}`, cursor: "pointer" }}>
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#FFD166", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: p.id === activePetId ? "#FFF0EB" : "#fff", border: `1.5px solid ${p.id === activePetId ? "var(--color-primary)" : "#FFD9C8"}`, cursor: "pointer" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
                     {p.photo_url
                       ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
                       : getPetAvatar(p.species, p.breed, p.photo_url)}
@@ -731,22 +745,22 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: "#C4845A" }}>{p.breed} · {calcAge(p.birth_date)}</div>
                   </div>
-                  {p.id === activePetId && <div style={{ fontSize: 12, color: "#FF6B35", fontWeight: 700 }}>✓ Activa</div>}
+                  {p.id === activePetId && <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 700 }}>✓ Activa</div>}
                 </div>
               ))}
               {(userPlan !== "free" || allPetsData.length < 3) ? (
                 <button onClick={() => { setShowPetSwitcher(false); window.location.href = "/nueva-mascota"; }}
-                  style={{ width: "100%", padding: 13, borderRadius: 13, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
+                  style={{ width: "100%", padding: 13, borderRadius: 13, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
                   + Agregar nueva mascota
                 </button>
               ) : (
                 <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, marginTop: 8, border: "1.5px solid #FFD0BC", textAlign: "center" }}>
-                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#FF6B35", marginBottom: 4 }}>✦ Función PRO</div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "var(--color-primary)", marginBottom: 4 }}>✦ Función PRO</div>
                   <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 10 }}>Agrega hasta 3 mascotas con el plan PRO. Próximamente disponible.</div>
                 </div>
               )}
               <button onClick={() => setShowPetSwitcher(false)}
-                style={{ width: "100%", padding: 11, borderRadius: 13, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
+                style={{ width: "100%", padding: 11, borderRadius: 13, background: "#fff", color: "var(--color-primary)", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
                 Cerrar
               </button>
             </div>
@@ -757,7 +771,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           <div style={{ position: "fixed", inset: 0, background: "rgba(255,248,243,0.9)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🐾</div>
-              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 700, color: "#FF6B35" }}>Cargando mascota...</div>
+              <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 700, color: "var(--color-primary)" }}>Cargando mascota...</div>
             </div>
           </div>
         )}
@@ -771,9 +785,9 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <div className="card-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>🐶 Datos básicos</span>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
-                    <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#2EC4B6", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
-                    <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "#FF6B35", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
+                    <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                    <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-secondary)", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
+                    <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
                     <button onClick={async () => {
                       if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
                       if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
@@ -845,7 +859,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     <div className="empty-state">
                       <div className="empty-icon">💉</div>
                       <p>Sin vacunas registradas</p>
-                      <button onClick={() => { setTab("historial"); setTimeout(() => { setHistForm(f => ({ ...f, type: "vaccine" })); setShowHistModal(true); }, 50); }} style={{ marginTop: 10, padding: "8px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Registrar vacuna</button>
+                      <button onClick={() => { setTab("historial"); setTimeout(() => { setHistForm(f => ({ ...f, type: "vaccine" })); setShowHistModal(true); }, 50); }} style={{ marginTop: 10, padding: "8px 16px", borderRadius: 10, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Registrar vacuna</button>
                     </div>
                   );
                   return vaccineEvents.map(v => {
@@ -873,7 +887,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
                 {[{ id: "todos", label: "🔀 Todos" }, { id: "tratamiento", label: "💊 Tratamiento" }, { id: "habituales", label: "📋 Habituales" }].map(v => (
                   <div key={v.id} onClick={() => setMedsView(v.id)}
-                    style={{ flex: 1, padding: "8px 6px", borderRadius: 12, border: `1.5px solid ${medsView === v.id ? "#FF6B35" : "#FFD9C8"}`, background: medsView === v.id ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 11, fontWeight: 700, color: medsView === v.id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    style={{ flex: 1, padding: "8px 6px", borderRadius: 12, border: `1.5px solid ${medsView === v.id ? "var(--color-primary)" : "#FFD9C8"}`, background: medsView === v.id ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 11, fontWeight: 700, color: medsView === v.id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                     {v.label}
                   </div>
                 ))}
@@ -920,17 +934,17 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                       )}
                       {activeMeds.length > 0 && (
                         <div style={{ marginBottom: 8 }}>
-                          {treatmentItems.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Medicamentos habituales</div>}
+                          {treatmentItems.length > 0 && <div style={{ fontSize: 10, fontWeight: 700, color: "var(--color-primary)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Medicamentos habituales</div>}
                           {activeMeds.map(med => (
                             <div key={med.id} style={{ background: "#fff", borderRadius: 16, padding: "12px 16px", marginBottom: 10, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
-                              <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "#FF6B35", borderRadius: "16px 0 0 16px" }} />
+                              <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "var(--color-primary)", borderRadius: "16px 0 0 16px" }} />
                               <div style={{ paddingLeft: 14, flex: 1 }}>
                                 <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
                                 {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
                                 {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
                                 {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
                                 <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                                  <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                                  <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "var(--color-primary)", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                                   <button onClick={() => setMedActive(med.id, false)} style={{ padding: "5px 12px", borderRadius: 8, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Inactivo</button>
                                 </div>
                               </div>
@@ -1059,10 +1073,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                                 style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: isExpanded ? 10 : 0, padding: "10px 14px", borderRadius: 12, background: isNow ? "#FFF0EB" : "#fff", border: `1.5px solid ${isNow ? "#FFD0BC" : "#FFD9C8"}`, cursor: "pointer" }}>
                                 <div style={{ fontSize: 18 }}>{momento.icon}</div>
                                 <div style={{ flex: 1 }}>
-                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: isNow ? "#FF6B35" : "#7A4522" }}>{momento.label}</div>
+                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: isNow ? "var(--color-primary)" : "#7A4522" }}>{momento.label}</div>
                                   <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range} · {items.length} medicamento{items.length !== 1 ? "s" : ""}</div>
                                 </div>
-                                {isNow && <div style={{ background: "#FF6B35", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>Ahora</div>}
+                                {isNow && <div style={{ background: "var(--color-primary)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>Ahora</div>}
                                 <div style={{ fontSize: 12, color: "#C4845A" }}>{isExpanded ? "▲" : "▼"}</div>
                               </div>
                               {isExpanded && items.map(ti => {
@@ -1077,7 +1091,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                                           const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
                                           setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"" });
                                           setEditingTreatmentItem(ti); setTiSaved(false);
-                                        }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                                        }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                                       </div>
                                       {ti.treatments?.diagnostico && <div style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>🩺 {ti.treatments.diagnostico}</div>}
                                       {(ti.treatments?.doctor || ti.treatments?.vet_clinic) && (
@@ -1091,7 +1105,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                                       {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
                                       {prog && (
                                         <div style={{ background: prog.daysLeft === 0 ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
-                                          <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "#FF6B35" }}>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "var(--color-primary)" }}>
                                             {prog.daysLeft === 0 ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
                                           </div>
                                         </div>
@@ -1159,14 +1173,14 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     <>
                       {activeMeds.map(med => (
                         <div key={med.id} style={{ background: "#fff", borderRadius: 18, padding: "14px 16px", marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
-                          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "#FF6B35", borderRadius: "18px 0 0 18px" }} />
+                          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "var(--color-primary)", borderRadius: "18px 0 0 18px" }} />
                           <div style={{ paddingLeft: 14, flex: 1 }}>
                             <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
                             {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
                             {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
                             {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
                             <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                              <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                              <button onClick={() => openMedModal(med)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FFF0EB", color: "var(--color-primary)", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                               <button onClick={() => setMedActive(med.id, false)} style={{ padding: "5px 12px", borderRadius: 8, background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Marcar inactivo</button>
                             </div>
                           </div>
@@ -1211,7 +1225,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   { value: "other", icon: "📝", label: "Otro" },
                 ].map(f => (
                   <div key={f.value} onClick={() => { setHistFilter(f.value); setHistExpanded(false); }}
-                    style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histFilter === f.value ? "#FF6B35" : "#FFD9C8"}`, background: histFilter === f.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: histFilter === f.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histFilter === f.value ? "var(--color-primary)" : "#FFD9C8"}`, background: histFilter === f.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: histFilter === f.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                     {f.icon} {f.label}
                   </div>
                 ))}
@@ -1239,7 +1253,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                         {olderEvents.length > 0 && (
                           <>
                             <button onClick={() => setHistExpanded(p => !p)}
-                              style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+                              style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "var(--color-primary)", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
                               {histExpanded ? "▲ Ocultar anteriores" : `▼ Ver anteriores (${olderEvents.length})`}
                             </button>
                             {histExpanded && olderGroups.map(group => (
@@ -1269,9 +1283,9 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           {tab === "actividad" && (
             <div className="fade-up">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#FF6B35" }}>Últimos movimientos</div>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "var(--color-primary)" }}>Últimos movimientos</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
+                  <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
                   <button onClick={() => setActivityFeed([])} style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>🗑️ Limpiar</button>
                 </div>
               </div>
@@ -1362,7 +1376,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
 
               {/* Cálculo dosis */}
               <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>🧮 Cálculo de unidades (opcional)</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--color-primary)", marginBottom: 8 }}>🧮 Cálculo de unidades (opcional)</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
                   <div>
                     {fLabel("mg por unidad")}
@@ -1377,7 +1391,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 </div>
                 {unitsPerDose !== null && (
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>
-                    = <span style={{ color: "#FF6B35" }}>{unitsPerDose} {medForm.unit}</span> por toma
+                    = <span style={{ color: "var(--color-primary)" }}>{unitsPerDose} {medForm.unit}</span> por toma
                     {stockDays !== null && <span style={{ color: "#C4845A", fontWeight: 400, fontSize: 11 }}> · La caja dura ~{stockDays} días</span>}
                   </div>
                 )}
@@ -1400,7 +1414,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, cursor: "pointer", fontSize: 13, color: "#7A4522", fontWeight: 600 }}>
                   <input type="checkbox" checked={medForm.in_ayunas}
                     onChange={e => setMedForm(f => ({ ...f, in_ayunas: e.target.checked }))}
-                    style={{ width: 16, height: 16, accentColor: "#FF6B35" }} />
+                    style={{ width: 16, height: 16, accentColor: "var(--color-primary)" }} />
                   Administrar en ayunas
                 </label>
               </div>
@@ -1414,7 +1428,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {UNITS.map(u => (
                       <button key={u} onClick={() => setMedForm(f => ({ ...f, unit: u }))}
-                        style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${medForm.unit === u ? "#FF6B35" : "#FFD9C8"}`, background: medForm.unit === u ? "#FFF0EB" : "#fff", color: medForm.unit === u ? "#FF6B35" : "#7A4522", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${medForm.unit === u ? "var(--color-primary)" : "#FFD9C8"}`, background: medForm.unit === u ? "#FFF0EB" : "#fff", color: medForm.unit === u ? "var(--color-primary)" : "#7A4522", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                         {u}
                       </button>
                     ))}
@@ -1434,7 +1448,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               </div>
 
               <button onClick={handleMedSave} disabled={medSaving || !medForm.name}
-                style={{ width: "100%", padding: 13, borderRadius: 13, background: medSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
+                style={{ width: "100%", padding: 13, borderRadius: 13, background: medSaved ? "var(--color-secondary)" : "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {medSaved ? "✓ Guardado" : medSaving ? "Guardando..." : editingMedId ? "✓ Actualizar" : "✓ Guardar medicamento"}
               </button>
             </div>
@@ -1458,7 +1472,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 2 }}>
                   {[{ value:"exam",icon:"🧪",label:"Examen"},{value:"illness",icon:"🤒",label:"Enfermedad"},{value:"surgery",icon:"🔪",label:"Cirugía"},{value:"procedure",icon:"⚕️",label:"Procedimiento"},{value:"vaccine",icon:"💉",label:"Vacuna"},{value:"other",icon:"📝",label:"Otro"}].map(t => (
                     <div key={t.value} onClick={() => setHistForm(f => ({ ...f, type: t.value }))}
-                      style={{ padding: "7px 13px", borderRadius: 20, border: `1.5px solid ${histForm.type === t.value ? "#FF6B35" : "#FFD9C8"}`, background: histForm.type === t.value ? "#FFF0EB" : "#fff", fontSize: 12, fontWeight: 700, color: histForm.type === t.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                      style={{ padding: "7px 13px", borderRadius: 20, border: `1.5px solid ${histForm.type === t.value ? "var(--color-primary)" : "#FFD9C8"}`, background: histForm.type === t.value ? "#FFF0EB" : "#fff", fontSize: 12, fontWeight: 700, color: histForm.type === t.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                       {t.icon} {t.label}
                     </div>
                   ))}
@@ -1485,7 +1499,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {(petData.species === "cat" ? VACCINES_CAT : petData.species === "other" ? VACCINES_OTHER : VACCINES_DOG).map(v => (
                         <div key={v} onClick={() => setHistForm(f => ({ ...f, vaccine_name: f.vaccine_name === v ? "" : v }))}
-                          style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histForm.vaccine_name === v ? "#2EC4B6" : "#FFD9C8"}`, background: histForm.vaccine_name === v ? "#E8FAF9" : "#fff", fontSize: 11, fontWeight: 700, color: histForm.vaccine_name === v ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
+                          style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${histForm.vaccine_name === v ? "var(--color-secondary)" : "#FFD9C8"}`, background: histForm.vaccine_name === v ? "#E8FAF9" : "#fff", fontSize: 11, fontWeight: 700, color: histForm.vaccine_name === v ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
                           {v}
                         </div>
                       ))}
@@ -1505,7 +1519,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                     <input type="date" style={{ ...inputS }}
                       value={histForm.vaccine_next_date}
                       onChange={e => setHistForm(f => ({ ...f, vaccine_next_date: e.target.value }))} />
-                    <div style={{ fontSize: 10, color: "#2EC4B6", fontWeight: 700, marginTop: 4 }}>✓ Auto-calculado: +1 año desde fecha de aplicación</div>
+                    <div style={{ fontSize: 10, color: "var(--color-secondary)", fontWeight: 700, marginTop: 4 }}>✓ Auto-calculado: +1 año desde fecha de aplicación</div>
                   </div>
                 </div>
               )}
@@ -1569,7 +1583,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                   <div style={{ display: "flex", gap: 8 }}>
                     {[{ value: "leve", label: "🟢 Leve" }, { value: "moderada", label: "🟡 Moderada" }, { value: "grave", label: "🔴 Grave" }].map(i => (
                       <div key={i.value} onClick={() => setHistForm(f => ({ ...f, intensity: f.intensity === i.value ? "" : i.value }))}
-                        style={{ flex: 1, padding: "8px 6px", borderRadius: 10, border: `1.5px solid ${histForm.intensity === i.value ? "#FF6B35" : "#FFD9C8"}`, background: histForm.intensity === i.value ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.intensity === i.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                        style={{ flex: 1, padding: "8px 6px", borderRadius: 10, border: `1.5px solid ${histForm.intensity === i.value ? "var(--color-primary)" : "#FFD9C8"}`, background: histForm.intensity === i.value ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.intensity === i.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                         {i.label}
                       </div>
                     ))}
@@ -1608,18 +1622,18 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Visibilidad</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <div onClick={() => setHistForm(f => ({ ...f, is_public: false }))}
-                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${!histForm.is_public ? "#FF6B35" : "#FFD9C8"}`, background: !histForm.is_public ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: !histForm.is_public ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${!histForm.is_public ? "var(--color-primary)" : "#FFD9C8"}`, background: !histForm.is_public ? "#FFF0EB" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: !histForm.is_public ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
                     🔒 Privado
                   </div>
                   <div onClick={() => setHistForm(f => ({ ...f, is_public: true }))}
-                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${histForm.is_public ? "#2EC4B6" : "#FFD9C8"}`, background: histForm.is_public ? "#E8FAF9" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.is_public ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
+                    style={{ flex: 1, padding: "8px", borderRadius: 10, border: `1.5px solid ${histForm.is_public ? "var(--color-secondary)" : "#FFD9C8"}`, background: histForm.is_public ? "#E8FAF9" : "#fff", textAlign: "center", fontSize: 12, fontWeight: 700, color: histForm.is_public ? "#0F6E56" : "#7A4522", cursor: "pointer" }}>
                     🌐 Público
                   </div>
                 </div>
               </div>
 
               <button onClick={handleHistSave}
-                style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
+                style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "var(--color-secondary)" : "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
               </button>
             </div>
@@ -1662,7 +1676,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 <input style={inputS} type="number" min="1" placeholder="ej: 30" value={tiForm.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); setTiForm(f => ({ ...f, duration_days: v > 0 ? v : "" })); }} />
               </div>
               <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
+                <div style={{ fontSize: 11, color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
                 <div style={{ marginBottom: 8 }}>
                   {fLabel("Fecha")}
                   <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
@@ -1698,7 +1712,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
                 </div>
               </div>
               <button onClick={saveTreatmentItem} disabled={tiSaving}
-                style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "#2EC4B6" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
+                style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "var(--color-secondary)" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {tiSaved ? "✓ Actualizado" : tiSaving ? "Guardando..." : "✓ Actualizar medicamento"}
               </button>
             </div>
@@ -1711,6 +1725,14 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
       {showNotifSettings && <NotificationSettings pet={petData} user={user} onClose={() => setShowNotifSettings(false)} />}
 
       {/* MODAL EDITAR MASCOTA */}
+      {showThemeSelector && (
+        <ThemeSelector
+          initialTheme={initialTheme}
+          initialCustomColor={initialCustomColor}
+          onClose={() => setShowThemeSelector(false)}
+        />
+      )}
+
       {editingPet && (
         <EditPetModal
           pet={petData}
