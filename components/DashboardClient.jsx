@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import WeightChart from "@/components/WeightChart";
 import PetPhotoUpload from "@/components/PetPhotoUpload";
@@ -62,6 +62,7 @@ const emptyMedForm = {
 
 export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
@@ -138,8 +139,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const petParam = params.get("pet");
+    const petParam = searchParams.get("pet");
     if (petParam) {
       const valid = allPetsData.find(p => p.id === petParam);
       if (valid && valid.id !== activePetId) { switchPet(valid.id); return; }
@@ -187,7 +187,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setTreatmentItems(treatRes.data || []);
     setActivityFeed([]);
     setActivePetId(newPetId);
-    router.replace(`/dashboard?pet=${newPetId}`, { scroll: false });
+    router.replace(`?pet=${newPetId}`, { scroll: false });
     setSwitchingPet(false);
   };
 

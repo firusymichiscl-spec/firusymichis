@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -73,15 +74,17 @@ export default async function Dashboard() {
   const userPlan = isActivePlan ? profile.plan : "free";
 
   return (
-    <DashboardClient
-      pet={firstPet}
-      allPets={pets}
-      medications={medications || []}
-      history={history || []}
-      vaccines={vaccines || []}
-      user={user}
-      lastWeight={lastWeight}
-      userPlan={userPlan}
-    />
+    <Suspense fallback={null}>
+      <DashboardClient
+        pet={firstPet}
+        allPets={pets}
+        medications={medications || []}
+        history={history || []}
+        vaccines={vaccines || []}
+        user={user}
+        lastWeight={lastWeight}
+        userPlan={userPlan}
+      />
+    </Suspense>
   );
 }
