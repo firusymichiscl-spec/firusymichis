@@ -27,10 +27,15 @@ export async function POST(req) {
     return NextResponse.json({ error: "Invalid theme" }, { status: 400 });
   }
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({ theme, theme_custom_color: theme === "custom" ? (customColor || null) : null })
-    .eq("id", user.id);
+  // profiles solo tiene política RLS de SELECT propia (a propósito, para que
+  // nadie pueda auto-asignarse plan/plan_expires_at) — un update/upsert directo
+  // con el cliente anon-key queda bloqueado en silencio por RLS. Se usa la RPC
+  // set_profile_theme (SECURITY DEFINER) que solo permite tocar esta columna.
+  // Ver supabase/migrations/20260722_profile_theme_rpc.sql
+  const { error } = await supabase.rpc("set_profile_theme", {
+    p_theme: theme,
+    p_theme_custom_color: theme === "custom" ? (customColor || null) : null,
+  });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

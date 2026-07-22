@@ -42,17 +42,21 @@ export default async function OverviewPage() {
   // Fetch medications, vaccines, treatments, weight for all pets in parallel
   const petIds = pets.map(p => p.id);
 
-  const [medsRes, vaccinesRes, treatmentsRes, weightsRes] = await Promise.all([
+  const [medsRes, vaccinesRes, treatmentsRes, weightsRes, tutorsRes, historyRes] = await Promise.all([
     supabase.from("medications").select("*").in("pet_id", petIds),
     supabase.from("vaccines").select("*").in("pet_id", petIds),
     supabase.from("treatments").select("*, treatment_items(*)").in("pet_id", petIds),
     supabase.from("weight_logs").select("pet_id, weight_kg, logged_date").in("pet_id", petIds).order("logged_date", { ascending: false }),
+    supabase.from("tutors").select("*").in("pet_id", petIds),
+    supabase.from("medical_history").select("*").in("pet_id", petIds).order("event_date", { ascending: false }).limit(50),
   ]);
 
   const medications = medsRes.data || [];
   const vaccines = vaccinesRes.data || [];
   const treatments = treatmentsRes.data || [];
   const weightLogs = weightsRes.data || [];
+  const tutors = tutorsRes.data || [];
+  const history = historyRes.data || [];
 
   // Latest weight per pet
   const latestWeights = {};
@@ -69,6 +73,8 @@ export default async function OverviewPage() {
       vaccines={vaccines}
       treatments={treatments}
       latestWeights={latestWeights}
+      tutors={tutors}
+      history={history}
     />
   );
 }
