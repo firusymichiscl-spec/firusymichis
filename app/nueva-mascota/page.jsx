@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+
+// Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
+// guardado siga siendo editable/seleccionable ahí después).
+const RELATIONSHIPS = ["Dueño", "Familiar", "Veterinario", "Vecino", "Otro"];
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -29,6 +33,32 @@ export default function NuevaMascota() {
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
 
+  // FIX 1.2: solo mostrar "Volver al dashboard" si ya tiene alguna mascota.
+  const [hasExistingPets, setHasExistingPets] = useState(false);
+  // FIX 2: tutor titular obligatorio + autocompletar desde otra mascota.
+  const [tutorForm, setTutorForm] = useState({ full_name: '', phone: '', relationship: '' });
+  const [tutorError, setTutorError] = useState('');
+  const [existingTutor, setExistingTutor] = useState(null); // { full_name, phone, relationship, petName }
+  const [useExistingTutor, setUseExistingTutor] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: existingPets } = await supabase.from('pets').select('id, name').eq('user_id', user.id);
+      if (!existingPets || existingPets.length === 0) return;
+      setHasExistingPets(true);
+
+      const petIds = existingPets.map(p => p.id);
+      const { data: tutors } = await supabase.from('tutors').select('*').in('pet_id', petIds).eq('type', 'primary').limit(1);
+      if (tutors && tutors.length > 0) {
+        const t = tutors[0];
+        const ownerPet = existingPets.find(p => p.id === t.pet_id);
+        setExistingTutor({ full_name: t.full_name, phone: t.phone, relationship: t.relationship, petName: ownerPet?.name || 'otra mascota' });
+      }
+    })();
+  }, []);
+
   const breeds = form.species === 'cat' ? BREEDS_CAT : form.species === 'other' ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
 
@@ -46,6 +76,22 @@ export default function NuevaMascota() {
     router.push('/login');
   };
 
+  // Mismo parseo que TutorTab.jsx: guarda solo los 8 dígitos locales en el form.
+  const parsePhoneDigits = (phone) => (phone || '').replace(/^\+?569?/, '').slice(0, 8);
+  const formatPhone = (digits) => digits ? `+569${digits.replace(/\D/g, '').slice(0, 8)}` : '';
+
+  const toggleUseExistingTutor = (checked) => {
+    setUseExistingTutor(checked);
+    if (checked && existingTutor) {
+      setTutorForm({
+        full_name: existingTutor.full_name || '',
+        phone: parsePhoneDigits(existingTutor.phone),
+        relationship: existingTutor.relationship || '',
+      });
+    }
+    setTutorError('');
+  };
+
   // Mismo criterio que el SQL de backfill: lowercase, sin tildes, solo alfanumérico.
   const slugify = (name) =>
     name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
@@ -61,6 +107,12 @@ export default function NuevaMascota() {
   };
 
   const savePet = async () => {
+    // FIX 2.2: no se puede guardar sin nombre y teléfono del tutor titular.
+    if (!tutorForm.full_name.trim() || tutorForm.phone.length !== 8) {
+      setTutorError(`Necesitamos un contacto responsable de ${form.name || 'tu mascota'}`);
+      return;
+    }
+    setTutorError('');
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
@@ -89,7 +141,15 @@ export default function NuevaMascota() {
           week_of_month: null,
         });
       }
-      setStep(4);
+      // FIX 2.3: tutor titular — misma estructura de columnas que TutorTab.jsx.
+      await supabase.from("tutors").insert({
+        pet_id: newPet.id,
+        type: "primary",
+        full_name: tutorForm.full_name,
+        phone: formatPhone(tutorForm.phone),
+        relationship: tutorForm.relationship || null,
+      });
+      setStep(5);
     }
     setLoading(false);
   };
@@ -128,7 +188,7 @@ export default function NuevaMascota() {
 
       {/* PROGRESS */}
       <div style={css.progress}>
-        {[1,2,3,4].map(i => <div key={i} style={css.dot(dotState(i))} />)}
+        {[1,2,3,4,5].map(i => <div key={i} style={css.dot(dotState(i))} />)}
       </div>
 
       <div style={css.layout}>
@@ -148,6 +208,12 @@ export default function NuevaMascota() {
                 ))}
               </div>
               <button style={css.btn} onClick={() => setStep(2)}>Continuar →</button>
+              {hasExistingPets && (
+                <button onClick={() => router.push('/dashboard')}
+                  style={{ display: 'block', width: '100%', textAlign: 'center', background: 'none', border: 'none', color: '#C4845A', fontFamily: "'Nunito', sans-serif", fontSize: 12, fontWeight: 700, cursor: 'pointer', marginTop: 12, textDecoration: 'underline' }}>
+                  ← Volver al dashboard
+                </button>
+              )}
             </div>
           )}
 
@@ -216,13 +282,62 @@ export default function NuevaMascota() {
                   );
                 })}
               </div>
-              <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>
+              <button style={css.btn} onClick={() => setStep(4)}>Continuar →</button>
               <button style={css.btnBack} onClick={() => setStep(2)}>← Volver</button>
             </div>
           )}
 
-          {/* PASO 4 */}
+          {/* PASO 4 — TUTOR TITULAR */}
           {step === 4 && (
+            <div style={css.card}>
+              <div style={css.title}>Tutor responsable 👤</div>
+              <div style={css.sub}>¿Quién es el contacto principal de {form.name || 'tu mascota'}?</div>
+
+              {existingTutor && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer', fontSize: 12.5, color: '#7A4522', fontWeight: 600, background: '#FFF0EB', border: '1.5px solid #FFD0BC', borderRadius: 12, padding: '10px 12px' }}>
+                  <input type="checkbox" checked={useExistingTutor}
+                    onChange={e => toggleUseExistingTutor(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: '#FF6B35', flexShrink: 0 }} />
+                  Usar mis datos de contacto de {existingTutor.petName}
+                </label>
+              )}
+
+              <label style={css.label}>Nombre completo *</label>
+              <input style={css.input} placeholder="Ej: María González" value={tutorForm.full_name}
+                onChange={e => { setTutorForm(f => ({ ...f, full_name: e.target.value })); setTutorError(''); }} />
+
+              <label style={css.label}>Teléfono *</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #FFD9C8', borderRadius: 11, background: '#FFFAF7', overflow: 'hidden' }}>
+                <span style={{ padding: '10px 10px 10px 13px', background: '#FFF0EB', color: '#FF6B35', fontFamily: "'Nunito', sans-serif", fontSize: 14, fontWeight: 700, borderRight: '1.5px solid #FFD9C8', flexShrink: 0 }}>
+                  +56 9
+                </span>
+                <input
+                  style={{ flex: 1, padding: '10px 13px', border: 'none', outline: 'none', fontFamily: "'Nunito', sans-serif", fontSize: 14, color: '#3D1F0A', background: 'transparent' }}
+                  type="tel" placeholder="12345678" maxLength={8}
+                  value={tutorForm.phone}
+                  onChange={e => { setTutorForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 8) })); setTutorError(''); }} />
+              </div>
+
+              <label style={css.label}>Relación con la mascota</label>
+              <select style={{ ...css.input, background: '#fff' }} value={tutorForm.relationship}
+                onChange={e => setTutorForm(f => ({ ...f, relationship: e.target.value }))}>
+                <option value="">Seleccionar...</option>
+                {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+
+              {tutorError && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#dc2626', borderRadius: 10, padding: '9px 12px', fontSize: 12, fontWeight: 700, marginTop: 12 }}>
+                  ⚠️ {tutorError}
+                </div>
+              )}
+
+              <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>
+              <button style={css.btnBack} onClick={() => setStep(3)}>← Volver</button>
+            </div>
+          )}
+
+          {/* PASO 5 */}
+          {step === 5 && (
             <div style={css.card}>
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 60, marginBottom: 10 }}>🎉</div>
@@ -248,6 +363,7 @@ export default function NuevaMascota() {
             ['Raza', form.breed],
             ['Nacimiento', form.birth_date ? new Date(form.birth_date).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : ''],
             ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
+            ['Tutor titular', tutorForm.full_name],
           ].filter(([, v]) => v).map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
               <span style={{ color: '#C4845A' }}>{k}</span>
