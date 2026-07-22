@@ -453,7 +453,7 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
               style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.35)", borderRadius: 12, padding: "8px 16px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
               ← Volver a todas
             </button>
-            <button onClick={() => router.push(`/dashboard?pet=${pet.id}`)}
+            <button onClick={() => router.push(`/dashboard?pet=${pet.slug || pet.id}`)}
               style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.4)", borderRadius: 12, padding: "10px 18px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
               Editar ficha completa →
             </button>

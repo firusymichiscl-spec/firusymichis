@@ -62,7 +62,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
+export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -73,9 +73,9 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   const [editingPet, setEditingPet] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
-  const [petData, setPetData] = useState(pet);
-  const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || pet.weight_kg);
-  const [activePetId, setActivePetId] = useState(pet.id);
+  const [petData, setPetData] = useState(initialPet);
+  const [currentWeight, setCurrentWeight] = useState(lastWeight?.weight_kg || initialPet.weight_kg);
+  const [activePetId, setActivePetId] = useState(initialPet.id);
   const [allPetsData, setAllPetsData] = useState(allPets || []);
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
   const [switchingPet, setSwitchingPet] = useState(false);
@@ -127,7 +127,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     const { data } = await supabase
       .from("treatment_items")
       .select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)")
-      .eq("pet_id", pet.id)
+      .eq("pet_id", petData.id)
       .eq("active", true)
       .order("created_at", { ascending: false });
     setTreatmentItems(data || []);
@@ -146,7 +146,8 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   useEffect(() => {
     const petParam = searchParams.get("pet");
     if (petParam) {
-      const valid = allPetsData.find(p => p.id === petParam);
+      // Acepta slug ("kiara") o UUID completo (retrocompatibilidad con URLs viejas).
+      const valid = allPetsData.find(p => p.id === petParam || p.slug === petParam);
       if (valid && valid.id !== activePetId) { switchPet(valid.id); return; }
       if (valid) return; // ya es la activa, no hay nada que hacer
     }
@@ -201,7 +202,9 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setTreatmentItems(treatRes.data || []);
     setActivityFeed([]);
     setActivePetId(newPetId);
-    router.replace(`?pet=${newPetId}`, { scroll: false });
+    // Slug legible en la URL si ya existe (columna slug agregada en migración);
+    // si la mascota aún no tiene slug, cae de vuelta al UUID.
+    router.replace(`?pet=${petRes.data?.slug || newPetId}`, { scroll: false });
     setSwitchingPet(false);
   };
 
@@ -346,7 +349,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   };
 
   const reloadMeds = async () => {
-    const { data } = await supabase.from('medications').select('*').eq('pet_id', pet.id).order('created_at', { ascending: false });
+    const { data } = await supabase.from('medications').select('*').eq('pet_id', petData.id).order('created_at', { ascending: false });
     setMeds(data || []);
   };
 
@@ -371,7 +374,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (!medForm.name) return;
     setMedSaving(true);
     const freq = medForm.frequency === '__custom__' ? medForm.frequency_custom : medForm.frequency;
-    const payload = { pet_id: pet.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true };
+    const payload = { pet_id: petData.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true };
     if (editingMedId) { await supabase.from('medications').update(payload).eq('id', editingMedId); }
     else { await supabase.from('medications').insert(payload); }
     setMedSaving(false); setMedSaved(true);
@@ -398,7 +401,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
   };
 
   const reloadHistory = async () => {
-    const { data } = await supabase.from("medical_history").select("*").eq("pet_id", pet.id).order("event_date", { ascending: false });
+    const { data } = await supabase.from("medical_history").select("*").eq("pet_id", petData.id).order("event_date", { ascending: false });
     setHistoryData(data || []);
   };
 
@@ -439,7 +442,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     setHistSaving(true);
     let photoUrl = histForm.photoPreview && !histForm.photo ? histForm.photoPreview : null;
     if (histForm.photo) {
-      const path = `events/${pet.id}/${Date.now()}.jpg`;
+      const path = `events/${petData.id}/${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage.from("pet-photos").upload(path, histForm.photo, { contentType: "image/jpeg" });
       if (!uploadError) {
         const { data: urlData } = supabase.storage.from("pet-photos").getPublicUrl(path);
@@ -450,7 +453,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (editingHistId) {
       await supabase.from("medical_history").update(payload).eq("id", editingHistId);
     } else {
-      await supabase.from("medical_history").insert({ pet_id: pet.id, ...payload });
+      await supabase.from("medical_history").insert({ pet_id: petData.id, ...payload });
     }
     setHistSaving(false); setHistSaved(true);
     await reloadHistory();
@@ -1774,7 +1777,7 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
           pet={petData}
           onClose={() => setEditingPet(false)}
           onSave={async () => {
-              const { data } = await supabase.from("pets").select("*").eq("id", pet.id).single();
+              const { data } = await supabase.from("pets").select("*").eq("id", petData.id).single();
               if (data) setPetData(data);
               setEditingPet(false);
             }}

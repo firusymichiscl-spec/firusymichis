@@ -46,10 +46,26 @@ export default function NuevaMascota() {
     router.push('/login');
   };
 
+  // Mismo criterio que el SQL de backfill: lowercase, sin tildes, solo alfanumérico.
+  const slugify = (name) =>
+    name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+
+  const generateUniqueSlug = async (userId, name) => {
+    const base = slugify(name) || 'mascota';
+    const { data: existing } = await supabase.from('pets').select('slug').eq('user_id', userId);
+    const taken = new Set((existing || []).map(p => p.slug).filter(Boolean));
+    if (!taken.has(base)) return base;
+    let i = 2;
+    while (taken.has(`${base}-${i}`)) i++;
+    return `${base}-${i}`;
+  };
+
   const savePet = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
+
+    const slug = await generateUniqueSlug(user.id, form.name);
 
     const { data: newPet, error } = await supabase.from('pets').insert({
       user_id: user.id,
@@ -60,6 +76,7 @@ export default function NuevaMascota() {
       birth_date: form.birth_date || null,
       weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions,
+      slug,
     }).select().single();
 
     if (!error && newPet) {
@@ -209,7 +226,11 @@ export default function NuevaMascota() {
             <div style={css.card}>
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
                 <div style={{ fontSize: 60, marginBottom: 10 }}>🎉</div>
-                <div style={css.title}>¡{form.name} ha sido registrada!</div>
+                <div style={css.title}>
+                  {form.sex === 'male' ? `¡${form.name} ha sido registrado!`
+                    : form.sex === 'female' ? `¡${form.name} ha sido registrada!`
+                    : `¡${form.name} ya es parte de Firus&Michis!`}
+                </div>
                 <div style={{ ...css.sub, margin: '8px 0 20px' }}>Ya tiene su ficha en Firus&Michis</div>
                 <button style={css.btn} onClick={() => router.push('/dashboard')}>Ver dashboard →</button>
               </div>
