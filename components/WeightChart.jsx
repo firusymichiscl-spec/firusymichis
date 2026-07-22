@@ -16,6 +16,14 @@ const currentWeekOfMonth = () => {
   return Math.ceil(today.getDate() / 7);
 };
 
+// pets.species solo guarda "dog" | "cat" | "other" en toda la app
+// (ver EditPetModal.jsx, app/nueva-mascota/page.jsx, DashboardClient.jsx).
+const SPECIES_EMOJI = {
+  dog: "🐕",
+  cat: "🐈",
+  other: "🐾",
+};
+
 export default function WeightChart({ pet, onWeightUpdate }) {
   const supabase = createClient();
   const [weekData, setWeekData] = useState([]);
@@ -156,8 +164,7 @@ export default function WeightChart({ pet, onWeightUpdate }) {
     gradFill.addColorStop(0, "rgba(255,107,53,0.15)");
     gradFill.addColorStop(1, "rgba(46,196,182,0.02)");
 
-    const species = pet.species || "dog";
-    const emoji = species === "cat" ? "🐱" : species === "other" ? "🐰" : "🐾";
+    const emoji = SPECIES_EMOJI[pet?.species?.toLowerCase()] ?? "🐾";
     const pawPlugin = {
       id: "pawPlugin",
       afterDatasetsDraw(chart) {
