@@ -14,6 +14,7 @@ import VetMapTab from "@/components/VetMapTab";
 import QRShareModal from "@/components/QRShareModal";
 import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
+import ArchivePetModal from "@/components/ArchivePetModal";
 import { compressImage } from "@/lib/images/compress";
 
 const TYPE_STYLES = {
@@ -79,6 +80,29 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [allPetsData, setAllPetsData] = useState(allPets || []);
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
   const [switchingPet, setSwitchingPet] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showBirthdayBanner, setShowBirthdayBanner] = useState(true);
+
+  const isArchived = !!petData.archived_at;
+
+  // Cumpleaños: comparar día/mes en hora local sin construir un Date desde el
+  // string ISO (evita el corrimiento de -1 día en timezones negativos como Chile).
+  const isBirthdayToday = (() => {
+    if (isArchived || !petData.birth_date) return false;
+    const [, bm, bd] = petData.birth_date.split("-").map(Number);
+    const today = new Date();
+    return bm === today.getMonth() + 1 && bd === today.getDate();
+  })();
+
+  const ageYears = (() => {
+    if (!petData.birth_date) return null;
+    const [by, bm, bd] = petData.birth_date.split("-").map(Number);
+    const today = new Date();
+    let years = today.getFullYear() - by;
+    const hadBirthdayThisYear = today.getMonth() + 1 > bm || (today.getMonth() + 1 === bm && today.getDate() >= bd);
+    if (!hadBirthdayThisYear) years--;
+    return years;
+  })();
 
   // Medications
   const [meds, setMeds] = useState(initialMeds);
@@ -151,9 +175,12 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       if (valid && valid.id !== activePetId) { switchPet(valid.id); return; }
       if (valid) return; // ya es la activa, no hay nada que hacer
     }
-    // Sin param válido: seleccionar la mascota más nueva (comportamiento original)
-    if (allPetsData.length > 1) {
-      const newest = allPetsData.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
+    // Sin param válido: seleccionar la mascota activa más nueva (las archivadas
+    // nunca son la vista por defecto, solo se llega a ellas desde el switcher).
+    const activeCandidates = allPetsData.filter(p => !p.archived_at);
+    const pool = activeCandidates.length > 0 ? activeCandidates : allPetsData;
+    if (pool.length > 1) {
+      const newest = pool.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
       if (newest.id !== activePetId) switchPet(newest.id);
     }
   }, []);
@@ -533,7 +560,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
         <div className="timeline-content" style={{ background: s.bg, border: `1px solid ${s.dot}22` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div className="timeline-type" style={{ color: s.text }}>{s.label} · {formatDate(item.event_date)}</div>
-            <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A", padding: "0 0 0 8px" }}>✏️</button>
+            {!isArchived && (
+              <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A", padding: "0 0 0 8px" }}>✏️</button>
+            )}
           </div>
           <div className="timeline-event">{item.event}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
@@ -694,7 +723,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           </div>
 
           <div className="pet-card">
-            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} avatarEmoji={getPetAvatar(petData.species, petData.breed, petData.photo_url)} />
+            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} avatarEmoji={getPetAvatar(petData.species, petData.breed, petData.photo_url)} readOnly={isArchived} />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
@@ -705,7 +734,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                     🐾 Cambiar ▾
                   </button>
                 )}
-                {(userPlan !== "free" || allPetsData.length < 3) ? (
+                {(userPlan !== "free" || allPetsData.filter(p => !p.archived_at).length < 3) ? (
                   <button onClick={() => window.location.href = "/nueva-mascota"}
                     style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 8, padding: "3px 8px", fontSize: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
                     + Mascota
@@ -752,7 +781,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
             <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, padding: 20 }}>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 17, fontWeight: 800, color: "#3D1F0A", marginBottom: 16 }}>🐾 Mis mascotas</div>
-              {allPetsData.map(p => (
+              {allPetsData.filter(p => !p.archived_at).map(p => (
                 <div key={p.id} onClick={() => switchPet(p.id)}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: p.id === activePetId ? "#FFF0EB" : "#fff", border: `1.5px solid ${p.id === activePetId ? "var(--color-primary)" : "#FFD9C8"}`, cursor: "pointer" }}>
                   <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
@@ -767,7 +796,28 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   {p.id === activePetId && <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 700 }}>✓ Activa</div>}
                 </div>
               ))}
-              {(userPlan !== "free" || allPetsData.length < 3) ? (
+
+              {allPetsData.some(p => p.archived_at) && (
+                <>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1, margin: "16px 0 10px" }}>🌈 En Memoria</div>
+                  {allPetsData.filter(p => p.archived_at).map(p => (
+                    <div key={p.id} onClick={() => switchPet(p.id)}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: "#F1F5F9", border: `1.5px solid ${p.id === activePetId ? "#94a3b8" : "#E2E8F0"}`, cursor: "pointer", filter: "saturate(0.6)" }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#CBD5E1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
+                        {p.photo_url
+                          ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                          : getPetAvatar(p.species, p.breed, p.photo_url)}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#475569" }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>{p.breed} · En Memoria</div>
+                      </div>
+                      {p.id === activePetId && <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>✓ Viendo</div>}
+                    </div>
+                  ))}
+                </>
+              )}
+              {(userPlan !== "free" || allPetsData.filter(p => !p.archived_at).length < 3) ? (
                 <button onClick={() => { setShowPetSwitcher(false); window.location.href = "/nueva-mascota"; }}
                   style={{ width: "100%", padding: 13, borderRadius: 13, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
                   + Agregar nueva mascota
@@ -815,6 +865,38 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           </div>
         )}
 
+        {isArchived && (
+          <div style={{ margin: "12px 14px 0", background: "linear-gradient(135deg,#e2e8f0,#cbd5e1)", border: "1.5px solid #94a3b8", borderRadius: 14, padding: "12px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>
+              🌈 {petData.name} está En Memoria · Solo lectura
+            </div>
+          </div>
+        )}
+
+        {isBirthdayToday && showBirthdayBanner && (
+          <div style={{ margin: "12px 14px 0", background: "linear-gradient(135deg,var(--color-primary),var(--color-secondary))", borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, boxShadow: "0 6px 20px rgba(0,0,0,0.15)" }}>
+            <div style={{ fontSize: 28, flexShrink: 0 }}>🎂🎉</div>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "#fff" }}>
+              ¡Feliz cumpleaños, {petData.name}! Hoy cumple {ageYears} año{ageYears !== 1 ? "s" : ""} 🎂
+            </div>
+            <button onClick={() => setShowBirthdayBanner(false)} style={{ flexShrink: 0, background: "rgba(255,255,255,0.25)", border: "none", borderRadius: 8, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", padding: "4px 8px", lineHeight: 1 }}>
+              ✕
+            </button>
+          </div>
+        )}
+
+        {showArchiveModal && (
+          <ArchivePetModal
+            pet={petData}
+            onClose={() => setShowArchiveModal(false)}
+            onArchived={(fields) => {
+              setPetData(p => ({ ...p, ...fields }));
+              setAllPetsData(list => list.map(p => p.id === petData.id ? { ...p, ...fields } : p));
+              setShowArchiveModal(false);
+            }}
+          />
+        )}
+
         <div className="content">
 
           {/* FICHA */}
@@ -823,43 +905,48 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               <div className="card">
                 <div className="card-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>🐶 Datos básicos</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
-                    <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-secondary)", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
-                    <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
-                    <button onClick={async () => {
-                      if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
-                      if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
-                      const pid = petData.id;
-                      const ok = await deleteChildTables(pid);
-                      if (!ok) { alert("Error al limpiar datos. Revisa la consola."); return; }
-                      setMeds([]);
-                      setHistoryData([]);
-                      setCurrentWeight(null);
-                      setTreatmentItems([]);
-                      alert("✓ Datos eliminados correctamente");
-                    }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
-                      🗑️ Limpiar datos
-                    </button>
-                    <button onClick={async () => {
-                      if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
-                      if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
-                      const pid = petData.id;
-                      const ok = await deleteChildTables(pid);
-                      if (!ok) { alert("Error al eliminar datos. La mascota no fue eliminada. Revisa la consola."); return; }
-                      const { error: petErr } = await supabase.from("pets").delete().eq("id", pid);
-                      if (petErr) { console.error("[deletePet] Error eliminando pets:", petErr.message); alert("Error al eliminar la mascota."); return; }
-                      const remaining = allPetsData.filter(p => p.id !== pid);
-                      if (remaining.length === 0) {
-                        window.location.href = "/nueva-mascota";
-                      } else {
-                        setAllPetsData(remaining);
-                        await switchPet(remaining[0].id);
-                      }
-                    }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
-                      🗑️ Eliminar mascota
-                    </button>
-                  </div>
+                  {!isArchived && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                      <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-secondary)", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
+                      <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
+                      <button onClick={async () => {
+                        if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
+                        if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
+                        const pid = petData.id;
+                        const ok = await deleteChildTables(pid);
+                        if (!ok) { alert("Error al limpiar datos. Revisa la consola."); return; }
+                        setMeds([]);
+                        setHistoryData([]);
+                        setCurrentWeight(null);
+                        setTreatmentItems([]);
+                        alert("✓ Datos eliminados correctamente");
+                      }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
+                        🗑️ Limpiar datos
+                      </button>
+                      <button onClick={async () => {
+                        if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
+                        if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
+                        const pid = petData.id;
+                        const ok = await deleteChildTables(pid);
+                        if (!ok) { alert("Error al eliminar datos. La mascota no fue eliminada. Revisa la consola."); return; }
+                        const { error: petErr } = await supabase.from("pets").delete().eq("id", pid);
+                        if (petErr) { console.error("[deletePet] Error eliminando pets:", petErr.message); alert("Error al eliminar la mascota."); return; }
+                        const remaining = allPetsData.filter(p => p.id !== pid);
+                        if (remaining.length === 0) {
+                          window.location.href = "/nueva-mascota";
+                        } else {
+                          setAllPetsData(remaining);
+                          await switchPet(remaining[0].id);
+                        }
+                      }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
+                        🗑️ Eliminar mascota
+                      </button>
+                      <button onClick={() => setShowArchiveModal(true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#F1F5F9", border: "1.5px solid #CBD5E1", fontSize: 11, color: "#475569", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
+                        🌈 Archivar (En Memoria)
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {[
                   ["Nombre", petData.name],
@@ -887,8 +974,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 )}
               </div>
 
-              <DietTimeline key={`diet-${activePetId}`} pet={petData} />
-              <WeightChart key={`weight-${activePetId}`} pet={petData} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} />
+              <DietTimeline key={`diet-${activePetId}`} pet={petData} isArchived={isArchived} />
+              <WeightChart key={`weight-${activePetId}`} pet={petData} onWeightUpdate={(newKg) => setCurrentWeight(newKg)} isArchived={isArchived} />
 
               <div className="card">
                 <div className="card-title">💉 Vacunas</div>
@@ -898,7 +985,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                     <div className="empty-state">
                       <div className="empty-icon">💉</div>
                       <p>Sin vacunas registradas</p>
-                      <button onClick={() => { setTab("historial"); setTimeout(() => { setHistForm(f => ({ ...f, type: "vaccine" })); setShowHistModal(true); }, 50); }} style={{ marginTop: 10, padding: "8px 16px", borderRadius: 10, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Registrar vacuna</button>
+                      {!isArchived && (
+                        <button onClick={() => { setTab("historial"); setTimeout(() => { setHistForm(f => ({ ...f, type: "vaccine" })); setShowHistModal(true); }, 50); }} style={{ marginTop: 10, padding: "8px 16px", borderRadius: 10, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Registrar vacuna</button>
+                      )}
                     </div>
                   );
                   return vaccineEvents.map(v => {
@@ -920,7 +1009,21 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           )}
 
           {/* MEDICAMENTOS */}
-          {tab === "medicamentos" && (
+          {tab === "medicamentos" && (isArchived ? (
+            <div className="fade-up">
+              <div className="card">
+                <div className="card-title">💊 Medicamentos (solo lectura)</div>
+                {meds.length === 0 ? (
+                  <div className="empty-state"><div className="empty-icon">💊</div><p>Sin medicamentos registrados</p></div>
+                ) : meds.map(med => (
+                  <div className="row" key={med.id}>
+                    <span className="row-label">{med.name}{!med.active ? " (inactivo)" : ""}</span>
+                    <span className="row-value">{[med.dose, med.frequency].filter(Boolean).join(" · ") || "—"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
             <div className="fade-up">
               {/* Selector de vista */}
               <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
@@ -1247,10 +1350,19 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </>
               )}
             </div>
-          )}
+          ))}
 
           {/* HISTORIAL MÉDICO */}
-          {tab === "historial" && (
+          {tab === "historial" && (isArchived ? (
+            <div className="fade-up">
+              <div className="card">
+                <div className="card-title">📅 Historial médico (solo lectura)</div>
+                {historyData.length === 0
+                  ? <div className="empty-state"><div className="empty-icon">📅</div><p>Sin historial médico registrado</p></div>
+                  : <div className="timeline">{historyData.map(item => renderTimelineItem(item))}</div>}
+              </div>
+            </div>
+          ) : (
             <div className="fade-up">
               {/* Pills de filtro */}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
@@ -1310,13 +1422,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 );
               })()}
             </div>
-          )}
+          ))}
 
           {/* TUTOR */}
-          {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} />}
+          {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} isArchived={isArchived} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onTreatmentDeleted={() => loadTreatmentItems()} />}
+          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} isArchived={isArchived} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onTreatmentDeleted={() => loadTreatmentItems()} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (

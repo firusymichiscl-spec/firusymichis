@@ -29,6 +29,15 @@ function daysUntil(dateStr) {
   return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
 }
 
+// Compara día/mes en hora local sin construir un Date desde el string ISO
+// (evita el corrimiento de -1 día en timezones negativos, igual que DashboardClient.jsx).
+function isBirthdayToday(birthDate) {
+  if (!birthDate) return false;
+  const [, bm, bd] = birthDate.split("-").map(Number);
+  const today = new Date();
+  return bm === today.getMonth() + 1 && bd === today.getDate();
+}
+
 function formatDate(d) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
@@ -91,7 +100,7 @@ const css = `
   @media(min-width:1024px){.ov-mobile{display:none;}}
 `;
 
-export default function OverviewClient({ pets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history }) {
+export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history }) {
   const router = useRouter();
   const [selectedPet, setSelectedPet] = useState(null);
 
@@ -157,7 +166,7 @@ export default function OverviewClient({ pets, user, userPlan, medications, vacc
         <button key={p.id} className={`ov-sidebar-btn${selectedPet?.id === p.id ? " active" : ""}`}
           onClick={() => setSelectedPet(p)}
           style={{ borderRight: selectedPet?.id === p.id ? `3px solid ${PET_ACCENT_COLORS[i % PET_ACCENT_COLORS.length]}` : undefined }}>
-          <span>{getPetAvatar(p.species)}</span> {p.name}
+          <span>{getPetAvatar(p.species)}</span> {p.name}{isBirthdayToday(p.birth_date) && " 🎂"}
         </button>
       ))}
       <div className="ov-sidebar-section">Acciones</div>
@@ -208,7 +217,9 @@ export default function OverviewClient({ pets, user, userPlan, medications, vacc
                     : getPetAvatar(p.species)}
                 </div>
                 <div>
-                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{p.name}</div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 22, fontWeight: 800, color: "#1e293b" }}>
+                    {p.name}{isBirthdayToday(p.birth_date) && <span title="¡Cumpleaños hoy!"> 🎂</span>}
+                  </div>
                   <div style={{ fontSize: 13, color: "#64748B" }}>{p.breed} · {calcAge(p.birth_date)}{w ? ` · ${w.weight_kg} kg` : ""}</div>
                 </div>
               </div>
@@ -366,6 +377,31 @@ export default function OverviewClient({ pets, user, userPlan, medications, vacc
           );
         })}
       </div>
+
+      {/* En Memoria */}
+      {archivedPets?.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="ov-section-title" style={{ color: "#64748B" }}>🌈 En Memoria</div>
+          <div className="ov-pet-grid">
+            {archivedPets.map(p => (
+              <div key={p.id} className="ov-pet-card" style={{ borderTopColor: "#94A3B8", filter: "saturate(0.55) sepia(0.15)", background: "#F8FAFC" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+                  <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#CBD5E1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0, overflow: "hidden" }}>
+                    {p.photo_url
+                      ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                      : getPetAvatar(p.species)}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#475569" }}>{p.name}</div>
+                    <div style={{ fontSize: 13, color: "#94A3B8" }}>{p.breed} · {calcAge(p.birth_date)}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "#94A3B8" }}>En Memoria desde {formatDate(p.archived_at)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 

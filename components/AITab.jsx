@@ -33,7 +33,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-export default function AITab({ pet, medications, history, onTreatmentSaved, onTreatmentDeleted }) {
+export default function AITab({ pet, medications, history, isArchived, onTreatmentSaved, onTreatmentDeleted }) {
   const supabase = createClient();
   const [activeSection, setActiveSection] = useState(null);
 
@@ -314,6 +314,19 @@ export default function AITab({ pet, medications, history, onTreatmentSaved, onT
   const inputS = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#fff", fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" };
   const card = { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" };
   const disclaimer = <div style={{ background: "#fef2f2", borderRadius: 10, padding: "10px 12px", marginTop: 10, border: "1px solid #fecaca" }}><div style={{ fontSize: 11, color: "#dc2626", fontWeight: 700 }}>⚠️ Aviso importante</div><div style={{ fontSize: 11, color: "#7A4522", marginTop: 2 }}>Este análisis es orientativo y no reemplaza la consulta veterinaria. Ante cualquier duda, consulta a un profesional.</div></div>;
+
+  if (isArchived) return (
+    <div className="fade-up">
+      <div style={card}>
+        <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🌈</div>
+          <div style={{ fontSize: 13, color: "#7A4522", lineHeight: 1.6 }}>
+            El asistente IA no está disponible para mascotas En Memoria — es una herramienta para crear tratamientos y medicamentos nuevos.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   if (!activeSection) return (
     <div className="fade-up">

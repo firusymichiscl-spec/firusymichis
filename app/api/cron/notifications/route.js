@@ -20,13 +20,14 @@ export async function GET(req) {
 
   const { data: prefs } = await supabase
     .from("notification_preferences")
-    .select("*, pets(id, name, species, conditions)")
+    .select("*, pets(id, name, species, conditions, archived_at)")
     .eq("enabled", true);
 
   for (const pref of (prefs || [])) {
     if (!pref.email || !pref.pet_id) { results.skipped++; continue; }
     const pet = pref.pets;
     if (!pet) { results.skipped++; continue; }
+    if (pet.archived_at) { results.skipped++; continue; } // En Memoria: sin alertas
 
     // ── 1. MEDICAMENTOS HABITUALES ─────────────────────────────────
     if (pref.notify_medication_habitual) {

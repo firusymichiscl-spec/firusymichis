@@ -35,7 +35,10 @@ export default async function Dashboard() {
 
   if (!pets || pets.length === 0) redirect("/nueva-mascota");
 
-  const firstPet = pets[0];
+  // Preferir una mascota activa como vista por defecto — las archivadas (En
+  // Memoria) solo se muestran si el usuario no tiene ninguna activa.
+  const activePets = pets.filter(p => !p.archived_at);
+  const firstPet = activePets[0] || pets[0];
 
   const { data: medications } = await supabase
     .from("medications")

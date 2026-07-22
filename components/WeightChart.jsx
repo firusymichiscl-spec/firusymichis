@@ -24,7 +24,7 @@ const SPECIES_EMOJI = {
   other: "🐾",
 };
 
-export default function WeightChart({ pet, onWeightUpdate }) {
+export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   const supabase = createClient();
   const [weekData, setWeekData] = useState([]);
   const [yearlyAvgs, setYearlyAvgs] = useState([]);
@@ -333,9 +333,11 @@ export default function WeightChart({ pet, onWeightUpdate }) {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <div style={css.title}>⚖️ Evolución de peso</div>
-            <button onClick={() => setShowHistoryModal(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>
-              📈 Historial
-            </button>
+            {!isArchived && (
+              <button onClick={() => setShowHistoryModal(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>
+                📈 Historial
+              </button>
+            )}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -357,7 +359,7 @@ export default function WeightChart({ pet, onWeightUpdate }) {
       {/* SLOTS SEMANAS */}
       <div style={{ borderTop: "1px solid #FFF0EB", paddingTop: 14, marginTop: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
-          {monthLabel} — toca para editar
+          {monthLabel} — {isArchived ? "solo lectura" : "toca para editar"}
         </div>
         <div style={css.slots}>
           {weekData.map((w) => {
@@ -367,8 +369,8 @@ export default function WeightChart({ pet, onWeightUpdate }) {
             const type = isFuture ? "disabled" : w.kg !== null ? (isCurrent ? "active" : "filled") : "empty";
             return (
               <div key={wk} style={css.slot(type)}
-                onClick={() => !isFuture && openEdit(wk, w.kg, w.id)}>
-                {!isFuture && w.kg !== null && w.id !== null && (
+                onClick={() => !isFuture && !isArchived && openEdit(wk, w.kg, w.id)}>
+                {!isArchived && !isFuture && w.kg !== null && w.id !== null && (
                   <>
                     <div style={{ position: "absolute", top: 3, right: 4, fontSize: 8, color: "#C4845A" }}>✏️</div>
                     <div

@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 
-export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji }) {
+export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji, readOnly }) {
   const supabase = createClient();
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(pet.photo_url || null);
@@ -182,41 +182,53 @@ export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji }) {
       )}
 
       {/* AVATAR */}
-      <label style={{ cursor: "pointer", position: "relative", display: "block", width: "fit-content" }}>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-        <div style={{
-          width: 84, height: 84,
-          borderRadius: "50%",
-          background: preview ? "transparent" : "linear-gradient(135deg, #FFD166, #FF8C5A)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 38,
-          boxShadow: "0 6px 20px rgba(0,0,0,0.2), 0 0 0 3px rgba(255,255,255,0.3)",
-          overflow: "hidden",
-          position: "relative",
-          flexShrink: 0,
-        }}>
-          {preview ? (
-            <img src={preview} alt={pet.name}
-              style={{ 
-                width: "100%", 
-                height: "100%", 
-                objectFit: "cover",
-                borderRadius: "50%",
-                display: "block",
-              }} />
-            ) : (
-            <span>{speciesIcon}</span>
-              )}
+      {(() => {
+        const avatar = (
           <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0,
-            background: "rgba(0,0,0,0.4)",
+            width: 84, height: 84,
+            borderRadius: "50%",
+            background: preview ? "transparent" : "linear-gradient(135deg, #FFD166, #FF8C5A)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "5px 0", fontSize: 13,
+            fontSize: 38,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.2), 0 0 0 3px rgba(255,255,255,0.3)",
+            overflow: "hidden",
+            position: "relative",
+            flexShrink: 0,
           }}>
-            {uploading ? "⏳" : "📷"}
+            {preview ? (
+              <img src={preview} alt={pet.name}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  borderRadius: "50%",
+                  display: "block",
+                }} />
+              ) : (
+              <span>{speciesIcon}</span>
+                )}
+            {!readOnly && (
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                background: "rgba(0,0,0,0.4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                padding: "5px 0", fontSize: 13,
+              }}>
+                {uploading ? "⏳" : "📷"}
+              </div>
+            )}
           </div>
-        </div>
-      </label>
+        );
+
+        if (readOnly) return avatar;
+
+        return (
+          <label style={{ cursor: "pointer", position: "relative", display: "block", width: "fit-content" }}>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+            {avatar}
+          </label>
+        );
+      })()}
     </>
   );
 }

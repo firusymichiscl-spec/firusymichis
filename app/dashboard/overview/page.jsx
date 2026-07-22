@@ -29,6 +29,9 @@ export default async function OverviewPage() {
 
   if (!pets || pets.length === 0) redirect("/nueva-mascota");
 
+  const activePets = pets.filter(p => !p.archived_at);
+  const archivedPets = pets.filter(p => p.archived_at);
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("plan, plan_expires_at")
@@ -39,8 +42,9 @@ export default async function OverviewPage() {
     (!profile.plan_expires_at || new Date(profile.plan_expires_at) > new Date());
   const userPlan = isActivePlan ? profile.plan : "free";
 
-  // Fetch medications, vaccines, treatments, weight for all pets in parallel
-  const petIds = pets.map(p => p.id);
+  // Fetch medications, vaccines, treatments, weight solo para mascotas activas
+  // — las archivadas (En Memoria) no generan alertas ni stats agregadas.
+  const petIds = activePets.map(p => p.id);
 
   const [medsRes, vaccinesRes, treatmentsRes, weightsRes, tutorsRes, historyRes] = await Promise.all([
     supabase.from("medications").select("*").in("pet_id", petIds),
@@ -66,7 +70,8 @@ export default async function OverviewPage() {
 
   return (
     <OverviewClient
-      pets={pets}
+      pets={activePets}
+      archivedPets={archivedPets}
       user={user}
       userPlan={userPlan}
       medications={medications}

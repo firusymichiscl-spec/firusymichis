@@ -33,7 +33,7 @@ const fieldLabel = (text) => (
   <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{text}</div>
 );
 
-export default function TutorTab({ pet }) {
+export default function TutorTab({ pet, isArchived }) {
   const supabase = createClient();
   const [primary, setPrimary] = useState(null);
   const [secondary, setSecondary] = useState(null);
@@ -222,7 +222,7 @@ export default function TutorTab({ pet }) {
           <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: 1 }}>
             {icon} Tutor {label}
           </div>
-          {tutor && (
+          {tutor && !isArchived && (
             <button onClick={() => openEdit(type)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" }}>
               ✏️ Editar
             </button>
@@ -255,9 +255,11 @@ export default function TutorTab({ pet }) {
           <div style={{ textAlign: "center", padding: "16px 0" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>{icon}</div>
             <div style={{ fontSize: 13, color: "#C4845A", marginBottom: 14 }}>Sin tutor {label.toLowerCase()} registrado</div>
-            <button onClick={() => openEdit(type)} style={{ padding: "10px 24px", borderRadius: 12, background: color, color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-              + Agregar tutor {label.toLowerCase()}
-            </button>
+            {!isArchived && (
+              <button onClick={() => openEdit(type)} style={{ padding: "10px 24px", borderRadius: 12, background: color, color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                + Agregar tutor {label.toLowerCase()}
+              </button>
+            )}
           </div>
         )}
       </div>

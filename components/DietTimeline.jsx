@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import DietHistoryModal from "@/components/DietHistoryModal";
 
-export default function DietTimeline({ pet }) {
+export default function DietTimeline({ pet, isArchived }) {
   const supabase = createClient();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +65,7 @@ export default function DietTimeline({ pet }) {
     <div style={css.card}>
       <div style={css.header}>
         <div style={css.title}>🍽️ Alimentación</div>
-        <button style={css.histBtn} onClick={() => setShowModal(true)}>📋 Historial</button>
+        {!isArchived && <button style={css.histBtn} onClick={() => setShowModal(true)}>📋 Historial</button>}
       </div>
 
       {loading ? (
@@ -74,7 +74,7 @@ export default function DietTimeline({ pet }) {
         <div style={{ textAlign: "center", padding: 24, color: "#C4845A", fontSize: 13 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🍽️</div>
           <div>Sin registros de alimentación</div>
-          <button style={css.addBtn} onClick={() => setShowModal(true)}>+ Agregar alimento</button>
+          {!isArchived && <button style={css.addBtn} onClick={() => setShowModal(true)}>+ Agregar alimento</button>}
         </div>
       ) : (
         <>
@@ -108,11 +108,11 @@ export default function DietTimeline({ pet }) {
               {expanded ? "▲ Ocultar historial" : `▼ Ver historial anterior (${records.length - 1})`}
             </button>
           )}
-          <button style={css.addBtn} onClick={() => setShowModal(true)}>+ Agregar período</button>
+          {!isArchived && <button style={css.addBtn} onClick={() => setShowModal(true)}>+ Agregar período</button>}
         </>
       )}
 
-      {showModal && (
+      {showModal && !isArchived && (
         <DietHistoryModal
           pet={pet}
           onClose={() => { setShowModal(false); loadRecords(); }}
