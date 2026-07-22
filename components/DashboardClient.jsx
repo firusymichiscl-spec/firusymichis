@@ -13,6 +13,7 @@ import AITab from "@/components/AITab";
 import VetMapTab from "@/components/VetMapTab";
 import QRShareModal from "@/components/QRShareModal";
 import NotificationSettings from "@/components/NotificationSettings";
+import Paywall from "@/components/Paywall";
 import { compressImage } from "@/lib/images/compress";
 
 const TYPE_STYLES = {
@@ -61,11 +62,13 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor }) {
+export default function DashboardClient({ pet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [showBanner, setShowBanner] = useState(true);
+  const [showActivatedToast, setShowActivatedToast] = useState(false);
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -151,6 +154,15 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     if (allPetsData.length > 1) {
       const newest = allPetsData.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
       if (newest.id !== activePetId) switchPet(newest.id);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get("activated") === "true") {
+      setShowActivatedToast(true);
+      router.replace("/dashboard", { scroll: false });
+      const t = setTimeout(() => setShowActivatedToast(false), 4000);
+      return () => clearTimeout(t);
     }
   }, []);
 
@@ -619,6 +631,10 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
     @keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
   `;
 
+  if (trialExpired) {
+    return <Paywall lastPetSnapshot={lastPetSnapshot} />;
+  }
+
   return (
     <>
       <style>{css}</style>
@@ -773,6 +789,26 @@ export default function DashboardClient({ pet, allPets, medications: initialMeds
               <div style={{ fontSize: 48, marginBottom: 12 }}>🐾</div>
               <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 700, color: "var(--color-primary)" }}>Cargando mascota...</div>
             </div>
+          </div>
+        )}
+
+        {showActivatedToast && (
+          <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 1500, background: "#059669", color: "#fff", padding: "12px 22px", borderRadius: 14, fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, boxShadow: "0 8px 24px rgba(5,150,105,0.35)" }}>
+            ✓ ¡Plan activado! Bienvenido a {userPlan.toUpperCase()}
+          </div>
+        )}
+
+        {showTrialBanner && showBanner && (
+          <div style={{ margin: "12px 14px 0", background: "#FFF9E6", border: "1.5px solid #FFD166", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#7A5A00" }}>
+              ⏳ Tu prueba PRO vence en {diasRestantes} día{diasRestantes !== 1 ? "s" : ""}. Activa tu plan para no perder el acceso.
+            </div>
+            <button onClick={() => router.push("/pago")} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 10, background: "#FFD166", border: "none", color: "#3D1F0A", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              Activar plan →
+            </button>
+            <button onClick={() => setShowBanner(false)} style={{ flexShrink: 0, background: "none", border: "none", color: "#7A5A00", fontSize: 16, cursor: "pointer", lineHeight: 1 }}>
+              ✕
+            </button>
           </div>
         )}
 

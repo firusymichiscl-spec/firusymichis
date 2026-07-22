@@ -82,6 +82,48 @@ export default async function Dashboard() {
   const userTheme = profile?.theme || "clasico";
   const userThemeCustomColor = profile?.theme_custom_color || null;
 
+  // Banner de aviso: últimos 10 días de un trial PRO (plan_expires_at presente,
+  // no un plan pagado permanente que tiene plan_expires_at = null).
+  const showTrialBanner =
+    diasRestantes !== null && diasRestantes <= 10 && diasRestantes > 0 &&
+    profile?.plan === "pro" && !!profile?.plan_expires_at;
+
+  // Trial vencido: plan pro con fecha de expiración ya pasada.
+  const trialExpired =
+    profile?.plan === "pro" && profile?.plan_expires_at !== null && profile?.plan_expires_at !== undefined &&
+    new Date(profile.plan_expires_at) < new Date();
+
+  let lastPetSnapshot = null;
+  if (trialExpired) {
+    const newestPet = pets[pets.length - 1];
+
+    const { data: snapshotMeds } = await supabase
+      .from("medications")
+      .select("id, name, dose, frequency, stock, unit")
+      .eq("pet_id", newestPet.id)
+      .eq("active", true)
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    const { data: snapshotWeight } = await supabase
+      .from("weight_logs")
+      .select("weight_kg, logged_date")
+      .eq("pet_id", newestPet.id)
+      .order("logged_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    lastPetSnapshot = {
+      name: newestPet.name,
+      breed: newestPet.breed,
+      species: newestPet.species,
+      birth_date: newestPet.birth_date,
+      photo_url: newestPet.photo_url,
+      weight_kg: snapshotWeight?.weight_kg || newestPet.weight_kg || null,
+      medications: snapshotMeds || [],
+    };
+  }
+
   return (
     <ThemeProvider theme={userTheme} customColor={userThemeCustomColor}>
       <Suspense fallback={null}>
@@ -97,6 +139,9 @@ export default async function Dashboard() {
           diasRestantes={diasRestantes}
           initialTheme={userTheme}
           initialCustomColor={userThemeCustomColor}
+          showTrialBanner={showTrialBanner}
+          trialExpired={trialExpired}
+          lastPetSnapshot={lastPetSnapshot}
         />
       </Suspense>
     </ThemeProvider>
