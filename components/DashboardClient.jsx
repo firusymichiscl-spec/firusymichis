@@ -1553,19 +1553,22 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                       onChange={e => { setHistForm(f => ({ ...f, vaccine_name: e.target.value })); setHistErrors(p => ({ ...p, vaccine_name: false })); }} />
                     {histErrors.vaccine_name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ Selecciona o escribe el nombre de la vacuna</div>}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Próxima dosis</div>
-                    <input type="date" style={{ ...inputS }}
-                      value={histForm.vaccine_next_date}
-                      onChange={e => setHistForm(f => ({ ...f, vaccine_next_date: e.target.value }))} />
-                    <div style={{ fontSize: 10, color: "var(--color-secondary)", fontWeight: 700, marginTop: 4 }}>✓ Auto-calculado: +1 año desde fecha de aplicación</div>
-                  </div>
+                  {histForm.vaccine_next_date && (
+                    <div style={{ background: "#E8FAF9", borderRadius: 10, padding: "9px 12px" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#0F6E56" }}>
+                        💉 Próxima dosis estimada: {formatDate(histForm.vaccine_next_date)}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#0F6E56", marginTop: 2 }}>
+                        (referencial — confirma con tu veterinario)
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Fecha */}
               <div style={{ marginBottom: 12 }}>
-                {fLabel("Fecha *")}
+                {fLabel(histForm.type === "vaccine" ? "Fecha en que se aplicó *" : "Fecha *")}
                 <input type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
                   max={new Date().toISOString().split("T")[0]}
                   value={histForm.event_date}
@@ -1609,11 +1612,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   value={histForm.notes} onChange={e => setHistForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
 
-              {/* Hora del evento */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Hora del evento</div>
-                <input type="time" style={{ ...inputS }} value={histForm.event_time} onChange={e => setHistForm(f => ({ ...f, event_time: e.target.value }))} />
-              </div>
+              {/* Hora del evento — no aplica a vacunas */}
+              {histForm.type !== "vaccine" && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Hora del evento</div>
+                  <input type="time" style={{ ...inputS }} value={histForm.event_time} onChange={e => setHistForm(f => ({ ...f, event_time: e.target.value }))} />
+                </div>
+              )}
 
               {/* Intensidad */}
               {(histForm.type === "illness" || histForm.type === "other") && (
@@ -1630,11 +1635,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </div>
               )}
 
-              {/* Duración */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Duración (minutos)</div>
-                <input style={inputS} type="number" min="1" placeholder="ej: 30" value={histForm.duration_minutes} onChange={e => setHistForm(f => ({ ...f, duration_minutes: e.target.value }))} />
-              </div>
+              {/* Duración — no aplica a vacunas */}
+              {histForm.type !== "vaccine" && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Duración (minutos)</div>
+                  <input style={inputS} type="number" min="1" placeholder="ej: 30" value={histForm.duration_minutes} onChange={e => setHistForm(f => ({ ...f, duration_minutes: e.target.value }))} />
+                </div>
+              )}
 
               {/* Foto */}
               <div style={{ marginBottom: 12 }}>
