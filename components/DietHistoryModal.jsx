@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 const FOOD_OPTIONS = [
   "Royal Canin", "Hill's", "Purina Pro Plan", "Eukanuba",
@@ -71,8 +72,10 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     };
     if (editingId) {
       await supabase.from("diet_logs").update(payload).eq("id", editingId);
+      await logActivity(supabase, pet.id, "Editó dieta", foodName);
     } else {
       await supabase.from("diet_logs").insert(payload);
+      await logActivity(supabase, pet.id, "Agregó dieta", foodName);
     }
     setLoading(false);
     setSaved(true);
@@ -82,7 +85,9 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
 
   const handleDelete = async (id) => {
     if (!confirm("¿Eliminar este registro de alimentación?")) return;
+    const record = records.find(r => r.id === id);
     await supabase.from("diet_logs").delete().eq("id", id);
+    await logActivity(supabase, pet.id, "Eliminó dieta", record?.food_name);
     await loadRecords();
     onSaved?.();
   };

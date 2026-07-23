@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 const EXPIRY_OPTIONS = [
   { label: "Sin expiración", value: null },
@@ -57,11 +58,13 @@ export default function QRShareModal({ pet, onClose }) {
     }).select().single();
     setShare(data);
     setSaving(false);
+    await logActivity(supabase, pet.id, "Generó enlace público");
   };
 
   const revokeShare = async () => {
     if (!confirm("¿Revocar el acceso? El QR dejará de funcionar.")) return;
     await supabase.from("pet_shares").update({ active: false }).eq("id", share.id);
+    await logActivity(supabase, pet.id, "Desactivó enlace público");
     setShare(null);
   };
 

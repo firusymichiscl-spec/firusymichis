@@ -3,6 +3,7 @@
 import WeightHistoryModal from "@/components/WeightHistoryModal";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip } from "chart.js";
 
 const weeksInMonth = (year, month) => {
@@ -287,10 +288,12 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
       await supabase.from("weight_logs").update({
         weight_kg: val, week_of_month: editingWeek, logged_date: loggedDate,
       }).eq("id", editingId);
+      await logActivity(supabase, pet.id, "Editó peso", `${val} kg`);
     } else {
       await supabase.from("weight_logs").insert({
         pet_id: pet.id, weight_kg: val, week_of_month: editingWeek, logged_date: loggedDate,
       });
+      await logActivity(supabase, pet.id, "Registró peso", `${val} kg`);
     }
     setNewWeight(""); setShowInput(false); setEditingWeek(null); setEditingId(null);
     onWeightUpdate?.(val);
@@ -301,6 +304,7 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   const deleteWeight = async (id) => {
     if (!id) return;
     await supabase.from("weight_logs").delete().eq("id", id);
+    await logActivity(supabase, pet.id, "Eliminó registro de peso");
     await loadAll();
   };
 

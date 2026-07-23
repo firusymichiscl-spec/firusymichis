@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { compressImage } from "@/lib/images/compress";
+import { logActivity } from "@/lib/activityLog";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -117,8 +118,10 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   const deleteTreatment = async (id) => {
     if (!confirm("¿Eliminar este tratamiento?")) return;
     setDeletingTreatment(id);
+    const treatment = savedTreatments.find(t => t.id === id);
     await supabase.from("treatment_items").delete().eq("treatment_id", id);
     await supabase.from("treatments").delete().eq("id", id);
+    await logActivity(supabase, pet.id, "Eliminó tratamiento", treatment?.diagnostico || null);
     setDeletingTreatment(null);
     loadTreatments();
     onTreatmentDeleted?.();
@@ -295,8 +298,10 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           stock: calc ? calc.boxes * parseInt(item.units_per_box) : null,
           unit: item.box_unit || "comp.", color: "#8B5CF6", active: true,
         });
+        await logActivity(supabase, pet.id, "Agregó medicamento", item.name);
       }
     }
+    await logActivity(supabase, pet.id, "Guardó receta desde IA", treatmentMeta.diagnostico || null);
     setSaving(false);
     setSaved(true);
     setTimeout(() => {

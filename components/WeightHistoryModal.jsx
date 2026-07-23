@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 const formatDate = (dateStr) => {
   if (!dateStr) return "Sin fecha";
@@ -107,6 +108,7 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     }
     setLoading(false);
     setSaved(true);
+    await logActivity(supabase, pet.id, "Registró peso", `histórico anual (${entries.length} año${entries.length !== 1 ? "s" : ""})`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
   };
 
@@ -134,6 +136,7 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     }
     setLoading(false);
     setSaved(true);
+    await logActivity(supabase, pet.id, "Registró peso", `histórico semestral ${semYear}`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
   };
 
@@ -151,6 +154,7 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     }
     setLoading(false);
     setSaved(true);
+    if (valid.length > 0) await logActivity(supabase, pet.id, "Registró peso", `esporádico (${valid.length} registro${valid.length !== 1 ? "s" : ""})`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
   };
 
@@ -160,6 +164,7 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     setLoading(true);
     const ids = existingSporadic.map(s => s.id);
     await supabase.from("weight_logs").delete().in("id", ids);
+    await logActivity(supabase, pet.id, "Eliminó registro de peso", `esporádicos (${ids.length})`);
     setExistingSporadic([]);
     setLoading(false);
   };
@@ -175,6 +180,7 @@ const resetAll = async () => {
     .eq("pet_id", pet.id)
     .gte("logged_date", firstDay)
     .lte("logged_date", lastDay);
+  await logActivity(supabase, pet.id, "Eliminó registro de peso", "historial completo");
   setAnnualData(Object.fromEntries(years.map(y => [y, ""])));
   setSem1(""); setSem2(""); setSemAutoCalc(false);
   setSporadic([{ date: "", kg: "" }]);
@@ -200,6 +206,7 @@ const resetAll = async () => {
     }
     setLoading(false);
     setSaved(true);
+    if (entries.length > 0) await logActivity(supabase, pet.id, "Registró peso", `semanal ${months[weekMonth]} ${weekYear}`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
   };
 

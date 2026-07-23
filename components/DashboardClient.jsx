@@ -16,6 +16,7 @@ import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import { compressImage } from "@/lib/images/compress";
+import { logActivity } from "@/lib/activityLog";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -161,8 +162,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const deleteTreatmentGroup = async (treatmentId) => {
     if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
+    const names = treatmentItems.filter(ti => ti.treatment_id === treatmentId).map(ti => ti.name).join(", ");
     await supabase.from("treatment_items").delete().eq("treatment_id", treatmentId);
     await supabase.from("treatments").delete().eq("id", treatmentId);
+    await logActivity(supabase, petData.id, "Eliminó tratamiento", names || null);
     if (selectedTreatmentGroupId === treatmentId) setSelectedTreatmentGroupId(null);
     await loadTreatmentItems();
   };
@@ -275,41 +278,23 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [tiSaving, setTiSaving] = useState(false);
   const [tiSaved, setTiSaved] = useState(false);
 
+  const ACTIVITY_PAGE_SIZE = 50;
   const [activityFeed, setActivityFeed] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityHasMore, setActivityHasMore] = useState(true);
 
-  const loadActivity = async () => {
+  const loadActivity = async (reset = true) => {
     setActivityLoading(true);
-    const [histRes, medsRes, weightsRes, treatRes] = await Promise.all([
-      supabase.from("medical_history").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(10),
-      supabase.from("medications").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(10),
-      supabase.from("weight_logs").select("*").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(5),
-      supabase.from("treatment_items").select("*, treatments(diagnostico, vet_clinic, recipe_date)").eq("pet_id", activePetId).order("created_at", { ascending: false }).limit(5),
-    ]);
-    const items = [];
-    histRes.data?.forEach(h => items.push({
-      id: `hist-${h.id}`, type: h.type === "vaccine" ? "vaccine" : "history",
-      icon: h.type === "vaccine" ? "💉" : h.type === "surgery" ? "🔪" : h.type === "illness" ? "🤒" : h.type === "exam" ? "🧪" : "📝",
-      title: h.event, subtitle: h.vet_clinic ? `🏥 ${h.vet_clinic}` : null, date: h.created_at, color: "var(--color-primary)",
-    }));
-    medsRes.data?.forEach(m => items.push({
-      id: `med-${m.id}`, type: "medication", icon: "💊",
-      title: `${m.active ? "Medicamento agregado" : "Medicamento inactivado"}: ${m.name}`,
-      subtitle: m.dose ? `${m.dose}${m.frequency ? ` · ${m.frequency}` : ""}` : null,
-      date: m.created_at, color: m.color || "var(--color-secondary)",
-    }));
-    weightsRes.data?.forEach(w => items.push({
-      id: `weight-${w.id}`, type: "weight", icon: "⚖️",
-      title: `Peso registrado: ${w.weight_kg} kg`, subtitle: null, date: w.created_at, color: "var(--color-accent)",
-    }));
-    treatRes.data?.forEach(t => items.push({
-      id: `treat-${t.id}`, type: "treatment", icon: "📋",
-      title: `Tratamiento: ${t.name}`,
-      subtitle: t.treatments?.diagnostico || t.treatments?.vet_clinic || null,
-      date: t.created_at, color: "#8B5CF6",
-    }));
-    items.sort((a, b) => new Date(b.date) - new Date(a.date));
-    setActivityFeed(items.slice(0, 20));
+    const from = reset ? 0 : activityFeed.length;
+    const { data } = await supabase
+      .from("activity_log")
+      .select("*")
+      .eq("pet_id", activePetId)
+      .order("created_at", { ascending: false })
+      .range(from, from + ACTIVITY_PAGE_SIZE - 1);
+    const newItems = data || [];
+    setActivityFeed(prev => reset ? newItems : [...prev, ...newItems]);
+    setActivityHasMore(newItems.length === ACTIVITY_PAGE_SIZE);
     setActivityLoading(false);
   };
 
@@ -370,6 +355,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       mg_per_unit: tiForm.mg_per_unit ? parseFloat(tiForm.mg_per_unit) : null,
       units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
     }).eq("id", editingTreatmentItem.id);
+    await logActivity(supabase, petData.id, "Editó tratamiento", tiForm.name);
     setTiSaving(false); setTiSaved(true);
     await loadTreatmentItems();
     setTimeout(() => { setEditingTreatmentItem(null); setTiSaved(false); setTiForm({}); }, 800);
@@ -402,15 +388,22 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setMedSaving(true);
     const freq = medForm.frequency === '__custom__' ? medForm.frequency_custom : medForm.frequency;
     const payload = { pet_id: petData.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true };
-    if (editingMedId) { await supabase.from('medications').update(payload).eq('id', editingMedId); }
-    else { await supabase.from('medications').insert(payload); }
+    if (editingMedId) {
+      await supabase.from('medications').update(payload).eq('id', editingMedId);
+      await logActivity(supabase, petData.id, "Editó medicamento", medForm.name);
+    } else {
+      await supabase.from('medications').insert(payload);
+      await logActivity(supabase, petData.id, "Agregó medicamento", medForm.name);
+    }
     setMedSaving(false); setMedSaved(true);
     await reloadMeds();
     setTimeout(() => closeMedModal(), 800);
   };
 
   const setMedActive = async (id, active) => {
+    const med = meds.find(m => m.id === id);
     await supabase.from('medications').update({ active }).eq('id', id);
+    await logActivity(supabase, petData.id, active ? "Reactivó medicamento" : "Desactivó medicamento", med?.name);
     await reloadMeds();
   };
 
@@ -479,8 +472,14 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null, event_time: histForm.event_time || null, intensity: histForm.intensity || null, duration_minutes: histForm.duration_minutes ? parseInt(histForm.duration_minutes) : null, photo_url: photoUrl, is_public: histForm.is_public };
     if (editingHistId) {
       await supabase.from("medical_history").update(payload).eq("id", editingHistId);
+      await logActivity(supabase, petData.id, "Editó evento", payload.event || TYPE_STYLES[histForm.type]?.label);
     } else {
       await supabase.from("medical_history").insert({ pet_id: petData.id, ...payload });
+      if (histForm.type === "vaccine") {
+        await logActivity(supabase, petData.id, "Registró vacuna", histForm.vaccine_name);
+      } else {
+        await logActivity(supabase, petData.id, "Registró evento médico", TYPE_STYLES[histForm.type]?.label);
+      }
     }
     setHistSaving(false); setHistSaved(true);
     await reloadHistory();
@@ -597,6 +596,37 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     if (!dateStr) return "Sin fecha";
     const [y, m, d] = dateStr.split("-");
     return `${d}/${m}/${y}`;
+  };
+
+  const formatLogDateTime = (iso) => {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}-${mm}-${d.getFullYear()} ${hh}:${min}`;
+  };
+
+  const logDayLabel = (iso) => {
+    const d = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const sameDay = (a, b) => a.toDateString() === b.toDateString();
+    if (sameDay(d, today)) return "Hoy";
+    if (sameDay(d, yesterday)) return "Ayer";
+    return d.toLocaleDateString("es-CL", { day: "2-digit", month: "long", year: "numeric" });
+  };
+
+  const groupActivityByDay = (items) => {
+    const groups = [];
+    let lastLabel = null;
+    items.forEach(item => {
+      const label = logDayLabel(item.created_at);
+      if (label !== lastLabel) { groups.push({ label, items: [] }); lastLabel = label; }
+      groups[groups.length - 1].items.push(item);
+    });
+    return groups;
   };
 
   const inputS = { width:'100%', padding:'9px 12px', borderRadius:10, border:'1.5px solid #FFD9C8', background:'#fff', fontFamily:"'Nunito', sans-serif", fontSize:14, color:'#3D1F0A', outline:'none', boxSizing:'border-box' };
@@ -916,6 +946,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         const pid = petData.id;
                         const ok = await deleteChildTables(pid);
                         if (!ok) { alert("Error al limpiar datos. Revisa la consola."); return; }
+                        await logActivity(supabase, pid, "Limpió todos los datos");
                         setMeds([]);
                         setHistoryData([]);
                         setCurrentWeight(null);
@@ -928,10 +959,17 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
                         if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
                         const pid = petData.id;
-                        const ok = await deleteChildTables(pid);
-                        if (!ok) { alert("Error al eliminar datos. La mascota no fue eliminada. Revisa la consola."); return; }
-                        const { error: petErr } = await supabase.from("pets").delete().eq("id", pid);
-                        if (petErr) { console.error("[deletePet] Error eliminando pets:", petErr.message); alert("Error al eliminar la mascota."); return; }
+                        const res = await fetch("/api/pets/eliminar", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ petId: pid }),
+                        });
+                        if (!res.ok) {
+                          const { error } = await res.json().catch(() => ({}));
+                          console.error("[deletePet] Error:", error);
+                          alert("Error al eliminar la mascota. La mascota no fue eliminada.");
+                          return;
+                        }
                         const remaining = allPetsData.filter(p => p.id !== pid);
                         if (remaining.length === 0) {
                           window.location.href = "/nueva-mascota";
@@ -1285,6 +1323,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                           } else {
                                             setDosisMsg(p => ({ ...p, [ti.id]: "✓ Dosis marcada" }));
                                           }
+                                          await logActivity(supabase, petData.id, "Marcó dosis dada", ti.name);
                                           setTimeout(() => setDosisMsg(p => ({ ...p, [ti.id]: null })), 3000);
                                         }} style={{ width: "100%", padding: "8px", borderRadius: 10, background: "#E8FAF9", color: "#059669", border: "1.5px solid #9FE1CB", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                                           ✓ Marcar dosis dada
@@ -1434,13 +1473,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           {tab === "actividad" && (
             <div className="fade-up">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "var(--color-primary)" }}>Últimos movimientos</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={loadActivity} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
-                  <button onClick={() => setActivityFeed([])} style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>🗑️ Limpiar</button>
-                </div>
+                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "var(--color-primary)" }}>Registro de actividad</div>
+                <button onClick={() => loadActivity(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>↻ Actualizar</button>
               </div>
-              {activityLoading ? (
+              {activityLoading && activityFeed.length === 0 ? (
                 <div style={{ textAlign: "center", padding: 32, color: "#C4845A", fontSize: 13 }}>Cargando actividad...</div>
               ) : activityFeed.length === 0 ? (
                 <div className="card">
@@ -1450,33 +1486,40 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   </div>
                 </div>
               ) : (
-                <div className="card" style={{ padding: "4px 16px" }}>
-                  {activityFeed.map((item, i) => {
-                    const date = new Date(item.date);
-                    const now = new Date();
-                    const diffMs = now - date;
-                    const diffMins = Math.floor(diffMs / 60000);
-                    const diffHours = Math.floor(diffMs / 3600000);
-                    const diffDays = Math.floor(diffMs / 86400000);
-                    const timeLabel = diffMins < 1 ? "Ahora mismo" :
-                      diffMins < 60 ? `Hace ${diffMins} min` :
-                      diffHours < 24 ? `Hace ${diffHours}h` :
-                      diffDays < 7 ? `Hace ${diffDays} día${diffDays !== 1 ? "s" : ""}` :
-                      date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
-                    return (
-                      <div key={item.id} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: i < activityFeed.length - 1 ? "1px solid #FFF0EB" : "none", alignItems: "flex-start" }}>
-                        <div style={{ width: 36, height: 36, borderRadius: "50%", background: `${item.color}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0, border: `1.5px solid ${item.color}33` }}>
-                          {item.icon}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{item.title}</div>
-                          {item.subtitle && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 2 }}>{item.subtitle}</div>}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#C4845A", flexShrink: 0, marginTop: 2 }}>{timeLabel}</div>
+                <>
+                  {groupActivityByDay(activityFeed).map(group => (
+                    <div key={group.label} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>{group.label}</div>
+                      <div className="card" style={{ padding: "4px 16px" }}>
+                        {group.items.map((item, i) => (
+                          <div key={item.id} style={{ padding: "10px 0", borderBottom: i < group.items.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+                            <div style={{ fontSize: 13, color: "#3D1F0A" }}>
+                              <span style={{ color: "#C4845A" }}>{formatLogDateTime(item.created_at)}</span>
+                              {" · "}
+                              <strong>{item.action}</strong>
+                              {item.detail ? `: ${item.detail}` : ""}
+                              {" · "}
+                              <span style={{ color: "#C4845A" }}>{item.user_email}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  ))}
+
+                  {activityHasMore && (
+                    <button onClick={() => loadActivity(false)} disabled={activityLoading}
+                      style={{ width: "100%", padding: "10px", borderRadius: 12, background: "#FFF0EB", color: "var(--color-primary)", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+                      {activityLoading ? "Cargando..." : "▼ Cargar más"}
+                    </button>
+                  )}
+
+                  <div style={{ fontSize: 11, color: "#C4845A", textAlign: "center", padding: "8px 16px", lineHeight: 1.5 }}>
+                    Este registro no puede ser modificado. Para solicitar la eliminación de entradas escribe a{" "}
+                    <a href="mailto:contacto@firusymichis.cl" style={{ color: "var(--color-primary)", fontWeight: 700 }}>contacto@firusymichis.cl</a>
+                    {" "}justificando la solicitud.
+                  </div>
+                </>
               )}
             </div>
           )}

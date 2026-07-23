@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji, readOnly }) {
   const supabase = createClient();
@@ -93,6 +94,7 @@ export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji, readOnly })
           .getPublicUrl(path);
         const urlWithTs = `${publicUrl}?t=${Date.now()}`;
         await supabase.from("pets").update({ photo_url: urlWithTs }).eq("id", pet.id);
+        await logActivity(supabase, pet.id, "Cambió la foto de perfil");
         setPreview(urlWithTs);
         onUpdate?.(urlWithTs);
       }

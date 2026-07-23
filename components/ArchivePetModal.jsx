@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 export default function ArchivePetModal({ pet, onClose, onArchived }) {
   const supabase = createClient();
@@ -20,6 +21,7 @@ export default function ArchivePetModal({ pet, onClose, onArchived }) {
       .eq("id", pet.id);
     setArchiving(false);
     if (error) { alert("No se pudo archivar. Intenta de nuevo."); return; }
+    await logActivity(supabase, pet.id, "Archivó (En Memoria)");
     onArchived({ archived_at: archivedAt, archived_reason: "fallecimiento" });
   };
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 const RELATIONSHIPS = ["Dueño", "Familiar", "Veterinario", "Vecino", "Otro"];
 const EMAIL_DOMAINS = ["@gmail.com", "@hotmail.com", "@outlook.com", "@yahoo.com", "@icloud.com", "@live.com", "@yahoo.es"];
@@ -172,6 +173,8 @@ export default function TutorTab({ pet, isArchived }) {
     setEmailDrop([]);
   };
 
+  const TYPE_LABELS = { primary: "Titular", secondary: "Suplente", tertiary: "Adicional" };
+
   const handleSave = async () => {
     if (!form.full_name) return;
     setSaving(true);
@@ -179,8 +182,10 @@ export default function TutorTab({ pet, isArchived }) {
     const payload = { ...form, phone: formatPhone(form.phone), pet_id: pet.id, type: editingType };
     if (existing?.id) {
       await supabase.from("tutors").update(payload).eq("id", existing.id);
+      await logActivity(supabase, pet.id, "Editó tutor", TYPE_LABELS[editingType]);
     } else {
       await supabase.from("tutors").insert(payload);
+      await logActivity(supabase, pet.id, "Agregó tutor", TYPE_LABELS[editingType]);
     }
     setSaving(false);
     setSaved(true);
@@ -193,6 +198,7 @@ export default function TutorTab({ pet, isArchived }) {
     if (!existing?.id) return;
     if (!confirm(`¿Eliminar al tutor ${existing.full_name}? Esta acción no se puede deshacer.`)) return;
     await supabase.from("tutors").delete().eq("id", existing.id);
+    await logActivity(supabase, pet.id, "Eliminó tutor", TYPE_LABELS[editingType]);
     await loadTutors();
     closeEdit();
   };

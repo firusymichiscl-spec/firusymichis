@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
 // guardado siga siendo editable/seleccionable ahí después).
@@ -132,6 +133,7 @@ export default function NuevaMascota() {
     }).select().single();
 
     if (!error && newPet) {
+      await logActivity(supabase, newPet.id, "Creó la ficha");
       if (form.weight_kg) {
         await supabase.from("weight_logs").insert({
           pet_id: newPet.id,
@@ -140,6 +142,7 @@ export default function NuevaMascota() {
           granularity: "sporadic",
           week_of_month: null,
         });
+        await logActivity(supabase, newPet.id, "Registró peso", `${form.weight_kg} kg`);
       }
       // FIX 2.3: tutor titular — misma estructura de columnas que TutorTab.jsx.
       await supabase.from("tutors").insert({
@@ -149,6 +152,7 @@ export default function NuevaMascota() {
         phone: formatPhone(tutorForm.phone),
         relationship: tutorForm.relationship || null,
       });
+      await logActivity(supabase, newPet.id, "Agregó tutor", "Titular");
       setStep(5);
     }
     setLoading(false);

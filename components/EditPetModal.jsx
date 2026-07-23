@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { logActivity } from "@/lib/activityLog";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -60,8 +61,22 @@ export default function EditPetModal({ pet, onClose, onSave }) {
     setAllergyInput("");
   };
 
+  const CHANGED_FIELD_LABELS = {
+    name: "nombre", species: "especie", sex: "sexo", breed: "raza",
+    birth_date: "nacimiento", weight_kg: "peso", conditions: "condiciones",
+    diet: "dieta", allergies: "alergias", chip_number: "chip", chip_registry: "registro de chip",
+  };
+
   const save = async () => {
     setLoading(true);
+    const changedFields = Object.keys(CHANGED_FIELD_LABELS).filter(key => {
+      const before = pet[key];
+      const after = form[key];
+      if (Array.isArray(before) || Array.isArray(after)) {
+        return JSON.stringify(before || []) !== JSON.stringify(after || []);
+      }
+      return (before || "") !== (after || "") && !(key === "weight_kg" && !before && !after);
+    });
     const { error } = await supabase.from("pets").update({
       name: form.name, species: form.species, sex: form.sex || null,
       breed: form.breed, birth_date: form.birth_date || null,
@@ -71,7 +86,13 @@ export default function EditPetModal({ pet, onClose, onSave }) {
       chip_number: form.chip_number || null,
       chip_registry: form.chip_registry || null,
     }).eq("id", pet.id);
-    if (!error) onSave();
+    if (!error) {
+      const detail = changedFields.length > 0
+        ? changedFields.map(k => CHANGED_FIELD_LABELS[k]).join(", ")
+        : null;
+      await logActivity(supabase, pet.id, "Editó datos básicos", detail);
+      onSave();
+    }
     setLoading(false);
   };
 
