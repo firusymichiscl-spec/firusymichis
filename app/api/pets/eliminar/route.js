@@ -4,14 +4,15 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
 // Mismo orden que el deleteChildTables client-side de DashboardClient.jsx —
-// treatments antes que pets (RLS de treatments requiere que pets exista).
+// treatment_items antes que treatments (treatment_items.treatment_id las referencia),
+// y todo antes que pets (RLS de treatments requiere que pets exista).
+// medication_logs NO tiene pet_id — se relaciona por medication_id, se borra aparte.
 const CHILD_TABLES = [
-  ["medication_logs", "pet_id"],
+  ["treatment_items", "pet_id"],
   ["medications", "pet_id"],
   ["medical_history", "pet_id"],
   ["vaccines", "pet_id"],
   ["weight_logs", "pet_id"],
-  ["treatment_items", "pet_id"],
   ["treatments", "pet_id"],
   ["pet_shares", "pet_id"],
   ["tutors", "pet_id"],
@@ -102,6 +103,27 @@ export async function POST(req) {
   }
 
   // c) Recién aquí, con el respaldo forense confirmado, se borran las tablas hijas.
+
+  // Nieta especial: medication_logs no tiene pet_id, se relaciona por medication_id.
+  // Hay que borrarla ANTES de borrar medications (si medication_logs.medication_id
+  // tiene FK, borrar medications primero fallaría por violación de esa referencia).
+  const { data: petMeds, error: medsLookupError } = await supabase
+    .from("medications")
+    .select("id")
+    .eq("pet_id", petId);
+  if (medsLookupError) {
+    console.error("[eliminar-mascota] error leyendo medications para medication_logs:", medsLookupError.message);
+    return NextResponse.json({ error: "Error al eliminar medication_logs" }, { status: 500 });
+  }
+  const medIds = (petMeds || []).map(m => m.id);
+  if (medIds.length > 0) {
+    const { error: logsDeleteError } = await supabase.from("medication_logs").delete().in("medication_id", medIds);
+    if (logsDeleteError) {
+      console.error("[eliminar-mascota] error eliminando medication_logs:", logsDeleteError.message);
+      return NextResponse.json({ error: "Error al eliminar medication_logs" }, { status: 500 });
+    }
+  }
+
   for (const [table, col] of CHILD_TABLES) {
     const { error } = await supabase.from(table).delete().eq(col, petId);
     if (error) {

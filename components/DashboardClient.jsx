@@ -239,16 +239,34 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   };
 
   // Borra todas las tablas hijas de una mascota en el orden correcto.
-  // treatments debe ir antes que pets (la política RLS de treatments requiere que pets exista).
+  // treatment_items antes que treatments (treatment_items.treatment_id las referencia),
+  // todo antes que pets (RLS de treatments requiere que pets exista).
+  // medication_logs NO tiene pet_id — se relaciona por medication_id, se borra aparte.
   // Retorna false y loguea si algún paso falla — el caller debe abortar sin borrar pets.
   const deleteChildTables = async (pid) => {
+    const { data: petMeds, error: medsLookupError } = await supabase
+      .from("medications")
+      .select("id")
+      .eq("pet_id", pid);
+    if (medsLookupError) {
+      console.error("[deletePet] Error leyendo medications para medication_logs:", medsLookupError.message);
+      return false;
+    }
+    const medIds = (petMeds || []).map(m => m.id);
+    if (medIds.length > 0) {
+      const { error: logsError } = await supabase.from("medication_logs").delete().in("medication_id", medIds);
+      if (logsError) {
+        console.error("[deletePet] Error eliminando medication_logs:", logsError.message);
+        return false;
+      }
+    }
+
     const steps = [
-      ["medication_logs", "pet_id"],
+      ["treatment_items", "pet_id"],
       ["medications",     "pet_id"],
       ["medical_history", "pet_id"],
       ["vaccines",        "pet_id"],
       ["weight_logs",     "pet_id"],
-      ["treatment_items", "pet_id"],
       ["treatments",      "pet_id"],
       ["pet_shares",      "pet_id"],
       ["tutors",          "pet_id"],
