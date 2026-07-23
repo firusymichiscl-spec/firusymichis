@@ -122,8 +122,8 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
   vaccines.forEach(v => {
     const d = daysUntil(v.next_date);
     const pet = pets.find(p => p.id === v.pet_id);
-    if (d !== null && d < 0) alerts.push({ type: "vaccine", text: `Vacuna vencida: ${v.name} (${pet?.name})`, detail: `Hace ${Math.abs(d)} días`, color: "#dc2626" });
-    else if (d !== null && d <= 14) alerts.push({ type: "vaccine", text: `Vacuna próxima: ${v.name} (${pet?.name})`, detail: `En ${d} días`, color: "#d97706" });
+    if (d !== null && d < 0) alerts.push({ type: "vaccine", text: `Vacuna vencida: ${v.event} (${pet?.name})`, detail: `Hace ${Math.abs(d)} días`, color: "#dc2626" });
+    else if (d !== null && d <= 14) alerts.push({ type: "vaccine", text: `Vacuna próxima: ${v.event} (${pet?.name})`, detail: `En ${d} días`, color: "#d97706" });
   });
 
   // ── Helpers ───────────────────────────────────────
@@ -253,7 +253,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
 
               {nv && (
                 <div style={{ fontSize: 13, color: nv.days <= 14 ? "#d97706" : "#059669", marginBottom: 12 }}>
-                  💉 {nv.name}: en {nv.days} días
+                  💉 {nv.event}: en {nv.days} días
                 </div>
               )}
 
@@ -343,7 +343,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
               <div key={v.id} className="ov-event-row">
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>💉</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{v.name}</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{v.event}</div>
                   <div style={{ fontSize: 13, color: "#64748B" }}>{pet?.name} · {formatDate(v.next_date)}</div>
                 </div>
                 <span className="ov-badge" style={{ background: v.days <= 14 ? "#FEF3C7" : "#DBEAFE", color: v.days <= 14 ? "#D97706" : "#1D4ED8" }}>

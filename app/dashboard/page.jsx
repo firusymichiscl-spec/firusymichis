@@ -52,11 +52,6 @@ export default async function Dashboard() {
     .eq("pet_id", firstPet.id)
     .order("event_date", { ascending: false });
 
-  const { data: vaccines } = await supabase
-    .from("vaccines")
-    .select("*")
-    .eq("pet_id", firstPet.id);
-
   const { data: lastWeight } = await supabase
     .from("weight_logs")
     .select("weight_kg, logged_date")
@@ -135,7 +130,6 @@ export default async function Dashboard() {
           allPets={pets}
           medications={medications || []}
           history={history || []}
-          vaccines={vaccines || []}
           user={user}
           lastWeight={lastWeight}
           userPlan={userPlan}

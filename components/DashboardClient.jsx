@@ -64,7 +64,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'',
 };
 
-export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, vaccines, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
+export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();

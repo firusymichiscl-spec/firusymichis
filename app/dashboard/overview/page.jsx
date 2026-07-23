@@ -48,7 +48,9 @@ export default async function OverviewPage() {
 
   const [medsRes, vaccinesRes, treatmentsRes, weightsRes, tutorsRes, historyRes] = await Promise.all([
     supabase.from("medications").select("*").in("pet_id", petIds),
-    supabase.from("vaccines").select("*").in("pet_id", petIds),
+    // Las vacunas reales viven en medical_history (type='vaccine', next_date) —
+    // la tabla "vaccines" nunca recibe INSERT/UPDATE desde el código (hallazgo Lote G3).
+    supabase.from("medical_history").select("*").eq("type", "vaccine").in("pet_id", petIds),
     supabase.from("treatments").select("*, treatment_items(*)").in("pet_id", petIds),
     supabase.from("weight_logs").select("pet_id, weight_kg, logged_date").in("pet_id", petIds).order("logged_date", { ascending: false }),
     supabase.from("tutors").select("*").in("pet_id", petIds),
