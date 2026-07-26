@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
+import { formatFecha, formatMesAno, restarUnDia } from "@/lib/fechas";
+import { validateRequired } from "@/lib/formValidation";
 
 const FOOD_OPTIONS_DOG = [
   "Royal Canin Maxi Adult 15 kg", "Royal Canin Mini Adult 8 kg", "Royal Canin Medium Adult 15 kg",
@@ -58,13 +60,25 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
   const [dateTo, setDateTo] = useState("");
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
+  const [errors, setErrors] = useState({});
 
   const foodOptions = pet.species === "cat" ? FOOD_OPTIONS_CAT
     : pet.species === "dog" ? FOOD_OPTIONS_DOG
     : [...FOOD_OPTIONS_DOG, ...FOOD_OPTIONS_CAT];
-  const filteredFoods = foodName
-    ? foodOptions.filter(o => o.toLowerCase().includes(foodName.toLowerCase()))
-    : foodOptions;
+  const foodPlaceholder = pet.species === "cat" ? "Ej: Royal Canin Indoor Adult 10 kg..."
+    : pet.species === "dog" ? "Ej: Royal Canin Maxi Adult 15 kg..."
+    : "Ej: nombre del alimento y formato...";
+  const foodQueryTrimmed = foodName.trim();
+  const filteredFoods = foodQueryTrimmed.length >= 2
+    ? foodOptions.filter(o => o.toLowerCase().includes(foodQueryTrimmed.toLowerCase()))
+    : [];
+
+  // Si por datos antiguos hay más de un período abierto (date_to null), solo
+  // el más reciente por date_from se considera "actual".
+  const openRecords = records.filter(r => !r.date_to);
+  const mostRecentOpenId = openRecords.length > 0
+    ? openRecords.reduce((a, b) => (a.date_from > b.date_from ? a : b)).id
+    : null;
 
   useEffect(() => { loadRecords(); }, []);
 
@@ -84,6 +98,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     setFoodName(""); setGramsPerDay("");
     setDateFrom(""); setDateTo(""); setNotes("");
     setSaved(false);
+    setErrors({});
   };
 
   const startEdit = (r) => {
@@ -97,8 +112,44 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
   };
 
   const handleSave = async () => {
-    if (!foodName || !dateFrom) return;
+    const ok = validateRequired([
+      { valid: !!foodName.trim(), id: "diet-food-name", message: "El alimento es obligatorio", onInvalid: msg => setErrors(e => ({ ...e, foodName: msg })) },
+      { valid: !!dateFrom, id: "diet-date-from", message: "La fecha de inicio es obligatoria", onInvalid: msg => setErrors(e => ({ ...e, dateFrom: msg })) },
+    ]);
+    if (!ok) return;
+    setErrors({});
+
+    const otherRecords = records.filter(r => r.id !== editingId);
+    const isNewOpenPeriod = !editingId && !dateTo;
+    const openRecordToClose = isNewOpenPeriod
+      ? otherRecords.find(r => !r.date_to) || null
+      : null;
+
+    // Valida solapamiento contra todo período que no vayamos a cerrar automáticamente.
+    const overlapCandidates = otherRecords.filter(r => r.id !== openRecordToClose?.id);
+    const newEnd = dateTo || "9999-12-31";
+    const hasOverlap = overlapCandidates.some(r => {
+      const rEnd = r.date_to || "9999-12-31";
+      return dateFrom <= rEnd && r.date_from <= newEnd;
+    });
+    if (hasOverlap) {
+      alert("Ya existe un período de alimentación en esas fechas");
+      return;
+    }
+
+    let closeDate = null;
+    if (openRecordToClose) {
+      closeDate = restarUnDia(dateFrom);
+      const confirmMsg = `${openRecordToClose.food_name} se marcará como finalizado el ${formatFecha(closeDate)}. ¿Continuar?`;
+      if (!confirm(confirmMsg)) return;
+    }
+
     setLoading(true);
+
+    if (openRecordToClose) {
+      await supabase.from("diet_logs").update({ date_to: closeDate }).eq("id", openRecordToClose.id);
+    }
+
     const payload = {
       pet_id: pet.id,
       food_name: foodName,
@@ -172,10 +223,11 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
           <div style={{ marginBottom: 10, position: "relative" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Alimento *</div>
             <input
+              id="diet-food-name"
               style={css.input}
-              placeholder="Ej: Royal Canin Maxi Adult 15 kg..."
+              placeholder={foodPlaceholder}
               value={foodName}
-              onChange={e => { setFoodName(e.target.value); setFoodDropdown(true); }}
+              onChange={e => { setFoodName(e.target.value); setFoodDropdown(true); setErrors(er => ({ ...er, foodName: null })); }}
               onFocus={() => setFoodDropdown(true)}
               onBlur={() => setTimeout(() => setFoodDropdown(false), 200)}
             />
@@ -186,6 +238,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
                 ))}
               </div>
             )}
+            {errors.foodName && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.foodName}</div>}
           </div>
 
           <div style={{ marginBottom: 10 }}>
@@ -196,7 +249,9 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Desde *</div>
-              <input style={css.input} type="date" min={birthYearOf(pet)} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <input id="diet-date-from" style={css.input} type="date" min={birthYearOf(pet)} value={dateFrom}
+                onChange={e => { setDateFrom(e.target.value); setErrors(er => ({ ...er, dateFrom: null })); }} />
+              {errors.dateFrom && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.dateFrom}</div>}
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Hasta (vacío = actual)</div>
@@ -214,7 +269,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
             />
           </div>
 
-          <button style={css.saveBtn} onClick={handleSave} disabled={loading || !foodName || !dateFrom}>
+          <button style={css.saveBtn} onClick={handleSave} disabled={loading}>
             {saved ? "✓ Guardado" : loading ? "Guardando..." : editingId ? "✓ Actualizar" : "✓ Guardar período"}
           </button>
           {editingId && (
@@ -233,11 +288,11 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#3D1F0A" }}>
                         {r.food_name}
-                        {!r.date_to && <span style={{ background: "#FFF0EB", color: "#FF6B35", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 700, marginLeft: 6 }}>actual</span>}
+                        {r.id === mostRecentOpenId && <span style={{ background: "#FFF0EB", color: "#FF6B35", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 700, marginLeft: 6 }}>actual</span>}
                       </div>
                       {r.brand && <div style={{ fontSize: 11, color: "#C4845A" }}>{r.brand}</div>}
                       <div style={{ fontSize: 11, color: "#7A4522", marginTop: 2 }}>
-                        {r.date_from?.slice(0, 7)} → {r.date_to ? r.date_to.slice(0, 7) : "hoy"}
+                        {formatMesAno(r.date_from)} → {r.date_to ? formatMesAno(r.date_to) : "hoy"}
                         {r.grams_per_day ? ` · ${r.grams_per_day} g/día` : ""}
                       </div>
                       {r.notes && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 2, fontStyle: "italic" }}>{r.notes}</div>}

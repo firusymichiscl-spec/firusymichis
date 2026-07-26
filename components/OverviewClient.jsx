@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatFecha } from "@/lib/fechas";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
@@ -36,11 +37,6 @@ function isBirthdayToday(birthDate) {
   const [, bm, bd] = birthDate.split("-").map(Number);
   const today = new Date();
   return bm === today.getMonth() + 1 && bd === today.getDate();
-}
-
-function formatDate(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Misma tabla de frecuencias que components/DashboardClient.jsx (calcProgress) —
@@ -323,7 +319,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                           </span>
                         : "—"}
                     </td>
-                    <td>{m.end_date ? formatDate(m.end_date) : "—"}</td>
+                    <td>{m.end_date ? formatFecha(m.end_date) : "—"}</td>
                   </tr>
                 );
               })}
@@ -344,7 +340,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: color + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>💉</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{v.event}</div>
-                  <div style={{ fontSize: 13, color: "#64748B" }}>{pet?.name} · {formatDate(v.next_date)}</div>
+                  <div style={{ fontSize: 13, color: "#64748B" }}>{pet?.name} · {formatFecha(v.next_date)}</div>
                 </div>
                 <span className="ov-badge" style={{ background: v.days <= 14 ? "#FEF3C7" : "#DBEAFE", color: v.days <= 14 ? "#D97706" : "#1D4ED8" }}>
                   en {v.days} días
@@ -372,7 +368,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
               <div style={{ width: 70, textAlign: "right", fontSize: 14, fontWeight: 700, color: "#1e293b" }}>
                 {w ? `${w.weight_kg} kg` : "—"}
               </div>
-              {w && <div style={{ fontSize: 12, color: "#94A3B8", width: 80, textAlign: "right" }}>{formatDate(w.logged_date)}</div>}
+              {w && <div style={{ fontSize: 12, color: "#94A3B8", width: 80, textAlign: "right" }}>{formatFecha(w.logged_date)}</div>}
             </div>
           );
         })}
@@ -396,7 +392,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                     <div style={{ fontSize: 13, color: "#94A3B8" }}>{p.breed} · {calcAge(p.birth_date)}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: "#94A3B8" }}>En Memoria desde {formatDate(p.archived_at)}</div>
+                <div style={{ fontSize: 12, color: "#94A3B8" }}>En Memoria desde {formatFecha(p.archived_at)}</div>
               </div>
             ))}
           </div>
@@ -569,7 +565,7 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{h.event || h.title}</div>
-                  <div style={{ fontSize: 13, color: "#64748B" }}>{formatDate(h.event_date)}{h.vet_clinic ? ` · ${h.vet_clinic}` : ""}</div>
+                  <div style={{ fontSize: 13, color: "#64748B" }}>{formatFecha(h.event_date)}{h.vet_clinic ? ` · ${h.vet_clinic}` : ""}</div>
                 </div>
               </div>
             ))}

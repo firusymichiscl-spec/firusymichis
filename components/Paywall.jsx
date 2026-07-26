@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
-  const birth = new Date(birthDate);
+  const [by, bm] = birthDate.split("-").map(Number);
   const now = new Date();
-  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + now.getMonth() - birth.getMonth();
+  const totalMonths = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
   const y = Math.floor(totalMonths / 12);
   const m = totalMonths % 12;
   if (y === 0) return `${m} mes${m !== 1 ? "es" : ""}`;

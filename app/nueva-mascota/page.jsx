@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
+import { formatFecha } from "@/lib/fechas";
+import { validateRequired } from "@/lib/formValidation";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
 // guardado siga siendo editable/seleccionable ahí después).
@@ -33,6 +35,7 @@ export default function NuevaMascota() {
   });
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
+  const [nameError, setNameError] = useState('');
 
   // FIX 1.2: solo mostrar "Volver al dashboard" si ya tiene alguna mascota.
   const [hasExistingPets, setHasExistingPets] = useState(false);
@@ -74,7 +77,8 @@ export default function NuevaMascota() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.push('/login');
+    router.replace('/');
+    router.refresh();
   };
 
   // Mismo parseo que TutorTab.jsx: guarda solo los 8 dígitos locales en el form.
@@ -107,12 +111,23 @@ export default function NuevaMascota() {
     return `${base}-${i}`;
   };
 
+  const goToStep3 = () => {
+    const ok = validateRequired([
+      { valid: !!form.name.trim(), id: "pet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
+    ]);
+    if (!ok) return;
+    setNameError('');
+    setStep(3);
+  };
+
   const savePet = async () => {
     // FIX 2.2: no se puede guardar sin nombre y teléfono del tutor titular.
-    if (!tutorForm.full_name.trim() || tutorForm.phone.length !== 8) {
-      setTutorError(`Necesitamos un contacto responsable de ${form.name || 'tu mascota'}`);
-      return;
-    }
+    const tutorMsg = `Necesitamos un contacto responsable de ${form.name || 'tu mascota'}`;
+    const ok = validateRequired([
+      { valid: !!tutorForm.full_name.trim(), id: "tutor-full-name-new", message: tutorMsg, onInvalid: setTutorError },
+      { valid: tutorForm.phone.length === 8, id: "tutor-phone-new", message: tutorMsg, onInvalid: setTutorError },
+    ]);
+    if (!ok) return;
     setTutorError('');
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -226,8 +241,10 @@ export default function NuevaMascota() {
             <div style={css.card}>
               <div style={css.title}>Datos básicos 📋</div>
               <div style={css.sub}>Cuéntanos sobre tu mascota</div>
-              <label style={css.label}>Nombre</label>
-              <input style={css.input} placeholder="Ej: Kiara" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <label style={css.label}>Nombre *</label>
+              <input id="pet-name" style={{ ...css.input, borderColor: nameError ? "#dc2626" : "#FFD9C8" }} placeholder="Ej: Kiara" value={form.name}
+                onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setNameError(''); }} />
+              {nameError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {nameError}</div>}
               <label style={css.label}>Sexo</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
                 {[{ value: 'male', icon: '♂️', label: 'Macho' }, { value: 'female', icon: '♀️', label: 'Hembra' }, { value: 'unknown', icon: '❓', label: 'Descon.' }].map(s => (
@@ -265,7 +282,7 @@ export default function NuevaMascota() {
                   <input style={css.input} type="number" placeholder="38" step="0.1" value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} />
                 </div>
               </div>
-              <button style={css.btn} onClick={() => setStep(3)}>Continuar →</button>
+              <button style={css.btn} onClick={goToStep3}>Continuar →</button>
               <button style={css.btnBack} onClick={() => setStep(1)}>← Volver</button>
             </div>
           )}
@@ -307,7 +324,7 @@ export default function NuevaMascota() {
               )}
 
               <label style={css.label}>Nombre completo *</label>
-              <input style={css.input} placeholder="Ej: María González" value={tutorForm.full_name}
+              <input id="tutor-full-name-new" style={css.input} placeholder="Ej: María González" value={tutorForm.full_name}
                 onChange={e => { setTutorForm(f => ({ ...f, full_name: e.target.value })); setTutorError(''); }} />
 
               <label style={css.label}>Teléfono *</label>
@@ -316,6 +333,7 @@ export default function NuevaMascota() {
                   +56 9
                 </span>
                 <input
+                  id="tutor-phone-new"
                   style={{ flex: 1, padding: '10px 13px', border: 'none', outline: 'none', fontFamily: "'Nunito', sans-serif", fontSize: 14, color: '#3D1F0A', background: 'transparent' }}
                   type="tel" placeholder="12345678" maxLength={8}
                   value={tutorForm.phone}
@@ -365,7 +383,7 @@ export default function NuevaMascota() {
           {[
             ['Especie', form.speciesLabel],
             ['Raza', form.breed],
-            ['Nacimiento', form.birth_date ? new Date(form.birth_date).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : ''],
+            ['Nacimiento', form.birth_date ? formatFecha(form.birth_date) : ''],
             ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
             ['Tutor titular', tutorForm.full_name],
           ].filter(([, v]) => v).map(([k, v]) => (

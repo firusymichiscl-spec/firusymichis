@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
+import { formatFecha, formatFechaHora } from "@/lib/fechas";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -29,7 +30,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
   const hoursInterval = 24 / dosesPerDay;
   const start = new Date(`${startDate}T${startTime}:00`);
   const next = new Date(start.getTime() + hoursInterval * 3600000);
-  return next.toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatFechaHora(next);
 };
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
@@ -365,7 +366,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           {savedTreatments.length > 1 && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {savedTreatments.map(t => {
-                const label = t.diagnostico || `Receta ${new Date((t.emission_date || t.recipe_date || t.created_at) + "T12:00:00").toLocaleDateString("es-CL")}`;
+                const label = t.diagnostico || `Receta ${formatFecha(t.emission_date || t.recipe_date || t.created_at)}`;
                 const meds = t.treatment_items?.slice(0, 3).map(ti => ti.name).join(", ");
                 const isSelected = selectedTreatmentId === t.id;
                 return (
@@ -382,7 +383,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
             <div key={t.id} style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
               <div style={{ marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ fontSize: 11, color: "#C4845A" }}>📋 Receta del {t.emission_date ? new Date(t.emission_date + "T12:00:00").toLocaleDateString("es-CL") : t.recipe_date ? new Date(t.recipe_date + "T12:00:00").toLocaleDateString("es-CL") : "—"}</div>
+                  <div style={{ fontSize: 11, color: "#C4845A" }}>📋 Receta del {t.emission_date || t.recipe_date ? formatFecha(t.emission_date || t.recipe_date) : "—"}</div>
                   <button onClick={() => deleteTreatment(t.id)} disabled={deletingTreatment === t.id}
                     style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>
                     {deletingTreatment === t.id ? "..." : "🗑️"}

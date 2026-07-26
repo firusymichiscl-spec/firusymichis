@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { formatFecha } from "@/lib/fechas";
 
 export async function GET(req) {
   // ── Auth ──────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ export async function GET(req) {
         const r = await sendNotif(pref.email, "vaccine", {
           petName: pet.name,
           medicationName: vac.event,
-          scheduledTime: new Date(vac.next_date).toLocaleDateString("es-CL"),
+          scheduledTime: formatFecha(vac.next_date),
         });
         if (!r.error) results.sent++;
         else { results.errors++; await removeKey(supabase, key); }

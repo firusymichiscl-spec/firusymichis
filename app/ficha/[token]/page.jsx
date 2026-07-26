@@ -1,16 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
-
-const formatDate = (d) => {
-  if (!d) return "Sin fecha";
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
-};
+import { formatFecha } from "@/lib/fechas";
 
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
-  const birth = new Date(birthDate);
+  const [by, bm] = birthDate.split("-").map(Number);
   const now = new Date();
-  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + now.getMonth() - birth.getMonth();
+  const totalMonths = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
   const y = Math.floor(totalMonths / 12);
   const m = totalMonths % 12;
   return `${y} año${y !== 1 ? "s" : ""}${m > 0 ? ` ${m} mes${m !== 1 ? "es" : ""}` : ""}`;
@@ -186,7 +181,7 @@ export default async function FichaPublica({ params }) {
                   <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F5E6DA" }}>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{v.event}</div>
-                      <div style={{ fontSize: 11, color: "#C4845A" }}>Aplicada: {formatDate(v.event_date)}{v.next_date ? ` · Próx: ${formatDate(v.next_date)}` : ""}</div>
+                      <div style={{ fontSize: 11, color: "#C4845A" }}>Aplicada: {formatFecha(v.event_date)}{v.next_date ? ` · Próx: ${formatFecha(v.next_date)}` : ""}</div>
                     </div>
                     {days !== null && (
                       <span style={{ background: colors[cls].bg, color: colors[cls].text, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 800 }}>
@@ -207,7 +202,7 @@ export default async function FichaPublica({ params }) {
                 <div key={h.id} style={{ padding: "8px 0", borderBottom: "1px solid #F5E6DA" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: "#3D1F0A" }}>{h.event}</div>
-                    <div style={{ fontSize: 11, color: "#C4845A", flexShrink: 0, marginLeft: 8 }}>{formatDate(h.event_date)}</div>
+                    <div style={{ fontSize: 11, color: "#C4845A", flexShrink: 0, marginLeft: 8 }}>{formatFecha(h.event_date)}</div>
                   </div>
                   {h.vet_clinic && <div style={{ fontSize: 11, color: "#7A4522", marginTop: 2 }}>🏥 {h.vet_clinic}</div>}
                   {h.notes && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 2 }}>{h.notes}</div>}

@@ -5,6 +5,8 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip } from "chart.js";
+import { formatMesAno } from "@/lib/fechas";
+import { validateRequired } from "@/lib/formValidation";
 
 const weeksInMonth = (year, month) => {
   const firstDay = new Date(year, month, 1).getDay();
@@ -35,6 +37,7 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   const [newWeight, setNewWeight] = useState("");
   const [loading, setLoading] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [weightError, setWeightError] = useState(null);
 
   const now = new Date();
   const year = now.getFullYear();
@@ -43,8 +46,8 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   const currentWeek = currentWeekOfMonth();
   const firstDay = new Date(year, month, 1).toISOString().split("T")[0];
   const lastDay = new Date(year, month + 1, 0).toISOString().split("T")[0];
-  const monthLabel = now.toLocaleDateString("es-CL", { month: "long", year: "numeric" });
-  const birthYear = pet.birth_date ? new Date(pet.birth_date).getFullYear() : year - 5;
+  const monthLabel = formatMesAno(now);
+  const birthYear = pet.birth_date ? parseInt(pet.birth_date.split("-")[0], 10) : year - 5;
 
   const chartRef = useRef(null);
   const chartInstanceRef = useRef(null);
@@ -269,6 +272,7 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
     setEditingId(id);
     setNewWeight(kg?.toString() || "");
     setShowInput(true);
+    setWeightError(null);
   };
 
   const getWeekDateRange = (wk) => {
@@ -281,7 +285,11 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
 
   const saveWeight = async () => {
     const val = parseFloat(newWeight.replace(",", "."));
-    if (!val || val < 0.1 || val > 200) return;
+    const ok = validateRequired([
+      { valid: !!val && val >= 0.1 && val <= 200, id: "weight-value", message: "Ingresa un peso válido (0.1 – 200 kg)", onInvalid: setWeightError },
+    ]);
+    if (!ok) return;
+    setWeightError(null);
     setLoading(true);
     const loggedDate = getWeekDateRange(editingWeek) || firstDay;
     if (editingId) {
@@ -404,15 +412,16 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
               {editingId ? `✏️ Editando semana ${editingWeek}` : `➕ Registrar semana ${editingWeek}`}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <input style={css.input} type="text" inputMode="decimal" placeholder="ej: 12.5"
-                value={newWeight} onChange={e => setNewWeight(e.target.value.replace(",", "."))} />
+              <input id="weight-value" style={css.input} type="text" inputMode="decimal" placeholder="ej: 12.5"
+                value={newWeight} onChange={e => { setNewWeight(e.target.value.replace(",", ".")); setWeightError(null); }} />
               <button style={css.saveBtn} onClick={saveWeight} disabled={loading}>
                 {loading ? "..." : editingId ? "Actualizar" : "Guardar"}
               </button>
-              <button onClick={() => setShowInput(false)} style={{ ...css.saveBtn, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
+              <button onClick={() => { setShowInput(false); setWeightError(null); }} style={{ ...css.saveBtn, background: "#fff", color: "#FF6B35", border: "1.5px solid #FFD0BC" }}>
                 ✕
               </button>
             </div>
+            {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>⚠️ {weightError}</div>}
           </div>
         )}
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
+import { validateRequired } from "@/lib/formValidation";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -46,6 +47,7 @@ export default function EditPetModal({ pet, onClose, onSave }) {
   const [allergyInput, setAllergyInput] = useState("");
   const [conditionInput, setConditionInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [nameError, setNameError] = useState("");
 
   const breeds = form.species === "cat" ? BREEDS_CAT : form.species === "other" ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
@@ -68,6 +70,11 @@ export default function EditPetModal({ pet, onClose, onSave }) {
   };
 
   const save = async () => {
+    const ok = validateRequired([
+      { valid: !!form.name.trim(), id: "editpet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
+    ]);
+    if (!ok) return;
+    setNameError("");
     setLoading(true);
     const changedFields = Object.keys(CHANGED_FIELD_LABELS).filter(key => {
       const before = pet[key];
@@ -147,8 +154,10 @@ export default function EditPetModal({ pet, onClose, onSave }) {
         </div>
 
         {/* NOMBRE */}
-        <label style={css.label}>Nombre</label>
-        <input style={css.input} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+        <label style={css.label}>Nombre *</label>
+        <input id="editpet-name" style={css.input} value={form.name}
+          onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setNameError(""); }} />
+        {nameError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {nameError}</div>}
 
         {/* RAZA */}
         <label style={css.label}>Raza</label>

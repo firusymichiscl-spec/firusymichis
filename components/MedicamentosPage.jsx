@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { validateRequired } from "@/lib/formValidation";
 
 const MEDS_LIST = [
   'Nexgard', 'Bravecto', 'Simparica', 'Frontline', 'Revolution', 'Milbemax', 'Drontal',
@@ -62,6 +63,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [customFreq, setCustomFreq] = useState(false);
+  const [errors, setErrors] = useState({});
 
   const active = meds.filter(m => m.active);
   const history = meds.filter(m => !m.active);
@@ -80,6 +82,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
     setEditingId(null);
     setCustomFreq(false);
     setSaved(false);
+    setErrors({});
     setShowModal(true);
   };
 
@@ -97,13 +100,18 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
     setCustomFreq(isCustom);
     setEditingId(med.id);
     setSaved(false);
+    setErrors({});
     setShowModal(true);
   };
 
-  const closeModal = () => { setShowModal(false); setEditingId(null); setSaved(false); };
+  const closeModal = () => { setShowModal(false); setEditingId(null); setSaved(false); setErrors({}); };
 
   const handleSave = async () => {
-    if (!form.name) return;
+    const ok = validateRequired([
+      { valid: !!form.name.trim(), id: "med-name", message: "El nombre es obligatorio", onInvalid: msg => setErrors(e => ({ ...e, name: msg })) },
+    ]);
+    if (!ok) return;
+    setErrors({});
     setSaving(true);
     const freq = form.frequency === '__custom__' ? form.frequency_custom : form.frequency;
     const payload = {
@@ -253,15 +261,17 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
               <div style={{ marginBottom: 12 }}>
                 {fieldLabel('Nombre *')}
                 <input
+                  id="med-name"
                   style={inputStyle}
                   list="meds-list"
                   placeholder="Buscar o escribir medicamento..."
                   value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setErrors(er => ({ ...er, name: null })); }}
                 />
                 <datalist id="meds-list">
                   {MEDS_LIST.map(m => <option key={m} value={m} />)}
                 </datalist>
+                {errors.name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.name}</div>}
               </div>
 
               {/* DOSIS */}
@@ -317,7 +327,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                 </div>
               </div>
 
-              <button onClick={handleSave} disabled={saving || !form.name} style={css.saveBtn(saved)}>
+              <button onClick={handleSave} disabled={saving} style={css.saveBtn(saved)}>
                 {saved ? '✓ Guardado' : saving ? 'Guardando...' : editingId ? '✓ Actualizar' : '✓ Guardar medicamento'}
               </button>
             </div>

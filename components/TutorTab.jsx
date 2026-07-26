@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
+import { validateRequired } from "@/lib/formValidation";
 
 const RELATIONSHIPS = ["Dueño", "Familiar", "Veterinario", "Vecino", "Otro"];
 const EMAIL_DOMAINS = ["@gmail.com", "@hotmail.com", "@outlook.com", "@yahoo.com", "@icloud.com", "@live.com", "@yahoo.es"];
@@ -53,6 +54,7 @@ export default function TutorTab({ pet, isArchived }) {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [errors, setErrors] = useState({});
   const [emailDrop, setEmailDrop] = useState([]);
   const [addressManual, setAddressManual] = useState(false);
   const [copyFromPrimary, setCopyFromPrimary] = useState(false);
@@ -146,6 +148,7 @@ export default function TutorTab({ pet, isArchived }) {
     setEmailDrop([]);
     setEditingType(type);
     setSaved(false);
+    setErrors({});
   };
 
   const closeEdit = () => {
@@ -154,6 +157,7 @@ export default function TutorTab({ pet, isArchived }) {
     setEmailDrop([]);
     setCopyFromPrimary(false);
     setAddressManual(false);
+    setErrors({});
   };
 
   const handleEmailChange = (val) => {
@@ -176,7 +180,11 @@ export default function TutorTab({ pet, isArchived }) {
   const TYPE_LABELS = { primary: "Titular", secondary: "Suplente", tertiary: "Adicional" };
 
   const handleSave = async () => {
-    if (!form.full_name) return;
+    const ok = validateRequired([
+      { valid: !!form.full_name.trim(), id: "tutor-full-name", message: "El nombre es obligatorio", onInvalid: msg => setErrors(e => ({ ...e, full_name: msg })) },
+    ]);
+    if (!ok) return;
+    setErrors({});
     setSaving(true);
     const existing = editingType === "primary" ? primary : editingType === "secondary" ? secondary : tertiary;
     const payload = { ...form, phone: formatPhone(form.phone), pet_id: pet.id, type: editingType };
@@ -307,8 +315,10 @@ export default function TutorTab({ pet, isArchived }) {
               {/* NOMBRE */}
               <div style={{ marginBottom: 12 }}>
                 {fieldLabel("Nombre completo *")}
-                <input style={inputStyle} type="text" placeholder="Ej: María González"
-                  value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: capitalizeName(e.target.value) }))} />
+                <input id="tutor-full-name" style={inputStyle} type="text" placeholder="Ej: María González"
+                  value={form.full_name}
+                  onChange={e => { setForm(f => ({ ...f, full_name: capitalizeName(e.target.value) })); setErrors(er => ({ ...er, full_name: null })); }} />
+                {errors.full_name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.full_name}</div>}
               </div>
 
               {/* TELÉFONO */}
@@ -432,7 +442,7 @@ export default function TutorTab({ pet, isArchived }) {
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
 
-              <button onClick={handleSave} disabled={saving || !form.full_name}
+              <button onClick={handleSave} disabled={saving}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: saved ? "#2EC4B6" : "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s", marginBottom: 8 }}>
                 {saved ? "✓ Guardado" : saving ? "Guardando..." : `✓ Guardar tutor ${editingLabel}`}
               </button>

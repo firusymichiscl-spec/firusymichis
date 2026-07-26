@@ -4,12 +4,15 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import DietHistoryModal from "@/components/DietHistoryModal";
 import { sugerirRacion } from "@/lib/nutrition";
+import { formatMesAno } from "@/lib/fechas";
 
+// Parseo manual (no `new Date(string)`) para evitar el corrimiento de -1 día
+// que produce interpretar "YYYY-MM-DD" como medianoche UTC en Chile.
 const calcEdadMeses = (birthDate) => {
   if (!birthDate) return null;
-  const birth = new Date(birthDate);
+  const [by, bm] = birthDate.split("-").map(Number);
   const now = new Date();
-  return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+  return (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
 };
 
 export default function DietTimeline({ pet, isArchived }) {
@@ -43,13 +46,20 @@ export default function DietTimeline({ pet, isArchived }) {
   };
 
   const formatPeriod = (from, to) => {
-    const f = from ? from.slice(0, 7) : "?";
+    const f = from ? formatMesAno(from) : "?";
     if (!to) return `${f} → hoy`;
-    return `${f} → ${to.slice(0, 7)}`;
+    return `${f} → ${formatMesAno(to)}`;
   };
 
+  // Si por datos antiguos hay más de un período abierto (date_to null), solo
+  // el más reciente por date_from se considera "actual".
+  const openRecords = records.filter(r => !r.date_to);
+  const mostRecentOpenId = openRecords.length > 0
+    ? openRecords.reduce((a, b) => (a.date_from > b.date_from ? a : b)).id
+    : null;
+
   const dotColor = (record, index) => {
-    if (!record.date_to) return "#FF6B35";
+    if (record.id === mostRecentOpenId) return "#FF6B35";
     const t = Math.min(index / Math.max(records.length - 1, 1), 1);
     const r = Math.round(0xFF + t * (0x2E - 0xFF));
     const g = Math.round(0x6B + t * (0xC4 - 0x6B));
@@ -124,7 +134,7 @@ export default function DietTimeline({ pet, isArchived }) {
             {records.map((r, i) => {
               if (i > 0 && !expanded) return null;
               const color = dotColor(r, i);
-              const isCurrent = !r.date_to;
+              const isCurrent = r.id === mostRecentOpenId;
               return (
                 <div key={r.id} style={css.item}>
                   <div style={css.dot(color)} />

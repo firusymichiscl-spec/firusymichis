@@ -17,6 +17,8 @@ import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
+import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/lib/fechas";
+import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -112,6 +114,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [medForm, setMedForm] = useState(emptyMedForm);
   const [medSaving, setMedSaving] = useState(false);
   const [medSaved, setMedSaved] = useState(false);
+  const [medErrors, setMedErrors] = useState({});
   const [customFreq, setCustomFreq] = useState(false);
 
   const [showHistModal, setShowHistModal] = useState(false);
@@ -346,7 +349,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     const nextLabel = dosesDone >= totalDoses ? "Tratamiento finalizado" :
       isToday ? `Hoy a las ${timeStr}` :
       isTomorrow ? `Mañana a las ${timeStr}` :
-      nextDoseTime.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit" }) + ` a las ${timeStr}`;
+      formatFecha(nextDoseTime) + ` a las ${timeStr}`;
     const progress = totalDoses > 0 ? Math.round((dosesDone / totalDoses) * 100) : 0;
     const [h] = ti.start_time.split(":").map(Number);
     const momento = h >= 6 && h < 12 ? "mañana" : h >= 12 && h < 15 ? "mediodia" : h >= 15 && h < 19 ? "tarde" : "noche";
@@ -396,13 +399,18 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       setCustomFreq(false);
     }
     setMedSaved(false);
+    setMedErrors({});
     setShowMedModal(true);
   };
 
-  const closeMedModal = () => { setShowMedModal(false); setEditingMedId(null); setMedSaved(false); };
+  const closeMedModal = () => { setShowMedModal(false); setEditingMedId(null); setMedSaved(false); setMedErrors({}); };
 
   const handleMedSave = async () => {
-    if (!medForm.name) return;
+    const ok = validateRequired([
+      { valid: !!medForm.name.trim(), id: "med-name-main", message: "El nombre es obligatorio", onInvalid: msg => setMedErrors(e => ({ ...e, name: msg })) },
+    ]);
+    if (!ok) return;
+    setMedErrors({});
     setMedSaving(true);
     const freq = medForm.frequency === '__custom__' ? medForm.frequency_custom : medForm.frequency;
     const payload = { pet_id: petData.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true };
@@ -475,7 +483,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       if (!histForm.event.trim()) errors.event = true;
     }
     if (!histForm.event_date) errors.event_date = true;
-    if (Object.keys(errors).length > 0) { setHistErrors(errors); return; }
+    if (Object.keys(errors).length > 0) {
+      setHistErrors(errors);
+      flashRequiredField(errors.vaccine_name ? "hist-vaccine-name" : errors.event ? "hist-event" : "hist-event-date");
+      return;
+    }
     setHistErrors({});
     setHistSaving(true);
     let photoUrl = histForm.photoPreview && !histForm.photo ? histForm.photoPreview : null;
@@ -538,9 +550,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const calcAge = (birthDate) => {
     if (!birthDate) return "Sin datos";
-    const birth = new Date(birthDate);
+    const [by, bm] = birthDate.split("-").map(Number);
     const now = new Date();
-    const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + now.getMonth() - birth.getMonth();
+    const totalMonths = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
     const y = Math.floor(totalMonths / 12);
     const m = totalMonths % 12;
     return `${y} año${y !== 1 ? "s" : ""}${m > 0 ? ` ${m} mes${m !== 1 ? "es" : ""}` : ""}`;
@@ -554,7 +566,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     return { cls: "ok", label: `${days}d` };
   };
 
-  const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); };
+  const handleSignOut = async () => { await supabase.auth.signOut(); router.replace("/"); router.refresh(); };
 
   const groupByMonthYear = (events) => {
     const groups = {};
@@ -562,7 +574,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       if (!item.event_date) return;
       const [y, m] = item.event_date.split("-");
       const key = `${y}-${m}`;
-      const label = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleDateString("es-CL", { month: "long", year: "numeric" });
+      const label = formatMesAno(item.event_date);
       if (!groups[key]) groups[key] = { label, items: [] };
       groups[key].items.push(item);
     });
@@ -610,20 +622,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     );
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "Sin fecha";
-    const [y, m, d] = dateStr.split("-");
-    return `${d}/${m}/${y}`;
-  };
-
-  const formatLogDateTime = (iso) => {
-    const d = new Date(iso);
-    const dd = String(d.getDate()).padStart(2, "0");
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const min = String(d.getMinutes()).padStart(2, "0");
-    return `${dd}-${mm}-${d.getFullYear()} ${hh}:${min}`;
-  };
+  const formatDate = formatFecha;
+  const formatLogDateTime = formatFechaHora;
 
   const logDayLabel = (iso) => {
     const d = new Date(iso);
@@ -633,7 +633,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     const sameDay = (a, b) => a.toDateString() === b.toDateString();
     if (sameDay(d, today)) return "Hoy";
     if (sameDay(d, yesterday)) return "Ayer";
-    return d.toLocaleDateString("es-CL", { day: "2-digit", month: "long", year: "numeric" });
+    return formatFechaLarga(d);
   };
 
   const groupActivityByDay = (items) => {
@@ -764,7 +764,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </div>
               )}
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
-                {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {new Date(user.last_sign_in_at).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {formatFechaHora(user.last_sign_in_at)}
               </div>
               <button className="signout-btn" onClick={handleSignOut}>Cerrar sesión</button>
             </div>
@@ -1205,7 +1205,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         {uniqueTreatments.length > 1 && (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
                             {uniqueTreatments.map(t => {
-                              const label = t.diagnostico || (t.emission_date ? new Date(t.emission_date + "T12:00:00").toLocaleDateString("es-CL") : new Date((t.recipe_date || Date.now()) + "T12:00:00").toLocaleDateString("es-CL"));
+                              const label = t.diagnostico || formatFecha(t.emission_date || t.recipe_date || Date.now());
                               const meds = t.items.slice(0, 2).map(i => i.name).join(", ");
                               const isSelected = selectedTreatmentGroupId === t.treatment_id;
                               return (
@@ -1574,9 +1574,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               {/* Nombre */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Nombre *")}
-                <input style={inputS} list="meds-dl" placeholder="Buscar o escribir medicamento..."
-                  value={medForm.name} onChange={e => setMedForm(f => ({ ...f, name: e.target.value }))} />
+                <input id="med-name-main" style={inputS} list="meds-dl" placeholder="Buscar o escribir medicamento..."
+                  value={medForm.name} onChange={e => { setMedForm(f => ({ ...f, name: e.target.value })); setMedErrors(er => ({ ...er, name: null })); }} />
                 <datalist id="meds-dl">{MEDS_LIST.map(m => <option key={m} value={m} />)}</datalist>
+                {medErrors.name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {medErrors.name}</div>}
               </div>
 
               {/* Dosis */}
@@ -1659,7 +1660,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </div>
               </div>
 
-              <button onClick={handleMedSave} disabled={medSaving || !medForm.name}
+              <button onClick={handleMedSave} disabled={medSaving}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: medSaved ? "var(--color-secondary)" : "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {medSaved ? "✓ Guardado" : medSaving ? "Guardando..." : editingMedId ? "✓ Actualizar" : "✓ Guardar medicamento"}
               </button>
@@ -1695,7 +1696,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               {histForm.type !== "vaccine" && (
                 <div style={{ marginBottom: 12 }}>
                   {fLabel("Descripción *")}
-                  <input style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
+                  <input id="hist-event" style={{ ...inputS, border: `1.5px solid ${histErrors.event ? "#dc2626" : "#FFD9C8"}` }}
                     placeholder="ej: Control rutinario, Otitis bilateral..."
                     value={histForm.event}
                     onChange={e => { setHistForm(f => ({ ...f, event: e.target.value })); setHistErrors(p => ({ ...p, event: false })); }} />
@@ -1720,7 +1721,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         + Otra
                       </div>
                     </div>
-                    <input style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${histErrors.vaccine_name ? "#dc2626" : "#FFD9C8"}`, fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" }}
+                    <input id="hist-vaccine-name" style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${histErrors.vaccine_name ? "#dc2626" : "#FFD9C8"}`, fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" }}
                       placeholder="Nombre de la vacuna..."
                       value={histForm.vaccine_name}
                       onChange={e => { setHistForm(f => ({ ...f, vaccine_name: e.target.value })); setHistErrors(p => ({ ...p, vaccine_name: false })); }} />
@@ -1742,7 +1743,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               {/* Fecha */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel(histForm.type === "vaccine" ? "Fecha en que se aplicó *" : "Fecha *")}
-                <input type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
+                <input id="hist-event-date" type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
                   max={new Date().toISOString().split("T")[0]}
                   value={histForm.event_date}
                   onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); setHistErrors(p => ({ ...p, event_date: false })); }} />

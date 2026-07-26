@@ -3,12 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return "Sin fecha";
-  const [y, m, d] = dateStr.split("-");
-  return `${d}/${m}/${y}`;
-};
+import { formatFecha } from "@/lib/fechas";
 
 export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const supabase = createClient();
@@ -18,7 +13,7 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const [loadingData, setLoadingData] = useState(true);
 
   const birthYear = pet.birth_date
-    ? new Date(pet.birth_date).getFullYear()
+    ? parseInt(pet.birth_date.split("-")[0], 10)
     : new Date().getFullYear() - 5;
   const currentYear = new Date().getFullYear();
   const yearsCount = Math.max(currentYear - birthYear, 1);
@@ -355,7 +350,7 @@ const resetAll = async () => {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 8 }}>
                           {existingSporadic.map((s, i) => (
                             <span key={i} style={{ background: "#E8FAF9", color: "#0F6E56", borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700 }}>
-                              {formatDate(s.date)} · {s.kg} kg
+                              {formatFecha(s.date)} · {s.kg} kg
                             </span>
                           ))}
                         </div>

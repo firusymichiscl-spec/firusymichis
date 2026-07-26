@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { compressImage } from "@/lib/images/compress";
+import { formatFecha } from "@/lib/fechas";
 
 export default function MarketplacePage() {
   const supabase = createClient();
@@ -409,7 +410,7 @@ export default function MarketplacePage() {
                     </div>
                     <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 10 }}>
                       Estado despacho: <strong>{m.dispatch_status === "pending" || !m.dispatch_status ? "⏳ Pendiente" : m.dispatch_status === "preparing" ? "📦 Preparando" : m.dispatch_status === "shipped" ? "🚚 En camino" : "✓ Entregado"}</strong>
-                      {m.estimated_delivery && <span> · Entrega estimada: {new Date(m.estimated_delivery).toLocaleDateString("es-CL")}</span>}
+                      {m.estimated_delivery && <span> · Entrega estimada: {formatFecha(m.estimated_delivery)}</span>}
                     </div>
                     {!m.payment_simulated && isBuyer && (
                       <button onClick={() => simulatePayment(m.id)}

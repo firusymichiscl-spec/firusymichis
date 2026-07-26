@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
+import { formatFecha } from "@/lib/fechas";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "Helvetica", background: "#FFF8F3", padding: 40 },
@@ -39,17 +40,13 @@ const styles = StyleSheet.create({
   weightNote: { fontSize: 10, color: "#7A4522", fontStyle: "italic" },
 });
 
-const formatDate = (d) => {
-  if (!d) return "Sin fecha";
-  const [y, m, day] = d.split("-");
-  return `${day}/${m}/${y}`;
-};
+const formatDate = formatFecha;
 
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
-  const birth = new Date(birthDate);
+  const [by, bm] = birthDate.split("-").map(Number);
   const now = new Date();
-  const totalMonths = (now.getFullYear() - birth.getFullYear()) * 12 + now.getMonth() - birth.getMonth();
+  const totalMonths = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
   const y = Math.floor(totalMonths / 12);
   const m = totalMonths % 12;
   return `${y} año${y !== 1 ? "s" : ""}${m > 0 ? ` ${m} mes${m !== 1 ? "es" : ""}` : ""}`;
@@ -249,7 +246,7 @@ export async function GET(req, { params }) {
 
         {/* FOOTER */}
         <Text style={styles.footer}>
-          Ficha generada por Firus&Michis · firusymichis.cl · {new Date().toLocaleDateString("es-CL")}
+          Ficha generada por Firus&Michis · firusymichis.cl · {formatFecha(new Date())}
         </Text>
 
       </Page>
