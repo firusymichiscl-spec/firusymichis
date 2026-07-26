@@ -22,7 +22,7 @@ export default function VetMapTab({ pet, history }) {
   const [openNow, setOpenNow] = useState(false);
   const [sortBy, setSortBy] = useState("distance");
   const [selectedVet, setSelectedVet] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState(null); // { key, ok }
 
   // Veterinarias del historial de la mascota
   const historyVets = [...new Set(
@@ -153,11 +153,19 @@ export default function VetMapTab({ pet, history }) {
     if (location && googleLoaded) searchVets();
   }, [radius]);
 
-  const copyVetInfo = (vet) => {
-    const info = [vet.name, vet.vicinity, vet.formatted_phone_number].filter(Boolean).join("\n");
-    navigator.clipboard.writeText(info);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // Copia solo el nombre (para pegar en el campo "Veterinaria" de un evento
+  // médico o vacuna). Si el navegador no soporta clipboard o falla, deja un
+  // fallback discreto en vez de fallar en silencio.
+  const copyText = async (text, key) => {
+    let ok = true;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard no soportado");
+      await navigator.clipboard.writeText(text);
+    } catch {
+      ok = false;
+    }
+    setCopyStatus({ key, ok });
+    setTimeout(() => setCopyStatus(s => (s?.key === key ? null : s)), 2000);
   };
 
   const getDistanceMeters = (vetLocation) => {
@@ -223,7 +231,12 @@ export default function VetMapTab({ pet, history }) {
         </div>
         {hasOpenNowData && (
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7A4522", fontWeight: 600, cursor: "pointer", marginBottom: 10 }}>
-            <input type="checkbox" checked={openNow} onChange={e => setOpenNow(e.target.checked)} style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
+            <input type="checkbox" checked={openNow} onChange={e => {
+              const checked = e.target.checked;
+              setOpenNow(checked);
+              // "Ordenar por abiertas" no tiene sentido si ya se filtra solo por abiertas.
+              if (checked && sortBy === "open") setSortBy("distance");
+            }} style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
             Solo abiertas ahora
           </label>
         )}
@@ -232,7 +245,7 @@ export default function VetMapTab({ pet, history }) {
           {[
             { id: "distance", label: "Cercanía" },
             { id: "rating", label: "Mejor evaluadas" },
-            ...(hasOpenNowData ? [{ id: "open", label: "Abiertas ahora" }] : []),
+            ...(hasOpenNowData && !openNow ? [{ id: "open", label: "Abiertas ahora" }] : []),
           ].map(o => (
             <div key={o.id} onClick={() => setSortBy(o.id)}
               style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${sortBy === o.id ? "#FF6B35" : "#FFD9C8"}`, background: sortBy === o.id ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: sortBy === o.id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
@@ -262,29 +275,39 @@ export default function VetMapTab({ pet, history }) {
       {/* Veterinarias del historial */}
       {historyVets.length > 0 && (
         <div style={css.card}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🏥 Clínicas visitadas por {pet.name}</div>
-          {historyVets.map((vet, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < historyVets.length - 1 ? "1px solid #FFF0EB" : "none" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{vet}</div>
-              <button onClick={() => { navigator.clipboard.writeText(vet); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-                style={{ padding: "4px 10px", borderRadius: 8, background: "#E8FAF9", color: "#2EC4B6", border: "1px solid #9FE1CB", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                {copied ? "✓" : "Copiar"}
-              </button>
-            </div>
-          ))}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>🏥 Clínicas visitadas por {pet.name}</div>
+          <div style={{ fontSize: 11, color: "#C4845A", marginBottom: 10 }}>Copia el nombre para pegarlo al registrar un evento médico o vacuna.</div>
+          {historyVets.map((vet, i) => {
+            const key = `hist-${i}`;
+            const status = copyStatus?.key === key ? copyStatus : null;
+            return (
+              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < historyVets.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{vet}</div>
+                <button onClick={() => copyText(vet, key)}
+                  style={{ padding: "4px 10px", borderRadius: 8, background: status?.ok ? "#e8faf4" : status && !status.ok ? "#fef2f2" : "#E8FAF9", color: status?.ok ? "#059669" : status && !status.ok ? "#dc2626" : "#2EC4B6", border: `1px solid ${status?.ok ? "#a7f3d0" : status && !status.ok ? "#fecaca" : "#9FE1CB"}`, fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {status?.ok ? "✓ Copiado" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Lista de veterinarias */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>
         {loading ? "Buscando veterinarias..." : `${displayVets.length} veterinarias encontradas`}
       </div>
+      {!loading && (
+        <div style={{ fontSize: 11, color: "#C4845A", marginBottom: 10 }}>Copia el nombre para pegarlo al registrar un evento médico o vacuna.</div>
+      )}
 
       {displayVets.map((vet, i) => {
         const dist = getDistance(vet.geometry?.location);
         const isFromHistory = historyVets.some(h => h.toLowerCase().includes(vet.name.toLowerCase()));
+        const key = vet.place_id || i;
+        const status = copyStatus?.key === key ? copyStatus : null;
         return (
-          <div key={vet.place_id || i} style={{ ...css.card, border: selectedVet?.place_id === vet.place_id ? "2px solid #FF6B35" : "none" }}
+          <div key={key} style={{ ...css.card, border: selectedVet?.place_id === vet.place_id ? "2px solid #FF6B35" : "none" }}
             onClick={() => { setSelectedVet(vet === selectedVet ? null : vet); mapInstanceRef.current?.panTo(vet.geometry.location); mapInstanceRef.current?.setZoom(16); }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
@@ -302,9 +325,9 @@ export default function VetMapTab({ pet, history }) {
                   {vet.opening_hours?.open_now === undefined && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8" }}>Sin dato de horario</span>}
                 </div>
               </div>
-              <button onClick={e => { e.stopPropagation(); copyVetInfo(vet); }}
-                style={{ padding: "5px 10px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0, marginLeft: 8 }}>
-                {copied ? "✓" : "Copiar"}
+              <button onClick={e => { e.stopPropagation(); copyText(vet.name, key); }}
+                style={{ padding: "5px 10px", borderRadius: 8, background: status?.ok ? "#e8faf4" : status && !status.ok ? "#fef2f2" : "#FFF0EB", color: status?.ok ? "#059669" : status && !status.ok ? "#dc2626" : "#FF6B35", border: `1px solid ${status?.ok ? "#a7f3d0" : status && !status.ok ? "#fecaca" : "#FFD0BC"}`, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap" }}>
+                {status?.ok ? "✓ Copiado" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
               </button>
             </div>
           </div>
