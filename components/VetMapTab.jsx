@@ -20,6 +20,7 @@ export default function VetMapTab({ pet, history }) {
   const [loading, setLoading] = useState(false);
   const [radius, setRadius] = useState(3000);
   const [openNow, setOpenNow] = useState(false);
+  const [sortBy, setSortBy] = useState("distance");
   const [selectedVet, setSelectedVet] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -72,7 +73,9 @@ export default function VetMapTab({ pet, history }) {
     searchVets();
   }, [googleLoaded, location]);
 
-  // Buscar veterinarias
+  // Buscar veterinarias. open_now NO se envía a la API: se trae siempre el
+  // set completo (abiertas y cerradas) y el filtro/orden se aplica en el
+  // cliente, para no gastar cuota de Places con cada toggle.
   const searchVets = async () => {
     if (!location) return;
     setLoading(true);
@@ -83,13 +86,10 @@ export default function VetMapTab({ pet, history }) {
         lat: location.lat,
         lng: location.lng,
         radius,
-        ...(openNow ? { open_now: true } : {}),
       });
       const res = await fetch(`/api/places?${params}`);
       const data = await res.json();
-      const results = data.results || [];
-      setVets(results);
-      updateMarkers(results);
+      setVets(data.results || []);
     } catch {
       setVets([]);
     }
@@ -147,9 +147,11 @@ export default function VetMapTab({ pet, history }) {
     });
   };
 
+  // Solo el radio dispara una nueva búsqueda a la API — es un set de
+  // resultados distinto. openNow y sortBy se resuelven abajo en el cliente.
   useEffect(() => {
     if (location && googleLoaded) searchVets();
-  }, [radius, openNow]);
+  }, [radius]);
 
   const copyVetInfo = (vet) => {
     const info = [vet.name, vet.vicinity, vet.formatted_phone_number].filter(Boolean).join("\n");
@@ -158,15 +160,48 @@ export default function VetMapTab({ pet, history }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const getDistance = (vetLocation) => {
-    if (!location || !vetLocation) return null;
+  const getDistanceMeters = (vetLocation) => {
+    if (!location || !vetLocation) return Infinity;
     const R = 6371000;
     const dLat = (vetLocation.lat - location.lat) * Math.PI / 180;
     const dLng = (vetLocation.lng - location.lng) * Math.PI / 180;
     const a = Math.sin(dLat/2)**2 + Math.cos(location.lat * Math.PI/180) * Math.cos(vetLocation.lat * Math.PI/180) * Math.sin(dLng/2)**2;
-    const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  const getDistance = (vetLocation) => {
+    const dist = getDistanceMeters(vetLocation);
+    if (!isFinite(dist)) return null;
     return dist < 1000 ? `${Math.round(dist)} m` : `${(dist/1000).toFixed(1)} km`;
   };
+
+  // Google no siempre trae opening_hours para todos los locales de un
+  // resultado; si NINGUNO de los resultados actuales lo trae, ocultamos el
+  // filtro/orden por horario en vez de mostrar un control que no hace nada.
+  const hasOpenNowData = vets.some(v => v.opening_hours?.open_now !== undefined);
+
+  const sortedVets = [...vets].sort((a, b) => {
+    if (sortBy === "rating") {
+      const diff = (b.rating || 0) - (a.rating || 0);
+      return diff !== 0 ? diff : (b.user_ratings_total || 0) - (a.user_ratings_total || 0);
+    }
+    if (sortBy === "open") {
+      const aOpen = a.opening_hours?.open_now ? 1 : 0;
+      const bOpen = b.opening_hours?.open_now ? 1 : 0;
+      if (aOpen !== bOpen) return bOpen - aOpen;
+    }
+    return getDistanceMeters(a.geometry?.location) - getDistanceMeters(b.geometry?.location);
+  });
+
+  const displayVets = (openNow && hasOpenNowData)
+    ? sortedVets.filter(v => v.opening_hours?.open_now)
+    : sortedVets;
+
+  // Los marcadores del mapa siguen exactamente lo que se muestra en la
+  // lista (orden y filtro), no el resultado crudo de la API.
+  useEffect(() => {
+    if (mapInstanceRef.current) updateMarkers(displayVets);
+  }, [vets, sortBy, openNow]);
 
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 16, marginBottom: 14, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
@@ -186,10 +221,25 @@ export default function VetMapTab({ pet, history }) {
             </div>
           ))}
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7A4522", fontWeight: 600, cursor: "pointer" }}>
-          <input type="checkbox" checked={openNow} onChange={e => setOpenNow(e.target.checked)} style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
-          Solo abiertas ahora
-        </label>
+        {hasOpenNowData && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7A4522", fontWeight: 600, cursor: "pointer", marginBottom: 10 }}>
+            <input type="checkbox" checked={openNow} onChange={e => setOpenNow(e.target.checked)} style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
+            Solo abiertas ahora
+          </label>
+        )}
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Ordenar por</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {[
+            { id: "distance", label: "Cercanía" },
+            { id: "rating", label: "Mejor evaluadas" },
+            ...(hasOpenNowData ? [{ id: "open", label: "Abiertas ahora" }] : []),
+          ].map(o => (
+            <div key={o.id} onClick={() => setSortBy(o.id)}
+              style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${sortBy === o.id ? "#FF6B35" : "#FFD9C8"}`, background: sortBy === o.id ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: sortBy === o.id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+              {o.label}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Error de ubicación */}
@@ -227,14 +277,14 @@ export default function VetMapTab({ pet, history }) {
 
       {/* Lista de veterinarias */}
       <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>
-        {loading ? "Buscando veterinarias..." : `${vets.length} veterinarias encontradas`}
+        {loading ? "Buscando veterinarias..." : `${displayVets.length} veterinarias encontradas`}
       </div>
 
-      {vets.map((vet, i) => {
+      {displayVets.map((vet, i) => {
         const dist = getDistance(vet.geometry?.location);
         const isFromHistory = historyVets.some(h => h.toLowerCase().includes(vet.name.toLowerCase()));
         return (
-          <div key={i} style={{ ...css.card, border: selectedVet?.place_id === vet.place_id ? "2px solid #FF6B35" : "none" }}
+          <div key={vet.place_id || i} style={{ ...css.card, border: selectedVet?.place_id === vet.place_id ? "2px solid #FF6B35" : "none" }}
             onClick={() => { setSelectedVet(vet === selectedVet ? null : vet); mapInstanceRef.current?.panTo(vet.geometry.location); mapInstanceRef.current?.setZoom(16); }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
@@ -247,11 +297,9 @@ export default function VetMapTab({ pet, history }) {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {dist && <span style={{ fontSize: 10, fontWeight: 700, color: "#7A4522" }}>📏 {dist}</span>}
                   {vet.rating && <span style={{ fontSize: 10, fontWeight: 700, color: "#FFD166" }}>⭐ {vet.rating} ({vet.user_ratings_total || 0})</span>}
-                  {vet.opening_hours?.open_now !== undefined && (
-                    <span style={{ fontSize: 10, fontWeight: 700, color: vet.opening_hours.open_now ? "#059669" : "#dc2626" }}>
-                      {vet.opening_hours.open_now ? "● Abierto" : "● Cerrado"}
-                    </span>
-                  )}
+                  {vet.opening_hours?.open_now === true && <span style={{ fontSize: 10, fontWeight: 700, color: "#059669" }}>🟢 Abierto</span>}
+                  {vet.opening_hours?.open_now === false && <span style={{ fontSize: 10, fontWeight: 700, color: "#dc2626" }}>🔴 Cerrado</span>}
+                  {vet.opening_hours?.open_now === undefined && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8" }}>Sin dato de horario</span>}
                 </div>
               </div>
               <button onClick={e => { e.stopPropagation(); copyVetInfo(vet); }}
@@ -269,6 +317,16 @@ export default function VetMapTab({ pet, history }) {
             <div className="empty-icon">🏥</div>
             <p>No se encontraron veterinarias en este radio</p>
             <p style={{ fontSize: 11, marginTop: 4 }}>Intenta aumentar el radio de búsqueda</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && vets.length > 0 && displayVets.length === 0 && (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-icon">🕒</div>
+            <p>Ninguna está abierta ahora</p>
+            <p style={{ fontSize: 11, marginTop: 4 }}>Desactiva &ldquo;Solo abiertas ahora&rdquo; para ver todas</p>
           </div>
         </div>
       )}

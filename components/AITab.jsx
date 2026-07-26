@@ -35,7 +35,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-export default function AITab({ pet, medications, history, isArchived, onTreatmentSaved, onTreatmentDeleted }) {
+export default function AITab({ pet, medications, history, isArchived, onTreatmentSaved, onGoToTratamiento }) {
   const supabase = createClient();
   const [activeSection, setActiveSection] = useState(null);
 
@@ -63,8 +63,6 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   const [treatmentMeta, setTreatmentMeta] = useState({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
   const [savedTreatments, setSavedTreatments] = useState([]);
   const [loadingTreatments, setLoadingTreatments] = useState(false);
-  const [deletingTreatment, setDeletingTreatment] = useState(null);
-  const [selectedTreatmentId, setSelectedTreatmentId] = useState(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const [clinicQuery, setClinicQuery] = useState("");
   const [clinicSuggestions, setClinicSuggestions] = useState([]);
@@ -116,12 +114,6 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     setClinicSearching(false);
   };
 
-  useEffect(() => {
-    if (savedTreatments.length > 0 && !selectedTreatmentId) {
-      setSelectedTreatmentId(savedTreatments[0].id);
-    }
-  }, [savedTreatments]);
-
   const SYMPTOM_PLACEHOLDERS = [
     `${pet.name} se está rascando mucho las orejas`,
     `${pet.name} vomitó esta mañana`,
@@ -138,18 +130,6 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     }, 2500);
     return () => clearInterval(interval);
   }, []);
-
-  const deleteTreatment = async (id) => {
-    if (!confirm("¿Eliminar este tratamiento?")) return;
-    setDeletingTreatment(id);
-    const treatment = savedTreatments.find(t => t.id === id);
-    await supabase.from("treatment_items").delete().eq("treatment_id", id);
-    await supabase.from("treatments").delete().eq("id", id);
-    await logActivity(supabase, pet.id, "Eliminó tratamiento", treatment?.diagnostico || null);
-    setDeletingTreatment(null);
-    loadTreatments();
-    onTreatmentDeleted?.();
-  };
 
   const analyze = async () => {
     setAnalyzing(true);
@@ -461,61 +441,17 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       ))}
 
       {savedTreatments.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Tratamientos guardados</div>
-          {savedTreatments.length > 1 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-              {savedTreatments.map(t => {
-                const label = t.diagnostico || `Receta ${formatFecha(t.emission_date || t.recipe_date || t.created_at)}`;
-                const meds = t.treatment_items?.slice(0, 3).map(ti => ti.name).join(", ");
-                const isSelected = selectedTreatmentId === t.id;
-                return (
-                  <div key={t.id} onClick={() => setSelectedTreatmentId(t.id)}
-                    style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
-                    {label}
-                    {meds && <span style={{ color: "#C4845A", fontSize: 11 }}> ({meds}{t.treatment_items?.length > 3 ? "..." : ""})</span>}
-                  </div>
-                );
-              })}
+        <div style={{ marginTop: 8, background: "#f5f3ff", borderRadius: 14, border: "1.5px solid #C4B5FD", padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed" }}>
+              ✓ {savedTreatments.length === 1 ? "Tienes 1 tratamiento guardado" : `Tienes ${savedTreatments.length} tratamientos guardados`}
             </div>
-          )}
-          {savedTreatments.filter(t => !selectedTreatmentId || t.id === selectedTreatmentId).map(t => (
-            <div key={t.id} style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ fontSize: 11, color: "#C4845A" }}>📋 Receta del {t.emission_date || t.recipe_date ? formatFecha(t.emission_date || t.recipe_date) : "—"}</div>
-                  <button onClick={() => deleteTreatment(t.id)} disabled={deletingTreatment === t.id}
-                    style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "3px 10px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>
-                    {deletingTreatment === t.id ? "..." : "🗑️"}
-                  </button>
-                </div>
-                {t.diagnostico && <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A", marginBottom: 3 }}>🩺 {t.diagnostico}</div>}
-                {t.doctor && <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 2 }}>👨‍⚕️ {t.doctor}</div>}
-                {t.vet_clinic && <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 6 }}>🏥 {t.vet_clinic}</div>}
-              </div>
-              {t.treatment_items?.map(ti => {
-                const daysLeft = ti.duration_days && ti.start_date
-                  ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
-                  : null;
-                return (
-                  <div key={ti.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #f5f3ff" }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
-                      <div style={{ fontSize: 11, color: "#C4845A" }}>{ti.frequency}{ti.start_time ? ` · inicio ${ti.start_time}` : ""}</div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      {ti.boxes_needed && <div style={{ fontSize: 12, fontWeight: 700, color: "#8B5CF6" }}>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</div>}
-                      {daysLeft !== null && (
-                        <div style={{ fontSize: 10, color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#059669", fontWeight: 700 }}>
-                          {daysLeft > 0 ? `${daysLeft}d restantes` : "Finalizado"}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+            <div style={{ fontSize: 11, color: "#7A4522", marginTop: 2 }}>en Meds → Tratamiento</div>
+          </div>
+          <button onClick={() => onGoToTratamiento?.()}
+            style={{ background: "#8B5CF6", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            Ver en Meds →
+          </button>
         </div>
       )}
     </div>

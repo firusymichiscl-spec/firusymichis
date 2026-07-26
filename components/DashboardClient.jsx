@@ -152,6 +152,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [treatmentItems, setTreatmentItems] = useState([]);
   const [momentosExpanded, setMomentosExpanded] = useState({});
   const [selectedTreatmentGroupId, setSelectedTreatmentGroupId] = useState(null);
+  const [expandedTreatmentCards, setExpandedTreatmentCards] = useState({});
   const [dosisMsg, setDosisMsg] = useState({});
 
   const loadTreatmentItems = async () => {
@@ -1171,7 +1172,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ) : (() => {
                     const uniqueTreatments = treatmentItems.reduce((acc, ti) => {
                       if (!acc.find(t => t.treatment_id === ti.treatment_id)) {
-                        acc.push({ treatment_id: ti.treatment_id, diagnostico: ti.treatments?.diagnostico, vet_clinic: ti.treatments?.vet_clinic, emission_date: ti.treatments?.emission_date, recipe_date: ti.treatments?.recipe_date, items: treatmentItems.filter(x => x.treatment_id === ti.treatment_id) });
+                        acc.push({ treatment_id: ti.treatment_id, diagnostico: ti.treatments?.diagnostico, doctor: ti.treatments?.doctor, vet_clinic: ti.treatments?.vet_clinic, emission_date: ti.treatments?.emission_date, recipe_date: ti.treatments?.recipe_date, items: treatmentItems.filter(x => x.treatment_id === ti.treatment_id) });
                       }
                       return acc;
                     }, []);
@@ -1187,46 +1188,67 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                     const momentoActual = getMomentoActual();
                     return (
                       <>
-                        {uniqueTreatments.length > 1 && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                            {uniqueTreatments.map(t => {
-                              const label = t.diagnostico || formatFecha(t.emission_date || t.recipe_date || Date.now());
-                              const meds = t.items.slice(0, 2).map(i => i.name).join(", ");
-                              const isSelected = selectedTreatmentGroupId === t.treatment_id;
-                              return (
-                                <div key={t.treatment_id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px 6px 12px", borderRadius: 20, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#C4B5FD"}`, background: isSelected ? "#f5f3ff" : "#fff", cursor: "pointer" }}
-                                  onClick={() => setSelectedTreatmentGroupId(t.treatment_id)}>
-                                  <span style={{ fontSize: 11, fontWeight: isSelected ? 700 : 400, color: isSelected ? "#7c3aed" : "#7A4522" }}>
-                                    {label}
-                                    {meds && <span style={{ color: "#C4845A", fontSize: 10 }}> ({meds}{t.items.length > 2 ? "..." : ""})</span>}
-                                  </span>
-                                  <button onClick={e => { e.stopPropagation(); deleteTreatmentGroup(t.treatment_id); }}
-                                    title="Eliminar este tratamiento"
-                                    style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 2px", fontSize: 12, color: "#C4B5FD", lineHeight: 1 }}>
-                                    🗑️
-                                  </button>
+                        <div style={{ marginBottom: 16 }}>
+                          {uniqueTreatments.map(t => {
+                            const isExpanded = !!expandedTreatmentCards[t.treatment_id];
+                            const isSelected = selectedTreatmentGroupId === t.treatment_id;
+                            const fecha = t.emission_date || t.recipe_date;
+                            const progresos = t.items.map(ti => calcTreatmentProgress(ti)).filter(Boolean);
+                            const estado = progresos.length === 0 ? null : progresos.every(p => p.daysLeft === 0) ? "Finalizado" : "Activo";
+                            return (
+                              <div key={t.treatment_id} style={{ background: "#fff", borderRadius: 16, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#E9D8FD"}`, marginBottom: 10, overflow: "hidden" }}>
+                                <div onClick={() => { setExpandedTreatmentCards(p => ({ ...p, [t.treatment_id]: !isExpanded })); setSelectedTreatmentGroupId(t.treatment_id); }}
+                                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer", gap: 10 }}>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, color: "#3D1F0A" }}>
+                                      🩺 {t.diagnostico || "Tratamiento"}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: "#C4845A", marginTop: 2 }}>
+                                      {t.items.length} medicamento{t.items.length !== 1 ? "s" : ""}
+                                      {fecha ? ` · ${formatFecha(fecha)}` : ""}
+                                      {estado && <span style={{ marginLeft: 6, fontWeight: 700, color: estado === "Activo" ? "#059669" : "#C4845A" }}>· {estado}</span>}
+                                    </div>
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+                                    <button onClick={e => { e.stopPropagation(); deleteTreatmentGroup(t.treatment_id); }}
+                                      title="Eliminar este tratamiento"
+                                      style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 14, color: "#C4845A" }}>
+                                      🗑️
+                                    </button>
+                                    <div style={{ fontSize: 12, color: "#8B5CF6" }}>{isExpanded ? "▲" : "▼"}</div>
+                                  </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {(() => {
-                          const cur = uniqueTreatments.find(t => t.treatment_id === selectedTreatmentGroupId) || uniqueTreatments[0];
-                          if (!cur) return null;
-                          const info = [cur.diagnostico, cur.vet_clinic].filter(Boolean).join(" · ") || "Tratamiento activo";
-                          return (
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                              <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700 }}>{info}</div>
-                              {uniqueTreatments.length === 1 && (
-                                <button onClick={() => deleteTreatmentGroup(cur.treatment_id)}
-                                  title="Eliminar este tratamiento"
-                                  style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 13, color: "#C4845A", padding: "2px 4px" }}>
-                                  🗑️
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })()}
+                                {isExpanded && (
+                                  <div style={{ padding: "0 16px 14px" }}>
+                                    {(t.doctor || t.vet_clinic) && (
+                                      <div style={{ fontSize: 11, color: "#7A4522", padding: "8px 0", borderTop: "1px solid #F5E6DA" }}>
+                                        {t.doctor && <span>👨‍⚕️ {t.doctor}</span>}
+                                        {t.doctor && t.vet_clinic && <span> · </span>}
+                                        {t.vet_clinic && <span>🏥 {t.vet_clinic}</span>}
+                                      </div>
+                                    )}
+                                    {t.items.map(ti => (
+                                      <div key={ti.id} style={{ padding: "10px 0", borderTop: "1px solid #F5E6DA" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+                                          <button onClick={() => {
+                                            const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
+                                            setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"" });
+                                            setEditingTreatmentItem(ti); setTiSaved(false);
+                                          }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "3px 9px", fontSize: 10, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>✏️ Editar</button>
+                                        </div>
+                                        {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {ti.prescribed_dose}</div>}
+                                        {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>🕐 {ti.frequency}</div>}
+                                        {ti.duration_days && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>📅 {ti.duration_days} días</div>}
+                                        {ti.indicaciones && <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4, fontStyle: "italic" }}>📝 {ti.indicaciones}</div>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                         {filteredTreatmentItems.some(ti => ti.boxes_needed) && (
                           <div style={{ background: "#E8FAF9", borderRadius: 14, border: "1.5px solid #2EC4B6", padding: 14, marginBottom: 16 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: "#0F6E56", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🛒 Recomendación de compra</div>
@@ -1470,7 +1492,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} isArchived={isArchived} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} isArchived={isArchived} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onTreatmentDeleted={() => loadTreatmentItems()} />}
+          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} isArchived={isArchived} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onGoToTratamiento={() => { setTab("medicamentos"); setMedsView("tratamiento"); }} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
