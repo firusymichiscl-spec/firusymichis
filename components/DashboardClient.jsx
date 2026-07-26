@@ -379,6 +379,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       start_date: tiForm.start_date, start_time: startTime,
       mg_per_unit: tiForm.mg_per_unit ? parseFloat(tiForm.mg_per_unit) : null,
       units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
+      indicaciones: tiForm.indicaciones || null,
     }).eq("id", editingTreatmentItem.id);
     await logActivity(supabase, petData.id, "Editó tratamiento", tiForm.name);
     setTiSaving(false); setTiSaved(true);
@@ -1233,7 +1234,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                           <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
                                           <button onClick={() => {
                                             const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-                                            setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"" });
+                                            setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"", indicaciones: ti.indicaciones||"" });
                                             setEditingTreatmentItem(ti); setTiSaved(false);
                                           }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "3px 9px", fontSize: 10, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>✏️ Editar</button>
                                         </div>
@@ -1294,7 +1295,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                         <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
                                         <button onClick={() => {
                                           const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-                                          setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"" });
+                                          setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"", indicaciones: ti.indicaciones||"" });
                                           setEditingTreatmentItem(ti); setTiSaved(false);
                                         }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                                       </div>
@@ -1937,6 +1938,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                     <input style={{ ...inputS, background: "#fff" }} type="number" min="1" placeholder="ej: 30" value={tiForm.units_per_box || ""} onChange={e => setTiForm(f => ({ ...f, units_per_box: e.target.value }))} />
                   </div>
                 </div>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                {fLabel("Indicaciones")}
+                <textarea style={{ ...inputS, resize: "vertical", minHeight: 60 }} placeholder="ej: administrar con comida, no suspender antes de terminar..." value={tiForm.indicaciones || ""} onChange={e => setTiForm(f => ({ ...f, indicaciones: e.target.value }))} />
               </div>
               <button onClick={saveTreatmentItem} disabled={tiSaving}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "var(--color-secondary)" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>

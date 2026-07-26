@@ -320,6 +320,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         units_per_box: parseInt(item.units_per_box) || null,
         units_per_dose: upd, boxes_needed: calc?.boxesNeeded || null,
         units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
+        indicaciones: item.indicaciones || null,
       });
       if (item.lifelong) {
         await supabase.from("medications").insert({
