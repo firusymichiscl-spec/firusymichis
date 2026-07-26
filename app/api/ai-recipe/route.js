@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createRouteSupabase } from "@/lib/supabase-route";
-import { checkAiQuota } from "@/lib/ai/quota";
+import { checkAiQuota, recordAiUsage } from "@/lib/ai/quota";
 
 const BASE64_MAX_LENGTH = 7_000_000;
 
@@ -42,13 +42,16 @@ export async function POST(req) {
       }]
     });
 
+    // Solo se consume cuota si Claude respondió con éxito.
+    await recordAiUsage(user.id, "recipe");
+
     const txt = message.content[0].text;
     try {
       const clean = txt.replace(/```json|```/g, "").trim();
       const arr = JSON.parse(clean);
       return Response.json(
         { result: Array.isArray(arr) ? arr : [arr] },
-        { headers: { "X-AI-Remaining": String(quota.remaining) } }
+        { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } }
       );
     } catch {
       return Response.json({ error: "No se pudo procesar la receta" });

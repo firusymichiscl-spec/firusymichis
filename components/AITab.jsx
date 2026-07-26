@@ -41,10 +41,16 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
 
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeResult, setAnalyzeResult] = useState(null);
+  const [analyzeElapsed, setAnalyzeElapsed] = useState(0);
+  const [quotaAnalyze, setQuotaAnalyze] = useState(null);
 
   const [symptom, setSymptom] = useState("");
   const [symptomLoading, setSymptomLoading] = useState(false);
   const [symptomResult, setSymptomResult] = useState(null);
+  const [symptomElapsed, setSymptomElapsed] = useState(0);
+  const [quotaSymptom, setQuotaSymptom] = useState(null);
+
+  const [userEmail, setUserEmail] = useState("");
 
   const [preview, setPreview] = useState(null);
   const [b64, setB64] = useState(null);
@@ -79,6 +85,23 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   };
 
   useEffect(() => { loadTreatments(); }, []);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserEmail(data?.user?.email || ""));
+  }, []);
+
+  const loadQuota = async (tipo, setter) => {
+    try {
+      const res = await fetch(`/api/ai-quota?petId=${pet.id}&tipo=${tipo}`);
+      if (!res.ok) { setter(null); return; }
+      setter(await res.json());
+    } catch { setter(null); }
+  };
+
+  useEffect(() => {
+    if (activeSection === "analyze") loadQuota("analyze", setQuotaAnalyze);
+    if (activeSection === "symptom") loadQuota("symptoms", setQuotaSymptom);
+  }, [activeSection, pet.id]);
 
   const searchClinics = async (q) => {
     setClinicQuery(q);
@@ -131,24 +154,50 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   const analyze = async () => {
     setAnalyzing(true);
     setAnalyzeResult(null);
+    setAnalyzeElapsed(0);
+    const startedAt = Date.now();
+    const timer = setInterval(() => setAnalyzeElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     try {
       const res = await fetch("/api/ai-analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history }) });
       const data = await res.json();
-      setAnalyzeResult(data.error || data.result);
-    } catch { setAnalyzeResult("Error al conectar con la IA. Intenta de nuevo."); }
+      const ms = Date.now() - startedAt;
+      if (data.error) {
+        setAnalyzeResult({ text: data.error, error: true, at: new Date(), ms });
+      } else {
+        setAnalyzeResult({ text: data.result, error: false, at: new Date(), ms });
+        logActivity(supabase, pet.id, "Consulta IA", `Análisis · ${(ms / 1000).toFixed(1)}s`);
+      }
+    } catch {
+      setAnalyzeResult({ text: "Error al conectar con la IA. Intenta de nuevo.", error: true, at: new Date(), ms: Date.now() - startedAt });
+    }
+    clearInterval(timer);
     setAnalyzing(false);
+    loadQuota("analyze", setQuotaAnalyze);
   };
 
   const consultSymptom = async () => {
     if (!symptom.trim()) return;
     setSymptomLoading(true);
     setSymptomResult(null);
+    setSymptomElapsed(0);
+    const startedAt = Date.now();
+    const timer = setInterval(() => setSymptomElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     try {
       const res = await fetch("/api/ai-symptoms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history, symptom }) });
       const data = await res.json();
-      setSymptomResult(data.error || data.result);
-    } catch { setSymptomResult("Error al conectar con la IA. Intenta de nuevo."); }
+      const ms = Date.now() - startedAt;
+      if (data.error) {
+        setSymptomResult({ text: data.error, error: true, at: new Date(), ms });
+      } else {
+        setSymptomResult({ text: data.result, error: false, at: new Date(), ms });
+        logActivity(supabase, pet.id, "Consulta IA", `Síntomas · ${(ms / 1000).toFixed(1)}s`);
+      }
+    } catch {
+      setSymptomResult({ text: "Error al conectar con la IA. Intenta de nuevo.", error: true, at: new Date(), ms: Date.now() - startedAt });
+    }
+    clearInterval(timer);
     setSymptomLoading(false);
+    loadQuota("symptoms", setQuotaSymptom);
   };
 
   const onFile = async (e) => {
@@ -319,7 +368,58 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
 
   const inputS = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#fff", fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" };
   const card = { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" };
-  const disclaimer = <div style={{ background: "#fef2f2", borderRadius: 10, padding: "10px 12px", marginTop: 10, border: "1px solid #fecaca" }}><div style={{ fontSize: 11, color: "#dc2626", fontWeight: 700 }}>⚠️ Aviso importante</div><div style={{ fontSize: 11, color: "#7A4522", marginTop: 2 }}>Este análisis es orientativo y no reemplaza la consulta veterinaria. Ante cualquier duda, consulta a un profesional.</div></div>;
+
+  const calcAge = (birthDate) => {
+    if (!birthDate) return "Sin datos";
+    const [by, bm] = birthDate.split("-").map(Number);
+    const now = new Date();
+    const totalMonths = (now.getFullYear() - by) * 12 + (now.getMonth() + 1 - bm);
+    const y = Math.floor(totalMonths / 12);
+    const m = totalMonths % 12;
+    return `${y} año${y !== 1 ? "s" : ""}${m > 0 ? ` ${m} mes${m !== 1 ? "es" : ""}` : ""}`;
+  };
+  const speciesLabel = pet.species === "dog" ? "Perro" : pet.species === "cat" ? "Gato" : "Otro";
+  const sexLabel = pet.sex === "male" ? "Macho" : pet.sex === "female" ? "Hembra" : "Sin datos";
+
+  const renderResponseHeader = (at) => (
+    <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 10, padding: "10px 12px", marginBottom: 10, fontSize: 11, color: "#7A4522", lineHeight: 1.8 }}>
+      <div id="ai-print-logo" style={{ display: "none", fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#FF6B35", marginBottom: 8 }}>🐾 Firus&Michis</div>
+      <div style={{ color: "#dc2626", fontWeight: 700 }}>⚠️ AVISO: Esta información es solo orientativa y no reemplaza la consulta con un médico veterinario.</div>
+      <div style={{ borderTop: "1px dashed #FED7AA", margin: "6px 0" }} />
+      <div>Solicitado por: <strong>{userEmail}</strong></div>
+      <div>Fecha y hora: <strong>{formatFechaHora(at)}</strong></div>
+      <div>Mascota: <strong>{pet.name}</strong> · {speciesLabel} · {pet.breed || "raza desconocida"}</div>
+      <div>Edad: <strong>{calcAge(pet.birth_date)}</strong> · Peso: <strong>{pet.weight_kg || "—"} kg</strong> · Sexo: <strong>{sexLabel}</strong></div>
+      <div style={{ borderTop: "1px dashed #FED7AA", margin: "6px 0" }} />
+    </div>
+  );
+
+  const renderResponseFooter = () => (
+    <div style={{ background: "#fef2f2", borderRadius: 10, padding: "10px 12px", marginTop: 10, border: "1px solid #fecaca" }}>
+      <div style={{ fontSize: 11, color: "#dc2626", fontWeight: 700 }}>⚠️ Recuerda: esta información es orientativa y generada por inteligencia artificial. Ante cualquier síntoma o duda, consulta con tu médico veterinario.</div>
+    </div>
+  );
+
+  const renderQuotaBanner = (quota) => {
+    if (!quota) return null;
+    const label = quota.allowed
+      ? `Consultas disponibles hoy: ${Math.max(0, quota.todayLimit - quota.todayUsed)} de ${quota.todayLimit}`
+      : quota.motivo === "diaria"
+        ? `Ya hiciste una consulta para ${pet.name} hoy. Disponible nuevamente mañana 🐾`
+        : `Alcanzaste el máximo de ${quota.weekLimit} consultas semanales para ${pet.name}. Disponible el ${formatFecha(quota.disponibleEn)}.`;
+    return (
+      <div style={{ background: quota.allowed ? "#E8FAF9" : "#fef2f2", border: `1px solid ${quota.allowed ? "#9FE1CB" : "#fecaca"}`, borderRadius: 10, padding: "8px 12px", marginBottom: 10, fontSize: 11, fontWeight: 700, color: quota.allowed ? "#0F6E56" : "#dc2626" }}>
+        {label}
+      </div>
+    );
+  };
+
+  const renderPrintButtons = () => (
+    <div className="no-print" style={{ display: "flex", gap: 8, marginTop: 10 }}>
+      <button onClick={() => window.print()} style={{ flex: 1, padding: 10, borderRadius: 10, background: "#fff", border: "1.5px solid #FFD9C8", color: "#7A4522", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>🖨️ Imprimir</button>
+      <button onClick={() => window.print()} style={{ flex: 1, padding: 10, borderRadius: 10, background: "#fff", border: "1.5px solid #FFD9C8", color: "#7A4522", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📄 Guardar PDF</button>
+    </div>
+  );
 
   if (isArchived) return (
     <div className="fade-up">
@@ -429,9 +529,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       {/* ANÁLISIS */}
       {activeSection === "analyze" && (
         <div style={card}>
+          <style>{`@media print{body *{visibility:hidden}#ai-print-area,#ai-print-area *{visibility:visible}#ai-print-area{position:absolute;left:0;top:0;width:100%;padding:20px}#ai-print-area .no-print{display:none!important}#ai-print-logo{display:block!important}}`}</style>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Análisis personalizado</div>
           <div style={{ fontSize: 12, color: "#7A4522", marginBottom: 12, lineHeight: 1.6 }}>La IA analiza la ficha completa de {pet.name} y genera recomendaciones según su edad, raza, condiciones y medicamentos actuales.</div>
-          <button onClick={analyze} disabled={analyzing} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+          {renderQuotaBanner(quotaAnalyze)}
+          <button onClick={analyze} disabled={analyzing || (quotaAnalyze && !quotaAnalyze.allowed)} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: (quotaAnalyze && !quotaAnalyze.allowed) ? 0.5 : 1 }}>
             {analyzing ? (
               <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 Analizando
@@ -443,16 +545,34 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
               </span>
             ) : `🔍 Analizar a ${pet.name}`}
           </button>
-          {analyzeResult && <><div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, marginTop: 12, borderLeft: "3px solid #FF6B35" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>Recomendaciones para {pet.name}</div><div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{analyzeResult}</div></div>{disclaimer}</>}
+          {analyzing && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 6, textAlign: "center" }}>Analizando... {analyzeElapsed}s</div>}
+          {analyzeResult && (
+            analyzeResult.error ? (
+              <div style={{ background: "#fef2f2", borderRadius: 12, padding: 14, marginTop: 12, color: "#dc2626", fontSize: 13, fontWeight: 600, border: "1px solid #fecaca" }}>⚠️ {analyzeResult.text}</div>
+            ) : (
+              <div id="ai-print-area" style={{ marginTop: 12 }}>
+                {renderResponseHeader(analyzeResult.at)}
+                <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, borderLeft: "3px solid #FF6B35" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>Recomendaciones para {pet.name}</div>
+                  <div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{analyzeResult.text}</div>
+                </div>
+                {renderResponseFooter()}
+                <div style={{ fontSize: 11, color: "#7A4522", marginTop: 8, textAlign: "center" }}>⏱️ Respuesta generada en {(analyzeResult.ms / 1000).toFixed(1)} segundos</div>
+                {renderPrintButtons()}
+              </div>
+            )
+          )}
         </div>
       )}
 
       {/* SÍNTOMAS */}
       {activeSection === "symptom" && (
         <div style={card}>
+          <style>{`@media print{body *{visibility:hidden}#ai-print-area,#ai-print-area *{visibility:visible}#ai-print-area{position:absolute;left:0;top:0;width:100%;padding:20px}#ai-print-area .no-print{display:none!important}#ai-print-logo{display:block!important}}`}</style>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Consulta de síntomas</div>
           <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={SYMPTOM_PLACEHOLDERS[placeholderIdx]} value={symptom} onChange={e => setSymptom(e.target.value)} />
-          <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim()} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
+          {renderQuotaBanner(quotaSymptom)}
+          <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim() || (quotaSymptom && !quotaSymptom.allowed)} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10, opacity: (quotaSymptom && !quotaSymptom.allowed) ? 0.5 : 1 }}>
             {symptomLoading ? (
               <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 Consultando
@@ -464,7 +584,23 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
               </span>
             ) : "🩺 Consultar"}
           </button>
-          {symptomResult && <><div style={{ background: "#E8FAF9", borderRadius: 12, padding: 14, marginTop: 12, borderLeft: "3px solid #2EC4B6" }}><div style={{ fontSize: 11, fontWeight: 700, color: "#0F6E56", marginBottom: 8 }}>Análisis de síntomas</div><div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{symptomResult}</div></div>{disclaimer}</>}
+          {symptomLoading && <div style={{ fontSize: 11, color: "#C4845A", marginTop: 6, textAlign: "center" }}>Consultando... {symptomElapsed}s</div>}
+          {symptomResult && (
+            symptomResult.error ? (
+              <div style={{ background: "#fef2f2", borderRadius: 12, padding: 14, marginTop: 12, color: "#dc2626", fontSize: 13, fontWeight: 600, border: "1px solid #fecaca" }}>⚠️ {symptomResult.text}</div>
+            ) : (
+              <div id="ai-print-area" style={{ marginTop: 12 }}>
+                {renderResponseHeader(symptomResult.at)}
+                <div style={{ background: "#E8FAF9", borderRadius: 12, padding: 14, borderLeft: "3px solid #2EC4B6" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#0F6E56", marginBottom: 8 }}>Análisis de síntomas</div>
+                  <div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{symptomResult.text}</div>
+                </div>
+                {renderResponseFooter()}
+                <div style={{ fontSize: 11, color: "#7A4522", marginTop: 8, textAlign: "center" }}>⏱️ Respuesta generada en {(symptomResult.ms / 1000).toFixed(1)} segundos</div>
+                {renderPrintButtons()}
+              </div>
+            )
+          )}
         </div>
       )}
 

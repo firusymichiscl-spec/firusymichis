@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createRouteSupabase } from "@/lib/supabase-route";
-import { checkAiQuota } from "@/lib/ai/quota";
+import { checkAiQuota, recordAiUsage } from "@/lib/ai/quota";
 
 export async function POST(req) {
   // Auth
@@ -50,10 +50,13 @@ export async function POST(req) {
     }]
   });
 
+  // Solo se consume cuota si Claude respondió con éxito.
+  await recordAiUsage(user.id, "price_check");
+
   try {
     const txt = message.content[0].text;
     const json = JSON.parse(txt.replace(/```json|```/g, "").trim());
-    return Response.json(json, { headers: { "X-AI-Remaining": String(quota.remaining) } });
+    return Response.json(json, { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } });
   } catch {
     return Response.json({ error: "No se pudo analizar el precio" }, { status: 500 });
   }
