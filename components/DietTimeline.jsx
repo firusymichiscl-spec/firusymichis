@@ -3,6 +3,14 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import DietHistoryModal from "@/components/DietHistoryModal";
+import { sugerirRacion } from "@/lib/nutrition";
+
+const calcEdadMeses = (birthDate) => {
+  if (!birthDate) return null;
+  const birth = new Date(birthDate);
+  const now = new Date();
+  return (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+};
 
 export default function DietTimeline({ pet, isArchived }) {
   const supabase = createClient();
@@ -10,6 +18,16 @@ export default function DietTimeline({ pet, isArchived }) {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [expanded, setExpanded] = useState(false);
+
+  const especieSoportada = pet.species === "dog" || pet.species === "cat";
+  const datosCompletos = !!pet.weight_kg && !!pet.birth_date;
+  const sugerencia = especieSoportada && datosCompletos
+    ? sugerirRacion({
+        pesoKg: parseFloat(pet.weight_kg),
+        edadMeses: calcEdadMeses(pet.birth_date),
+        especie: pet.species,
+      })
+    : null;
 
   useEffect(() => { loadRecords(); }, []);
 
@@ -59,6 +77,11 @@ export default function DietTimeline({ pet, isArchived }) {
     notes: { fontSize: 11, color: "#C4845A", marginTop: 3, fontStyle: "italic" },
     addBtn: { width: "100%", padding: 11, borderRadius: 13, background: "#FFF0EB", color: "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 8 },
     histBtn: { background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "#FF6B35", fontWeight: 700, cursor: "pointer" },
+    nutritionCard: { background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 12, padding: "10px 14px", marginBottom: 14 },
+    nutritionTitle: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#3D1F0A" },
+    nutritionAssumptions: { fontSize: 10, color: "#C4845A", marginTop: 4 },
+    nutritionDisclaimer: { fontSize: 10, color: "#C4845A", marginTop: 6, lineHeight: 1.4 },
+    nutritionPending: { fontSize: 12, color: "#7A4522" },
   };
 
   return (
@@ -67,6 +90,24 @@ export default function DietTimeline({ pet, isArchived }) {
         <div style={css.title}>🍽️ Alimentación</div>
         {!isArchived && <button style={css.histBtn} onClick={() => setShowModal(true)}>📋 Historial</button>}
       </div>
+
+      {especieSoportada && (
+        <div style={css.nutritionCard}>
+          {sugerencia ? (
+            <>
+              <div style={css.nutritionTitle}>🥣 Sugerencia: aproximadamente {sugerencia.gramosDia} g al día</div>
+              {sugerencia.supuestos.length > 0 && (
+                <div style={css.nutritionAssumptions}>{sugerencia.supuestos.join(" · ")}</div>
+              )}
+              <div style={css.nutritionDisclaimer}>
+                Cálculo referencial basado en fórmula veterinaria estándar (RER/MER). La ración real depende del alimento específico, la condición corporal y el estado de salud de tu mascota. Confirma siempre con tu veterinario.
+              </div>
+            </>
+          ) : (
+            <div style={css.nutritionPending}>Completa el peso y la fecha de nacimiento de {pet.name} para ver una sugerencia de ración.</div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: "center", padding: 24, color: "#C4845A", fontSize: 13 }}>Cargando...</div>

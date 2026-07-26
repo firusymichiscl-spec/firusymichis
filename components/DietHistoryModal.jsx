@@ -4,9 +4,41 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 
-const FOOD_OPTIONS = [
-  "Royal Canin", "Hill's", "Purina Pro Plan", "Eukanuba",
-  "Orijen", "Acana", "Brit Care", "Natural Choice", "Otro",
+const FOOD_OPTIONS_DOG = [
+  "Royal Canin Maxi Adult 15 kg", "Royal Canin Mini Adult 8 kg", "Royal Canin Medium Adult 15 kg",
+  "Royal Canin Skin Care Hipoalergénico 10 kg", "Royal Canin Urinary S/O 10 kg", "Royal Canin Renal Canino 10 kg",
+  "Royal Canin Gastrointestinal Canino 10 kg", "Royal Canin Satiety Weight Management 10 kg",
+  "Royal Canin Puppy Maxi 15 kg", "Royal Canin Mini Puppy 8 kg",
+  "Hill's Science Diet Adult Chicken 15 kg", "Hill's Prescription Diet k/d Renal Care 5 kg",
+  "Hill's Prescription Diet z/d Skin/Food Sensitivities 8 kg", "Hill's Prescription Diet i/d Digestive Care 8 kg",
+  "Hill's Science Diet Puppy 15 kg", "Hill's Science Diet Adult 7+ Senior 12 kg",
+  "Pro Plan Adult Sensitive Skin Salmón 15 kg", "Pro Plan Adult Complete Pollo 15 kg",
+  "Pro Plan Puppy Complete 15 kg", "Pro Plan Adult 7+ Senior 15 kg",
+  "Pro Plan Veterinary Diets EN Gastroenteric 10 kg", "Purina Dog Chow Adulto Pollo y Arroz 21 kg",
+  "VIRBAC HPM Canino Kidney Support 3 kg", "VIRBAC HPM Canino Skin Support 12 kg",
+  "VIRBAC HPM Canino Joint Support 12 kg", "VIRBAC HPM Canino Growth Puppy 12 kg",
+  "VIRBAC HPM Canino Gastro Intestinal 12 kg",
+  "Eukanuba Adult Small Breed Pollo 7,5 kg", "Eukanuba Adult Medium Breed 15 kg", "Eukanuba Puppy Large Breed 15 kg",
+  "Acana Heritage Adult Dog 11,4 kg", "Acana Puppy Recipe 11,4 kg",
+  "Orijen Original Dog 11,4 kg", "Orijen Puppy 11,4 kg",
+  "Master Dog Adulto Carne 21 kg", "Master Dog Cachorro 15 kg",
+  "Cannes Gold Adulto 21 kg", "Nutra Nuggets Professional Adulto 15 kg", "Champion Dog Adulto Carne 22 kg",
+];
+
+const FOOD_OPTIONS_CAT = [
+  "Royal Canin Indoor Adult 10 kg", "Royal Canin Sterilised Adult 10 kg", "Royal Canin Kitten 10 kg",
+  "Royal Canin Urinary S/O Felino 9 kg", "Royal Canin Renal Felino 4 kg", "Royal Canin Hairball Care 10 kg",
+  "Hill's Science Diet Adult Indoor 7,5 kg", "Hill's Prescription Diet c/d Urinary Care 8 kg",
+  "Hill's Prescription Diet k/d Renal Care Felino 8 kg", "Hill's Science Diet Kitten 7,5 kg",
+  "Pro Plan Adult Sterilised Salmón 7,5 kg", "Pro Plan Adult Urinary Tract Health 7,5 kg",
+  "Pro Plan Kitten 7,5 kg", "Purina Cat Chow Adulto 15 kg",
+  "VIRBAC HPM Felino Kidney Support 3 kg", "VIRBAC HPM Felino Skin Support 7 kg", "VIRBAC HPM Felino Sterilised 7 kg",
+  "Eukanuba Adult Cat Sterilised 4 kg",
+  "Acana Grasslands Cat 5,4 kg", "Orijen Cat & Kitten 5,4 kg",
+  "Fussie Cat Adult Pollo y Salmón 4,54 kg", "Fussie Cat Trueform Grain Free 4,54 kg",
+  "Whiskas Adulto Pollo 8 kg", "Whiskas Gatitos 1,5 kg", "Whiskas Sachet Trozos en Salsa Pollo 85 g",
+  "Felix Sensations Adulto 8 kg", "Felix Sachet As Good As It Looks Pollo 85 g",
+  "Nutra Nuggets Professional Cat Adulto 7,5 kg",
 ];
 
 const birthYearOf = (pet) =>
@@ -20,12 +52,19 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
 
   const [editingId, setEditingId] = useState(null);
   const [foodName, setFoodName] = useState("");
-  const [brand, setBrand] = useState("");
+  const [foodDropdown, setFoodDropdown] = useState(false);
   const [gramsPerDay, setGramsPerDay] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
+
+  const foodOptions = pet.species === "cat" ? FOOD_OPTIONS_CAT
+    : pet.species === "dog" ? FOOD_OPTIONS_DOG
+    : [...FOOD_OPTIONS_DOG, ...FOOD_OPTIONS_CAT];
+  const filteredFoods = foodName
+    ? foodOptions.filter(o => o.toLowerCase().includes(foodName.toLowerCase()))
+    : foodOptions;
 
   useEffect(() => { loadRecords(); }, []);
 
@@ -42,7 +81,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
 
   const resetForm = () => {
     setEditingId(null);
-    setFoodName(""); setBrand(""); setGramsPerDay("");
+    setFoodName(""); setGramsPerDay("");
     setDateFrom(""); setDateTo(""); setNotes("");
     setSaved(false);
   };
@@ -50,7 +89,6 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
   const startEdit = (r) => {
     setEditingId(r.id);
     setFoodName(r.food_name || "");
-    setBrand(r.brand || "");
     setGramsPerDay(r.grams_per_day?.toString() || "");
     setDateFrom(r.date_from || "");
     setDateTo(r.date_to || "");
@@ -64,7 +102,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     const payload = {
       pet_id: pet.id,
       food_name: foodName,
-      brand: brand || null,
+      brand: null,
       grams_per_day: gramsPerDay ? parseInt(gramsPerDay) : null,
       date_from: dateFrom,
       date_to: dateTo || null,
@@ -104,6 +142,8 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     deleteBtn: { background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" },
     editBtn: { background: "#FFF0EB", color: "#FF6B35", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginRight: 6 },
     recordCard: { background: "#fff", borderRadius: 12, padding: "10px 14px", marginBottom: 8, border: "1.5px solid #FFD9C8" },
+    dropdown: { position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1.5px solid #FF6B35", borderRadius: 11, maxHeight: 180, overflowY: "auto", zIndex: 10, boxShadow: "0 4px 16px rgba(61,31,10,0.1)" },
+    dropItem: { padding: "9px 13px", fontSize: 13, cursor: "pointer", color: "#3D1F0A" },
   };
 
   return (
@@ -129,29 +169,28 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
           {/* FORMULARIO */}
           <div style={css.sectionLabel}>{editingId ? "✏️ Editando registro" : "➕ Nuevo período de alimentación"}</div>
 
-          <div style={{ marginBottom: 10 }}>
+          <div style={{ marginBottom: 10, position: "relative" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Alimento *</div>
             <input
               style={css.input}
-              list="food-options"
-              placeholder="Ej: Royal Canin, Orijen..."
+              placeholder="Ej: Royal Canin Maxi Adult 15 kg..."
               value={foodName}
-              onChange={e => setFoodName(e.target.value)}
+              onChange={e => { setFoodName(e.target.value); setFoodDropdown(true); }}
+              onFocus={() => setFoodDropdown(true)}
+              onBlur={() => setTimeout(() => setFoodDropdown(false), 200)}
             />
-            <datalist id="food-options">
-              {FOOD_OPTIONS.map(o => <option key={o} value={o} />)}
-            </datalist>
+            {foodDropdown && filteredFoods.length > 0 && (
+              <div style={css.dropdown}>
+                {filteredFoods.slice(0, 8).map(o => (
+                  <div key={o} style={css.dropItem} onClick={() => { setFoodName(o); setFoodDropdown(false); }}>{o}</div>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Marca</div>
-              <input style={css.input} placeholder="Marca (opcional)" value={brand} onChange={e => setBrand(e.target.value)} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Gramos/día</div>
-              <input style={css.input} type="number" placeholder="ej: 350" value={gramsPerDay} onChange={e => setGramsPerDay(e.target.value)} />
-            </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Gramos/día</div>
+            <input style={css.input} type="number" step="10" placeholder="ej: 350" value={gramsPerDay} onChange={e => setGramsPerDay(e.target.value)} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
