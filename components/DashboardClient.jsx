@@ -15,10 +15,12 @@ import QRShareModal from "@/components/QRShareModal";
 import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
+import DangerZoneModal from "@/components/DangerZoneModal";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/lib/fechas";
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
+import { formatChipDisplay } from "@/lib/chip";
 
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
@@ -84,6 +86,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
   const [switchingPet, setSwitchingPet] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [showDangerZone, setShowDangerZone] = useState(false);
   const [showBirthdayBanner, setShowBirthdayBanner] = useState(true);
 
   const isArchived = !!petData.archived_at;
@@ -945,6 +948,31 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           />
         )}
 
+        {showDangerZone && (
+          <DangerZoneModal
+            pet={petData}
+            onClose={() => setShowDangerZone(false)}
+            deleteChildTables={deleteChildTables}
+            onDataCleared={() => {
+              setMeds([]);
+              setHistoryData([]);
+              setCurrentWeight(null);
+              setTreatmentItems([]);
+            }}
+            onDeleted={async () => {
+              setShowDangerZone(false);
+              const remaining = allPetsData.filter(p => p.id !== petData.id);
+              if (remaining.length === 0) {
+                window.location.href = "/nueva-mascota";
+              } else {
+                setAllPetsData(remaining);
+                await switchPet(remaining[0].id);
+              }
+            }}
+            onOpenArchive={() => { setShowDangerZone(false); setShowArchiveModal(true); }}
+          />
+        )}
+
         <div className="content">
 
           {/* FICHA */}
@@ -958,49 +986,6 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                       <button onClick={() => setEditingPet(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
                       <button onClick={() => setShowQRModal(true)} style={{ background: "#E8FAF9", border: "1.5px solid #9FE1CB", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-secondary)", fontWeight: 700, cursor: "pointer" }}>📱 QR</button>
                       <button onClick={() => setShowNotifSettings(true)} style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 12, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>🔔</button>
-                      <button onClick={async () => {
-                        if (!confirm(`¿Eliminar TODOS los datos de ${petData.name}? Esto incluye medicamentos, historial, vacunas, pesos y tratamientos.`)) return;
-                        if (!confirm(`⚠️ Segunda confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
-                        const pid = petData.id;
-                        const ok = await deleteChildTables(pid);
-                        if (!ok) { alert("Error al limpiar datos. Revisa la consola."); return; }
-                        await logActivity(supabase, pid, "Limpió todos los datos");
-                        setMeds([]);
-                        setHistoryData([]);
-                        setCurrentWeight(null);
-                        setTreatmentItems([]);
-                        alert("✓ Datos eliminados correctamente");
-                      }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
-                        🗑️ Limpiar datos
-                      </button>
-                      <button onClick={async () => {
-                        if (!confirm(`¿Eliminar a ${petData.name} completamente? Se borrarán TODOS sus datos.`)) return;
-                        if (!confirm(`⚠️ Última confirmación: Esta acción NO se puede deshacer. ¿Confirmas?`)) return;
-                        const pid = petData.id;
-                        const res = await fetch("/api/pets/eliminar", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ petId: pid }),
-                        });
-                        if (!res.ok) {
-                          const { error } = await res.json().catch(() => ({}));
-                          console.error("[deletePet] Error:", error);
-                          alert("Error al eliminar la mascota. La mascota no fue eliminada.");
-                          return;
-                        }
-                        const remaining = allPetsData.filter(p => p.id !== pid);
-                        if (remaining.length === 0) {
-                          window.location.href = "/nueva-mascota";
-                        } else {
-                          setAllPetsData(remaining);
-                          await switchPet(remaining[0].id);
-                        }
-                      }} style={{ padding: "4px 10px", borderRadius: 8, background: "#fef2f2", border: "1.5px solid #fecaca", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
-                        🗑️ Eliminar mascota
-                      </button>
-                      <button onClick={() => setShowArchiveModal(true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#F1F5F9", border: "1.5px solid #CBD5E1", fontSize: 11, color: "#475569", fontWeight: 700, cursor: "pointer", marginLeft: 6 }}>
-                        🌈 Archivar (En Memoria)
-                      </button>
                     </div>
                   )}
                 </div>
@@ -1011,7 +996,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ["Sexo", petData.sex === 'male' ? '♂️ Macho' : petData.sex === 'female' ? '♀️ Hembra' : 'Sin datos'],
                   ["Edad", calcAge(petData.birth_date)],
                   ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
-                  ["Chip", petData.chip_number ? `${petData.chip_number}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
+                  ["Chip", petData.chip_number ? `${formatChipDisplay(petData.chip_number)}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
                 ].map(([l, v]) => (
                   <div className="row" key={l}>
                     <span className="row-label">{l}</span>
@@ -1962,6 +1947,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               if (data) setPetData(data);
               setEditingPet(false);
             }}
+          onOpenDangerZone={() => { setEditingPet(false); setShowDangerZone(true); }}
         />
       )}
     </>

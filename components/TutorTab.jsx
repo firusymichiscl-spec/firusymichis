@@ -58,8 +58,11 @@ export default function TutorTab({ pet, isArchived }) {
   const [emailDrop, setEmailDrop] = useState([]);
   const [addressManual, setAddressManual] = useState(false);
   const [copyFromPrimary, setCopyFromPrimary] = useState(false);
+  const [otherTutors, setOtherTutors] = useState([]);
+  const [showCopyList, setShowCopyList] = useState(false);
 
   useEffect(() => { loadTutors(); }, []);
+  useEffect(() => { loadOtherPetTutors(); }, []);
 
   // Load Google Maps Places
   useEffect(() => {
@@ -129,6 +132,36 @@ export default function TutorTab({ pet, isArchived }) {
     setLoading(false);
   };
 
+  // FIX 3: tutores de otras mascotas (no archivadas) del mismo usuario, para
+  // poder autocompletar en vez de tipear de nuevo. Deduplicados por teléfono.
+  const loadOtherPetTutors = async () => {
+    if (!pet.user_id) { setOtherTutors([]); return; }
+    const { data: otherPets } = await supabase
+      .from("pets")
+      .select("id, name")
+      .eq("user_id", pet.user_id)
+      .is("archived_at", null)
+      .neq("id", pet.id);
+    if (!otherPets || otherPets.length === 0) { setOtherTutors([]); return; }
+
+    const petNameById = Object.fromEntries(otherPets.map(p => [p.id, p.name]));
+    const { data: tutorsData } = await supabase
+      .from("tutors")
+      .select("*")
+      .in("pet_id", otherPets.map(p => p.id));
+
+    const seenPhones = new Set();
+    const list = [];
+    (tutorsData || []).forEach(t => {
+      if (t.phone) {
+        if (seenPhones.has(t.phone)) return;
+        seenPhones.add(t.phone);
+      }
+      list.push({ ...t, petName: petNameById[t.pet_id] || "otra mascota" });
+    });
+    setOtherTutors(list);
+  };
+
   const openEdit = (type) => {
     const tutor = type === "primary" ? primary : type === "secondary" ? secondary : tertiary;
     setForm({
@@ -149,6 +182,7 @@ export default function TutorTab({ pet, isArchived }) {
     setEditingType(type);
     setSaved(false);
     setErrors({});
+    setShowCopyList(false);
   };
 
   const closeEdit = () => {
@@ -157,6 +191,25 @@ export default function TutorTab({ pet, isArchived }) {
     setEmailDrop([]);
     setCopyFromPrimary(false);
     setAddressManual(false);
+    setErrors({});
+    setShowCopyList(false);
+  };
+
+  const applyOtherTutor = (t) => {
+    setForm({
+      full_name: t.full_name || "",
+      phone: parsePhone(t.phone || ""),
+      email: t.email || "",
+      street: t.street || "",
+      street_number: t.street_number || "",
+      comuna: t.comuna || "",
+      ciudad: t.ciudad || "",
+      region: t.region || "",
+      relationship: t.relationship || "",
+      notes: t.notes || "",
+    });
+    setAddressManual(!!t.street);
+    setShowCopyList(false);
     setErrors({});
   };
 
@@ -311,6 +364,31 @@ export default function TutorTab({ pet, isArchived }) {
             </div>
 
             <div style={{ padding: 20 }}>
+
+              {/* COPIAR DE OTRA MASCOTA */}
+              {otherTutors.length > 0 && (
+                <div style={{ marginBottom: 14, position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowCopyList(v => !v)}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 10, background: "#F5F3FF", border: "1.5px solid #C4B5FD", color: "#7c3aed", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    📋 Copiar datos de otra mascota
+                  </button>
+                  {showCopyList && (
+                    <div style={{ marginTop: 6, background: "#fff", border: "1.5px solid #C4B5FD", borderRadius: 12, overflow: "hidden", boxShadow: "0 4px 16px rgba(61,31,10,0.1)" }}>
+                      {otherTutors.map((t, i) => (
+                        <div key={t.id || i} onClick={() => applyOtherTutor(t)}
+                          style={{ padding: "10px 14px", fontSize: 12.5, color: "#3D1F0A", cursor: "pointer", borderBottom: i < otherTutors.length - 1 ? "1px solid #F1F5F9" : "none" }}>
+                          <strong>{t.full_name}</strong>
+                          {t.phone && ` · ${t.phone}`}
+                          {t.relationship && ` · ${t.relationship}`}
+                          {" — de "}{t.petName?.toUpperCase()}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* NOMBRE */}
               <div style={{ marginBottom: 12 }}>

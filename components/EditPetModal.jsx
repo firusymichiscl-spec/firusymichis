@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { validateRequired } from "@/lib/formValidation";
+import { filterChipInput, chipValidationMessage } from "@/lib/chip";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -27,7 +28,7 @@ const calcAge = (birthDate) => {
   return parts.join(", ");
 };
 
-export default function EditPetModal({ pet, onClose, onSave }) {
+export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone }) {
   const supabase = createClient();
   const [form, setForm] = useState({
     name: pet.name || "",
@@ -191,8 +192,18 @@ export default function EditPetModal({ pet, onClose, onSave }) {
 
         {/* CHIP */}
         <label style={css.label}>Número de chip</label>
-        <input style={css.input} placeholder="ej: 985112345678901"
-          value={form.chip_number} onChange={e => setForm(f => ({ ...f, chip_number: e.target.value }))} />
+        <input style={css.input} placeholder="15 dígitos (ej: 152098101234567)"
+          maxLength={15} inputMode="numeric"
+          value={form.chip_number} onChange={e => setForm(f => ({ ...f, chip_number: filterChipInput(e.target.value) }))} />
+        {(() => {
+          const msg = chipValidationMessage(form.chip_number);
+          if (!msg) return null;
+          return (
+            <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4, color: msg.level === "ok" ? "#059669" : "#d97706" }}>
+              {msg.text}
+            </div>
+          );
+        })()}
 
         <label style={css.label}>Empresa registradora</label>
         <input style={css.input} placeholder="ej: RNPA, Virbac, Animalink..."
@@ -262,6 +273,14 @@ export default function EditPetModal({ pet, onClose, onSave }) {
 
         <button style={css.saveBtn} onClick={save} disabled={loading}>{loading ? "Guardando..." : "✓ Guardar cambios"}</button>
         <button style={css.cancelBtn} onClick={onClose}>Cancelar</button>
+
+        {onOpenDangerZone && (
+          <button
+            onClick={onOpenDangerZone}
+            style={{ width: "100%", padding: 10, borderRadius: 13, background: "transparent", color: "#C4845A", border: "none", fontFamily: "'Nunito', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 10, textDecoration: "underline" }}>
+            ⚙️ Acciones avanzadas
+          </button>
+        )}
       </div>
     </div>
   );
