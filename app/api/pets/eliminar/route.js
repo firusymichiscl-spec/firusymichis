@@ -2,21 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-
-// Mismo orden que el deleteChildTables client-side de DashboardClient.jsx —
-// treatment_items antes que treatments (treatment_items.treatment_id las referencia),
-// y todo antes que pets (RLS de treatments requiere que pets exista).
-// medication_logs NO tiene pet_id — se relaciona por medication_id, se borra aparte.
-const CHILD_TABLES = [
-  ["treatment_items", "pet_id"],
-  ["medications", "pet_id"],
-  ["medical_history", "pet_id"],
-  ["vaccines", "pet_id"],
-  ["weight_logs", "pet_id"],
-  ["treatments", "pet_id"],
-  ["pet_shares", "pet_id"],
-  ["tutors", "pet_id"],
-];
+import { PET_CHILD_TABLES } from "@/lib/petChildTables";
 
 export async function POST(req) {
   const cookieStore = await cookies();
@@ -38,6 +24,20 @@ export async function POST(req) {
 
   const { petId } = await req.json();
   if (!petId) return NextResponse.json({ error: "Missing petId" }, { status: 400 });
+
+  // Loguea el error completo de Postgres en la consola de Vercel (nombre de
+  // tabla, mensaje, código y detalle) y devuelve al cliente un mensaje sin
+  // detalles internos, pero con un "step" y el código de Postgres — suficiente
+  // para diagnosticar sin exponer la estructura de la base de datos.
+  const failStep = (step, error) => {
+    console.error(`[eliminar-mascota] fallo en paso "${step}":`, {
+      message: error?.message, code: error?.code, details: error?.details, hint: error?.hint,
+    });
+    return NextResponse.json(
+      { error: "No se pudo eliminar la mascota. Intenta de nuevo o contacta a soporte.", step, code: error?.code || null },
+      { status: 500 }
+    );
+  };
 
   // Ownership: se lee con el cliente de sesión (respeta RLS de pets, no la tocamos).
   const { data: pet } = await supabase.from("pets").select("id, name, user_id").eq("id", petId).single();
@@ -63,8 +63,7 @@ export async function POST(req) {
     .eq("pet_id", petId);
 
   if (logsError) {
-    console.error("[eliminar-mascota] error leyendo activity_log:", logsError.message);
-    return NextResponse.json({ error: "No se pudo respaldar el registro de actividad" }, { status: 500 });
+    return failStep("leer activity_log", logsError);
   }
 
   if (logs && logs.length > 0) {
@@ -81,8 +80,7 @@ export async function POST(req) {
     }));
     const { error: archiveError } = await supabaseAdmin.from("activity_log_archive").insert(archiveRows);
     if (archiveError) {
-      console.error("[eliminar-mascota] error archivando activity_log:", archiveError.message);
-      return NextResponse.json({ error: "No se pudo respaldar el registro de actividad" }, { status: 500 });
+      return failStep("archivar activity_log", archiveError);
     }
   }
 
@@ -98,8 +96,7 @@ export async function POST(req) {
     original_created_at: new Date().toISOString(),
   });
   if (finalLogError) {
-    console.error("[eliminar-mascota] error insertando entrada final:", finalLogError.message);
-    return NextResponse.json({ error: "No se pudo respaldar el registro de actividad" }, { status: 500 });
+    return failStep("insertar entrada final de activity_log_archive", finalLogError);
   }
 
   // c) Recién aquí, con el respaldo forense confirmado, se borran las tablas hijas.
@@ -112,31 +109,27 @@ export async function POST(req) {
     .select("id")
     .eq("pet_id", petId);
   if (medsLookupError) {
-    console.error("[eliminar-mascota] error leyendo medications para medication_logs:", medsLookupError.message);
-    return NextResponse.json({ error: "Error al eliminar medication_logs" }, { status: 500 });
+    return failStep("leer medications (para medication_logs)", medsLookupError);
   }
   const medIds = (petMeds || []).map(m => m.id);
   if (medIds.length > 0) {
     const { error: logsDeleteError } = await supabase.from("medication_logs").delete().in("medication_id", medIds);
     if (logsDeleteError) {
-      console.error("[eliminar-mascota] error eliminando medication_logs:", logsDeleteError.message);
-      return NextResponse.json({ error: "Error al eliminar medication_logs" }, { status: 500 });
+      return failStep("medication_logs", logsDeleteError);
     }
   }
 
-  for (const [table, col] of CHILD_TABLES) {
+  for (const [table, col] of PET_CHILD_TABLES) {
     const { error } = await supabase.from(table).delete().eq(col, petId);
     if (error) {
-      console.error(`[eliminar-mascota] error eliminando ${table}:`, error.message);
-      return NextResponse.json({ error: `Error al eliminar ${table}` }, { status: 500 });
+      return failStep(table, error);
     }
   }
 
-  // d) Borrar la mascota (activity_log cae con ella por ON DELETE CASCADE).
+  // d) Borrar la mascota (activity_log y ai_usage caen con ella por ON DELETE CASCADE).
   const { error: petError } = await supabase.from("pets").delete().eq("id", petId);
   if (petError) {
-    console.error("[eliminar-mascota] error eliminando pets:", petError.message);
-    return NextResponse.json({ error: "Error al eliminar la mascota" }, { status: 500 });
+    return failStep("pets", petError);
   }
 
   return NextResponse.json({ ok: true });

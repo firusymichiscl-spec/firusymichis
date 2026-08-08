@@ -19,6 +19,7 @@ import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
+import { PET_CHILD_TABLES } from "@/lib/petChildTables";
 import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/lib/fechas";
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
@@ -246,9 +247,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setSwitchingPet(false);
   };
 
-  // Borra todas las tablas hijas de una mascota en el orden correcto.
-  // treatment_items antes que treatments (treatment_items.treatment_id las referencia),
-  // todo antes que pets (RLS de treatments requiere que pets exista).
+  // Borra todas las tablas hijas de una mascota en el orden correcto (lista
+  // compartida con app/api/pets/eliminar/route.js — ver lib/petChildTables.js).
   // medication_logs NO tiene pet_id — se relaciona por medication_id, se borra aparte.
   // Retorna false y loguea si algún paso falla — el caller debe abortar sin borrar pets.
   const deleteChildTables = async (pid) => {
@@ -269,17 +269,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       }
     }
 
-    const steps = [
-      ["treatment_items", "pet_id"],
-      ["medications",     "pet_id"],
-      ["medical_history", "pet_id"],
-      ["vaccines",        "pet_id"],
-      ["weight_logs",     "pet_id"],
-      ["treatments",      "pet_id"],
-      ["pet_shares",      "pet_id"],
-      ["tutors",          "pet_id"],
-    ];
-    for (const [table, col] of steps) {
+    for (const [table, col] of PET_CHILD_TABLES) {
       const { error } = await supabase.from(table).delete().eq(col, pid);
       if (error) {
         console.error(`[deletePet] Error eliminando ${table}:`, error.message);

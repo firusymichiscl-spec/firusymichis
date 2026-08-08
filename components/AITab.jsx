@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatFechaHora } from "@/lib/fechas";
+import MarkdownText from "@/components/MarkdownText";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -491,7 +492,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                 {renderResponseHeader(analyzeResult.at)}
                 <div style={{ background: "#FFF0EB", borderRadius: 12, padding: 14, borderLeft: "3px solid #FF6B35" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", marginBottom: 8 }}>Recomendaciones para {pet.name}</div>
-                  <div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{analyzeResult.text}</div>
+                  <div style={{ fontSize: 13, color: "#3D1F0A" }}><MarkdownText text={analyzeResult.text} /></div>
                 </div>
                 {renderResponseFooter()}
                 <div style={{ fontSize: 11, color: "#7A4522", marginTop: 8, textAlign: "center" }}>⏱️ Respuesta generada en {(analyzeResult.ms / 1000).toFixed(1)} segundos</div>
@@ -530,7 +531,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                 {renderResponseHeader(symptomResult.at)}
                 <div style={{ background: "#E8FAF9", borderRadius: 12, padding: 14, borderLeft: "3px solid #2EC4B6" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#0F6E56", marginBottom: 8 }}>Análisis de síntomas</div>
-                  <div style={{ fontSize: 13, color: "#3D1F0A", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{symptomResult.text}</div>
+                  <div style={{ fontSize: 13, color: "#3D1F0A" }}><MarkdownText text={symptomResult.text} /></div>
                 </div>
                 {renderResponseFooter()}
                 <div style={{ fontSize: 11, color: "#7A4522", marginTop: 8, textAlign: "center" }}>⏱️ Respuesta generada en {(symptomResult.ms / 1000).toFixed(1)} segundos</div>

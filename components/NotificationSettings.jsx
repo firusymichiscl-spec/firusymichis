@@ -2,13 +2,6 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 
-const ADVANCE_OPTIONS = [
-  { label: "15 minutos antes", value: 15 },
-  { label: "30 minutos antes", value: 30 },
-  { label: "45 minutos antes", value: 45 },
-  { label: "1 hora antes", value: 60 },
-];
-
 export default function NotificationSettings({ pet, user, onClose }) {
   const supabase = createClient();
   const [prefs, setPrefs] = useState(null);
@@ -127,25 +120,27 @@ export default function NotificationSettings({ pet, user, onClose }) {
                 <input style={inputS} type="email" value={prefs.email || ""} onChange={e => setPrefs(p => ({ ...p, email: e.target.value }))} />
               </div>
 
-              {/* Anticipación */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Recibir alerta con</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {ADVANCE_OPTIONS.map(o => (
-                    <div key={o.value} onClick={() => setPrefs(p => ({ ...p, advance_minutes: o.value }))}
-                      style={{ padding: "6px 12px", borderRadius: 20, border: `1.5px solid ${prefs.advance_minutes === o.value ? "#FF6B35" : "#FFD9C8"}`, background: prefs.advance_minutes === o.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: prefs.advance_minutes === o.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
-                      {o.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {/* Anticipación — oculto desde el Lote I: el diseño de resumen
+                  diario (8 AM) + alertas puntuales reemplazó los recordatorios
+                  por dosis que usaban advance_minutes, así que este selector
+                  ya no tiene efecto en el cron. NO se borró la columna
+                  advance_minutes ni el valor guardado de cada mascota — solo
+                  se dejó de mostrar, a la espera de una decisión de producto
+                  (reinterpretarlo o quitarlo). Ver auditoría Lote I. */}
 
               {/* Tipos de notificación */}
               <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #FFD9C8", padding: "0 14px", marginBottom: 14 }}>
                 <Toggle value={prefs.notify_medication_habitual} onChange={v => setPrefs(p => ({ ...p, notify_medication_habitual: v }))} label="💊 Medicamentos habituales" sublabel="Alertas de toma para meds crónicos" />
                 <Toggle value={prefs.notify_medication_treatment} onChange={v => setPrefs(p => ({ ...p, notify_medication_treatment: v }))} label="📋 Medicamentos de tratamiento" sublabel="Alertas según receta activa" />
                 <Toggle value={prefs.notify_vaccine} onChange={v => setPrefs(p => ({ ...p, notify_vaccine: v }))} label="💉 Vacunas próximas" sublabel="30 días antes del vencimiento" />
-                <Toggle value={prefs.notify_vet_control} onChange={v => setPrefs(p => ({ ...p, notify_vet_control: v }))} label="🏥 Controles veterinarios" sublabel="Recordatorio de próximas consultas" />
+                {/* Controles veterinarios — oculto desde el Lote I: no existe
+                    ningún campo en el modelo de datos para la fecha del
+                    próximo control (los tipos de medical_history son
+                    surgery/illness/exam/procedure/vaccine/other, ninguno con
+                    semántica de "próxima consulta"), así que el cron no tiene
+                    nada que notificar bajo este toggle. NO se borró la
+                    columna notify_vet_control ni su valor guardado — solo se
+                    dejó de mostrar. Ver auditoría Lote I. */}
                 <Toggle value={prefs.notify_low_stock} onChange={v => setPrefs(p => ({ ...p, notify_low_stock: v }))} label="📦 Stock bajo" sublabel="Cuando queden menos de 7 días de medicamento" />
               </div>
 
