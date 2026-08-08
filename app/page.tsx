@@ -187,8 +187,8 @@ export default async function Home() {
       <footer id="footer" className="lp-footer">
         <div className="lp-logo">Firus<span>&</span>Michis</div>
         <div className="lp-footer-links">
-          <a href="#">Términos</a>
-          <a href="#">Privacidad</a>
+          <Link href="/terminos">Términos de uso</Link>
+          <Link href="/privacidad">Privacidad</Link>
           <a href="mailto:contacto@firusymichis.cl">contacto@firusymichis.cl</a>
         </div>
         <div className="lp-footer-copy">© 2026 Firus & Michis · Hecho con amor en Chile 🇨🇱</div>

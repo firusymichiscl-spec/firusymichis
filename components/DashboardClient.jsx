@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import ThemeSelector from "@/components/ThemeSelector";
@@ -1552,6 +1553,14 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           {/* MAPA */}
           {tab === "mapa" && <VetMapTab key={`mapa-${activePetId}`} pet={petData} history={historyData} />}
 
+        </div>
+
+        <div style={{ textAlign: "center", padding: "12px 16px 4px", fontSize: 11, color: "#C4845A" }}>
+          <Link href="/terminos" style={{ color: "#C4845A", textDecoration: "underline" }}>Términos de uso</Link>
+          {" · "}
+          <Link href="/privacidad" style={{ color: "#C4845A", textDecoration: "underline" }}>Privacidad</Link>
+          {" · "}
+          <a href="mailto:contacto@firusymichis.cl" style={{ color: "#C4845A", textDecoration: "underline" }}>contacto@firusymichis.cl</a>
         </div>
       </div>
 
