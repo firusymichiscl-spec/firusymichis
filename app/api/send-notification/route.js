@@ -113,7 +113,7 @@ function lowStockBody({ petName, medicationName, stockRemaining }) {
       <p style="margin:0 0 8px; font-size:18px; line-height:24px; font-weight:bold; color:#3D1F0A;">&#128230; Stock bajo de medicamento</p>
       ${card(`<p style="margin:0; font-size:16px; line-height:22px; font-weight:bold; color:#3D1F0A;">${esc(medicationName)} &mdash; ${esc(petName)}</p><p style="margin:4px 0 0; color:#C4845A; font-size:14px; line-height:18px;">Stock restante: ${esc(stockRemaining)} unidades</p>`, "#FFD166")}
       <p style="color:#7A4522; font-size:14px; line-height:20px;">Te recomendamos comprar pronto para no quedarte sin medicamento.</p>
-      ${button("Ver Marketplace", "https://firusymichis.cl/marketplace", "#FFD166", "#3D1F0A")}
+      ${button("Abrir Firus&amp;Michis", "https://firusymichis.cl/dashboard", "#FFD166", "#3D1F0A")}
     `,
   };
 }

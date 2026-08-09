@@ -1,6 +1,9 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase";
 import { THEMES, CUSTOM_COLORS, getThemeVars } from "@/lib/themes";
+import { FONDOS, getHeaderBackgroundStyle } from "@/lib/fondos";
 
 const THEME_NAMES = {
   clasico: "Clásico", canino: "Canino", felino: "Felino", nocturno: "Nocturno",
@@ -11,10 +14,13 @@ function applyVars(vars) {
   Object.entries(vars).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
 }
 
-export default function ThemeSelector({ initialTheme, initialCustomColor, onClose }) {
+export default function ThemeSelector({ initialTheme, initialCustomColor, petId, initialHeaderBackground, userPlan, onHeaderBackgroundSaved, onClose }) {
+  const supabase = createClient();
   const [selected, setSelected] = useState(initialTheme || "clasico");
   const [customColor, setCustomColor] = useState(initialCustomColor || CUSTOM_COLORS[0]);
+  const [selectedBg, setSelectedBg] = useState(initialHeaderBackground || null);
   const [saving, setSaving] = useState(false);
+  const isPro = userPlan && userPlan !== "free";
 
   function pick(theme) {
     setSelected(theme);
@@ -28,13 +34,30 @@ export default function ThemeSelector({ initialTheme, initialCustomColor, onClos
     if (selected === "custom") applyVars(getThemeVars("custom", color));
   }
 
+  function pickBg(key) {
+    if (key && !isPro) return; // gate PRO — "sin fondo" (null) siempre está disponible
+    setSelectedBg(key);
+  }
+
   async function save() {
     setSaving(true);
-    await fetch("/api/profile/theme", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theme: selected, customColor: selected === "custom" ? customColor : null }),
-    });
+    const tasks = [
+      fetch("/api/profile/theme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: selected, customColor: selected === "custom" ? customColor : null }),
+      }),
+    ];
+    // header_background se guarda POR MASCOTA en pets, no en profiles — UPDATE
+    // directo con el cliente de sesión (misma RLS que ya usa EditPetModal para
+    // otros campos de pets, sin RPC ni tocar policies).
+    if (petId && isPro) {
+      tasks.push(
+        supabase.from("pets").update({ header_background: selectedBg }).eq("id", petId)
+          .then(({ error }) => { if (!error) onHeaderBackgroundSaved?.(selectedBg); })
+      );
+    }
+    await Promise.all(tasks);
     setSaving(false);
     onClose();
   }
@@ -47,11 +70,12 @@ export default function ThemeSelector({ initialTheme, initialCustomColor, onClos
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#C4845A" }}>✕</button>
         </div>
 
-        {/* Vista previa */}
+        {/* Vista previa — incluye el fondo del header elegido, en vivo */}
         <div style={{
           background: `linear-gradient(135deg, var(--color-primary), var(--color-secondary))`,
+          ...getHeaderBackgroundStyle(selectedBg),
           borderRadius: 14, padding: "14px 18px", marginBottom: 20,
-          display: "flex", alignItems: "center", gap: 12,
+          display: "flex", alignItems: "center", gap: 12, position: "relative", overflow: "hidden",
         }}>
           <div style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--color-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🐾</div>
           <div>
@@ -107,6 +131,42 @@ export default function ThemeSelector({ initialTheme, initialCustomColor, onClos
             </div>
           </div>
         )}
+
+        {/* Fondo del encabezado — feature PRO, se guarda por mascota */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>Fondo del encabezado</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {/* Sin fondo — siempre disponible, sin gate */}
+            <button onClick={() => pickBg(null)} style={{
+              border: !selectedBg ? "2px solid var(--color-primary)" : "2px solid #FFD9C8",
+              borderRadius: 12, padding: 6, background: !selectedBg ? "#FFF0EB" : "#fff", cursor: "pointer",
+            }}>
+              <div style={{ height: 40, borderRadius: 8, background: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "rgba(255,255,255,0.8)", fontWeight: 700 }}>Sin fondo</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#3D1F0A", marginTop: 4, textAlign: "center" }}>Sin fondo</div>
+            </button>
+
+            {Object.entries(FONDOS).map(([key, f]) => (
+              <button key={key} onClick={() => pickBg(key)} disabled={!isPro} style={{
+                position: "relative", border: selectedBg === key ? "2px solid var(--color-primary)" : "2px solid #FFD9C8",
+                borderRadius: 12, padding: 6, background: selectedBg === key ? "#FFF0EB" : "#fff",
+                cursor: isPro ? "pointer" : "not-allowed", opacity: isPro ? 1 : 0.55,
+              }}>
+                <div style={{ height: 40, borderRadius: 8, ...f.style }} />
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#3D1F0A", marginTop: 4, textAlign: "center" }}>{f.label}</div>
+                {!isPro && (
+                  <div style={{ position: "absolute", top: 4, right: 4, background: "rgba(61,31,10,0.55)", borderRadius: 8, width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🔒</div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {!isPro && (
+            <div style={{ marginTop: 10, background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11, color: "#7A4522", fontWeight: 700 }}>🔒 Función PRO — Actívala para personalizar</div>
+              <Link href="/pago" style={{ background: "var(--color-primary)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "6px 12px", borderRadius: 10, textDecoration: "none", whiteSpace: "nowrap" }}>Ver planes →</Link>
+            </div>
+          )}
+        </div>
 
         <button onClick={save} disabled={saving} style={{
           width: "100%", padding: 13, borderRadius: 13,

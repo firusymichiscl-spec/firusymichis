@@ -21,6 +21,7 @@ import DeletedPetToast from "@/components/DeletedPetToast";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { PET_CHILD_TABLES } from "@/lib/petChildTables";
+import { getHeaderBackgroundStyle } from "@/lib/fondos";
 import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/lib/fechas";
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
@@ -681,12 +682,19 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     @media(min-width:640px){.content{grid-template-columns:1fr 1fr;gap:20px;padding:24px;}.tabs{max-width:420px;}}
     @media(max-width:639px){.app{max-width:420px;}.header{border-radius:0;}}
     .header{background:linear-gradient(160deg,var(--color-primary) 0%,var(--color-primary) 100%);padding:20px 20px 0;position:relative;overflow:hidden;}
+    /* Fondo de header PRO (Lote J): red de seguridad de legibilidad — un
+       text-shadow suave ayuda a la lectura real por encima de lo que ya mide
+       el contraste WCAG (ver lib/fondos.js), sobre todo para los patrones/
+       ilustrados donde una forma blanca puede caer justo detrás de una letra. */
+    .header-has-bg .brand,.header-has-bg .pet-card,.header-has-bg .tabs{text-shadow:0 1px 3px rgba(0,0,0,0.35);}
     .brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
     .brand-left{display:flex;align-items:center;gap:10px;}
     .brand-logo{width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
     .brand-name{font-family:'Baloo 2',cursive;font-size:20px;font-weight:800;color:#fff;}
     .brand-name span{color:var(--yellow);}
     .signout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:10px;padding:6px 12px;color:#fff;font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;}
+    .user-email{font-size:11px;color:rgba(255,255,255,0.7);}
+    @media(max-width:599px){.user-email{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom;}}
     .pet-card{display:flex;align-items:center;gap:14px;margin-bottom:20px;max-width:860px;margin-left:auto;margin-right:auto;}
     .brand{max-width:860px;margin-left:auto;margin-right:auto;}
     .conditions-row{max-width:860px;margin-left:auto;margin-right:auto;}
@@ -696,6 +704,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     .today-badge{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:14px;padding:8px 14px;text-align:center;flex-shrink:0;}
     .today-num{font-family:'Baloo 2',cursive;font-size:22px;font-weight:800;color:#fff;line-height:1;}
     .today-label{font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;}
+    @media(max-width:599px){
+      .today-badge{border-radius:10px;padding:6px 10px;}
+      .today-num{font-size:16px;}
+      .today-label{font-size:9px;letter-spacing:0.3px;white-space:nowrap;}
+    }
     .conditions-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;}
     .condition-pill{background:rgba(255,255,255,0.18);color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.25);}
     .tabs{display:flex;}
@@ -739,17 +752,21 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     <>
       <style>{css}</style>
       <div className="app">
-        <div className="header">
+        <div className={`header${petData.header_background ? " header-has-bg" : ""}`} style={getHeaderBackgroundStyle(petData.header_background)}>
           <div className="brand">
             <div className="brand-left">
               <div className="brand-logo">🐾</div>
               <div className="brand-name">Firus<span>&</span>Michis</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => router.push("/marketplace")}
-                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                💊 Market
-              </button>
+              {/* Botón "💊 Market" oculto — Lote J: marketplace desactivado
+                  a la espera de revisión legal. No se borró nada, solo se
+                  quitó este botón (ver app/marketplace/page.jsx para el
+                  guard de la ruta). Restaurar este bloque para reactivarlo:
+                  <button onClick={() => router.push("/marketplace")}
+                    style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    💊 Market
+                  </button> */}
               {allPetsData.length > 1 && (
                 <button onClick={() => router.push("/dashboard/overview")}
                   style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -763,7 +780,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2 }}>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{user.email}</div>
+                <div className="user-email" title={user.email}>{user.email}</div>
                 <span style={{
                   background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "var(--color-accent)",
                   color: userPlan === "free" ? "rgba(255,255,255,0.45)" : "#3D1F0A",
@@ -1998,6 +2015,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
         <ThemeSelector
           initialTheme={initialTheme}
           initialCustomColor={initialCustomColor}
+          petId={petData.id}
+          initialHeaderBackground={petData.header_background}
+          userPlan={userPlan}
+          onHeaderBackgroundSaved={(bg) => setPetData(p => ({ ...p, header_background: bg }))}
           onClose={() => setShowThemeSelector(false)}
         />
       )}

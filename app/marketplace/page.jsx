@@ -37,6 +37,15 @@ export default function MarketplacePage() {
 
   useEffect(() => { init(); }, []);
 
+  // GUARD — Lote J: el marketplace se ocultó de toda la UI a la espera de
+  // revisión legal. La app ya no expone ningún link hacia esta ruta, pero
+  // si alguien entra por URL directa (bookmark, link viejo, etc.) lo
+  // mandamos de vuelta al dashboard. Nada del módulo se borró: componentes,
+  // rutas API y tablas siguen intactos. Para reactivarlo, quita este
+  // useEffect y el `return null;` de abajo.
+  useEffect(() => { router.replace("/dashboard"); }, []);
+  return null;
+
   const init = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/login"); return; }

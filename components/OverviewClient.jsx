@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatFecha } from "@/lib/fechas";
+import { getHeaderBackgroundStyle } from "@/lib/fondos";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
@@ -88,6 +89,7 @@ const css = `
   .ov-event-row:last-child{border-bottom:none;}
   /* individual pet view */
   .ov-pet-header{background:linear-gradient(135deg,var(--pet-color,#FF6B35),color-mix(in srgb,var(--pet-color,#FF6B35),#000 20%));border-radius:18px;padding:28px;color:#fff;margin-bottom:24px;display:flex;align-items:center;gap:22px;}
+  .ov-pet-header.has-bg{text-shadow:0 1px 3px rgba(0,0,0,0.35);}
   .ov-metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
   .ov-metric{background:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.07);}
   .ov-metric-val{font-family:'Baloo 2',cursive;font-size:28px;font-weight:800;line-height:1;margin-bottom:4px;}
@@ -463,7 +465,16 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
   return (
     <div className="ov-content">
       {/* Header mascota */}
-        <div className="ov-pet-header" style={{ "--pet-color": color }}>
+        <div className={`ov-pet-header${pet.header_background ? " has-bg" : ""}`} style={{
+          "--pet-color": color,
+          // fondos.js referencia var(--color-primary)/--color-secondary (los
+          // mismos nombres que usa el theme del dashboard) — acá se alían a
+          // los del color por-mascota de este grid para que el mismo fondo
+          // se vea igual sin duplicar lib/fondos.js.
+          "--color-primary": color,
+          "--color-secondary": `color-mix(in srgb, ${color}, #000 20%)`,
+          ...getHeaderBackgroundStyle(pet.header_background),
+        }}>
           <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40, flexShrink: 0, overflow: "hidden" }}>
             {pet.photo_url
               ? <img src={pet.photo_url} alt={pet.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
