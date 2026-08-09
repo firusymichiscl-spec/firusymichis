@@ -26,6 +26,21 @@ import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
 
+// Iniciales para el avatar del header: nombre de Google si Supabase lo trae
+// en user_metadata ("Hugo Cárcamo" → "HC" — primera letra de las dos
+// primeras palabras); si no hay nombre, cae a la parte antes del @ del
+// email y toma sus primeros 2 caracteres ("hugocarcamo22" → "HU").
+function getUserInitials(user) {
+  const name = user?.user_metadata?.full_name || user?.user_metadata?.name;
+  if (name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  }
+  const local = (user?.email || "").split("@")[0];
+  return local.slice(0, 2).toUpperCase() || "?";
+}
+
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
   illness:   { bg: "#fffbeb", text: "#d97706", dot: "#f59e0b", icon: "🤒", label: "Enfermedad" },
@@ -77,6 +92,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [showThemeSelector, setShowThemeSelector] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
   const [showActivatedToast, setShowActivatedToast] = useState(false);
   const [deletedPetInfo, setDeletedPetInfo] = useState(null);
@@ -230,6 +246,14 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     const t = setTimeout(() => setDeletedPetInfo(null), 12000);
     return () => clearTimeout(t);
   }, [deletedPetInfo]);
+
+  // Cierre con Escape del menú de cuenta (clic afuera y la X se manejan en el JSX).
+  useEffect(() => {
+    if (!showAccountMenu) return;
+    const onKey = e => { if (e.key === "Escape") setShowAccountMenu(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showAccountMenu]);
 
   const switchPet = async (newPetId) => {
     if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
@@ -692,20 +716,6 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     .brand-logo{width:38px;height:38px;background:rgba(255,255,255,0.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;}
     .brand-name{font-family:'Baloo 2',cursive;font-size:20px;font-weight:800;color:#fff;}
     .brand-name span{color:var(--yellow);}
-    .signout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:10px;padding:6px 12px;color:#fff;font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;}
-    /* Email del header: en desktop se ve completo (como siempre). En móvil
-       el ancho disponible es demasiado chico para un ellipsis del email
-       completo ("hugocarcamo22@gma..." no dice nada útil) — se muestra solo
-       la parte antes del @, y esa parte recién usa ellipsis si tampoco
-       cabe. Dos <span> con display alternado por media query en vez de una
-       sola clase, para no calcular nada en JS ni arriesgar un mismatch de
-       hidratación entre servidor y cliente. */
-    .user-email-full{font-size:11px;color:rgba(255,255,255,0.7);}
-    .user-email-local{display:none;font-size:11px;color:rgba(255,255,255,0.7);}
-    @media(max-width:599px){
-      .user-email-full{display:none;}
-      .user-email-local{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
-    }
     .pet-card{display:flex;align-items:center;gap:14px;margin-bottom:20px;max-width:860px;margin-left:auto;margin-right:auto;}
     .brand{max-width:860px;margin-left:auto;margin-right:auto;}
     .conditions-row{max-width:860px;margin-left:auto;margin-right:auto;}
@@ -784,41 +794,21 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ⊞ General
                 </button>
               )}
-              <button onClick={() => setShowThemeSelector(true)}
-                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                🎨
-              </button>
             </div>
-            <div style={{ textAlign: "right", minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2, minWidth: 0 }}>
-                <div title={user.email} style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
-                  <span className="user-email-full">{user.email}</span>
-                  <span className="user-email-local">{user.email.split("@")[0]}</span>
-                </div>
-                <span style={{
-                  background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "var(--color-accent)",
-                  color: userPlan === "free" ? "rgba(255,255,255,0.45)" : "#3D1F0A",
-                  fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10,
-                  letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px", flexShrink: 0,
-                }}>
-                  {userPlan === "free" ? "FREE" : diasRestantes !== null ? `⏳ ${userPlan.toUpperCase()}` : userPlan.toUpperCase()}
-                </span>
-              </div>
-              {diasRestantes !== null && (
-                <div style={{ fontSize: 10, color: diasRestantes <= 7 ? "#FF4444" : "#FF9500", textAlign: "right", marginBottom: 2 }}>
-                  ⏳ {diasRestantes} días de prueba
-                </div>
+            {/* Botón de cuenta — reemplaza el bloque de email/badge/trial/
+                mascotas/cerrar-sesión que antes vivía acá (Lote K): ahora
+                todo eso vive en el modal de abajo, y el ícono de paleta
+                (antes un botón aparte en esta fila) también se consolidó
+                ahí como "🎨 Personalizar tema". */}
+            <button onClick={() => setShowAccountMenu(true)} aria-label="Abrir menú de cuenta"
+              style={{ position: "relative", width: 44, height: 44, borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#fff" }}>
+                {getUserInitials(user)}
+              </span>
+              {userPlan !== "free" && (
+                <span style={{ position: "absolute", bottom: 2, right: 2, width: 12, height: 12, borderRadius: "50%", background: "var(--color-accent)", border: "2px solid var(--color-primary)" }} />
               )}
-              {userPlan === "free" && (
-                <div style={{ fontSize: 10, color: "rgba(255,209,102,0.8)", textAlign: "right", marginBottom: 2, cursor: "pointer" }}>
-                  Pásate a PRO →
-                </div>
-              )}
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
-                {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} · última sesión: {formatFechaHora(user.last_sign_in_at)}
-              </div>
-              <button className="signout-btn" onClick={handleSignOut}>Cerrar sesión</button>
-            </div>
+            </button>
           </div>
 
           <div className="pet-card">
@@ -2035,6 +2025,76 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           onHeaderBackgroundSaved={(bg) => setPetData(p => ({ ...p, header_background: bg }))}
           onClose={() => setShowThemeSelector(false)}
         />
+      )}
+
+      {/* MENÚ DE CUENTA — Lote K: reemplaza el bloque de email/badge/trial/
+          mascotas/cerrar-sesión que antes vivía suelto en el header. Mismo
+          patrón visual que ThemeSelector/NotificationSettings (bottom sheet,
+          overlay oscuro). Cierre con X, clic afuera (overlay) y Escape. */}
+      {showAccountMenu && (
+        <div onClick={() => setShowAccountMenu(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 2000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 420, padding: 24, maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button onClick={() => setShowAccountMenu(false)} aria-label="Cerrar"
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#C4845A" }}>✕</button>
+            </div>
+
+            <div style={{ textAlign: "center", marginTop: -8, marginBottom: 16 }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Baloo 2', cursive", fontSize: 22, fontWeight: 800, color: "#fff", margin: "0 auto 10px" }}>
+                {getUserInitials(user)}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#3D1F0A", wordBreak: "break-word" }}>{user.email}</div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: userPlan === "free" ? 6 : 16 }}>
+              <span style={{
+                background: userPlan === "free" ? "#F1F5F9" : "var(--color-accent)",
+                color: userPlan === "free" ? "#64748B" : "#3D1F0A",
+                fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 10,
+                letterSpacing: "0.5px", textTransform: "uppercase",
+              }}>
+                {userPlan.toUpperCase()}
+              </span>
+              {diasRestantes !== null && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: diasRestantes <= 7 ? "#FF4444" : "#FF9500" }}>
+                  ⏳ {diasRestantes} días de prueba
+                </span>
+              )}
+            </div>
+            {userPlan === "free" && (
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <Link href="/pago" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-primary)" }}>Pásate a PRO →</Link>
+              </div>
+            )}
+
+            <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #FFD9C8", padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 13, color: "#3D1F0A", marginBottom: 6 }}>
+                🐾 {allPetsData.length} mascota{allPetsData.length !== 1 ? "s" : ""} registrada{allPetsData.length !== 1 ? "s" : ""}
+              </div>
+              <div style={{ fontSize: 13, color: "#3D1F0A" }}>🕐 Última sesión: {formatFechaHora(user.last_sign_in_at)}</div>
+            </div>
+
+            <button onClick={() => { setShowAccountMenu(false); setShowThemeSelector(true); }}
+              style={{ width: "100%", padding: 12, borderRadius: 13, background: "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
+              🎨 Personalizar tema
+            </button>
+
+            <button onClick={handleSignOut}
+              style={{ width: "100%", padding: 12, borderRadius: 13, background: "#fff", color: "#7A4522", border: "1.5px solid #FFD9C8", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 18 }}>
+              Cerrar sesión
+            </button>
+
+            <div style={{ textAlign: "center", fontSize: 11, color: "#C4845A" }}>
+              <Link href="/terminos" style={{ color: "#C4845A", textDecoration: "underline" }}>Términos</Link>
+              {" · "}
+              <Link href="/privacidad" style={{ color: "#C4845A", textDecoration: "underline" }}>Privacidad</Link>
+              {" · "}
+              <a href="mailto:contacto@firusymichis.cl" style={{ color: "#C4845A", textDecoration: "underline" }}>contacto@firusymichis.cl</a>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingPet && (
