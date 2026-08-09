@@ -18,6 +18,23 @@ export async function POST(req) {
   }
 
   const { name, quantity, unit, price_clp } = await req.json();
+
+  // Límites server-side (Lote K1) — el cliente ya valida, pero es evitable.
+  if (typeof name !== "string" || !name.trim()) {
+    return Response.json({ error: "Ingresa el nombre del medicamento." }, { status: 400 });
+  }
+  if (name.length > 200) {
+    return Response.json({ error: "El nombre del medicamento no puede superar los 200 caracteres." }, { status: 400 });
+  }
+  const qty = Number(quantity);
+  if (!Number.isFinite(qty) || qty <= 0 || qty > 100000) {
+    return Response.json({ error: "La cantidad debe ser un número válido." }, { status: 400 });
+  }
+  const price = Number(price_clp);
+  if (!Number.isFinite(price) || price <= 0 || price > 100_000_000) {
+    return Response.json({ error: "El precio debe ser un número válido en pesos chilenos." }, { status: 400 });
+  }
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create({

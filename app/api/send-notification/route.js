@@ -1,4 +1,7 @@
 import { Resend } from "resend";
+import crypto from "node:crypto";
+import { createRouteSupabase } from "@/lib/supabase-route";
+import { checkEmailTestQuota, recordAiUsage } from "@/lib/ai/quota";
 
 // ── Plantilla responsive ────────────────────────────────────────────
 // Reglas de compatibilidad de email (Gmail móvil / Apple Mail iOS / Outlook):
@@ -171,15 +174,83 @@ const BUILDERS = {
   trial: trialBody,
 };
 
+// Comparación de tiempo constante para el secreto de cron — evita que un
+// atacante infiera el valor correcto midiendo cuánto tarda la respuesta
+// carácter a carácter. crypto.timingSafeEqual exige buffers de igual
+// longitud (lanza si difieren), así que el chequeo de largo va primero;
+// eso sí filtra si el largo coincide o no, pero el largo de un secreto no
+// es la parte sensible — el valor sí, y ese sigue comparándose a tiempo
+// constante.
+function timingSafeEqual(a, b) {
+  const bufA = Buffer.from(a || "", "utf8");
+  const bufB = Buffer.from(b || "", "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// El destino del email SIEMPRE se resuelve acá, nunca confiando en el "to"
+// que manda el cliente — así el endpoint deja de servir como relay abierto.
+// Usa el email guardado en notification_preferences para esa mascota (si
+// existe y es del usuario autenticado); si no, cae al email de la cuenta.
+async function resolveDestinationEmail(supabase, user, petId) {
+  if (!petId) return user.email;
+  const { data: pet } = await supabase.from("pets").select("id").eq("id", petId).eq("user_id", user.id).single();
+  if (!pet) return null; // petId no es del usuario autenticado
+  const { data: pref } = await supabase
+    .from("notification_preferences")
+    .select("email")
+    .eq("pet_id", petId)
+    .eq("user_id", user.id)
+    .single();
+  return pref?.email || user.email;
+}
+
+// Este endpoint tiene dos llamadores legítimos, cada uno con su propia
+// validación (Lote K1 — antes no exigía ninguna, ver auditoría):
+//
+// 1. El cron interno (app/api/cron/notifications/route.js), servidor-a-
+//    servidor, ya resolvió el destinatario correcto antes de llamar acá —
+//    se autentica con el mismo x-cron-secret que protege esa ruta.
+// 2. El botón "Enviar email de prueba" (NotificationSettings.jsx), desde
+//    el navegador — exige sesión, y el "to" del body se IGNORA siempre: el
+//    destino se resuelve en el servidor a partir de petId.
+//
+// Cualquier request que no encaje en ninguna de las dos vías recibe el
+// mismo 401 genérico, sin indicar cuál validación falló.
 export async function POST(req) {
-  const resend = new Resend(process.env.RESEND_API_KEY);
   const payload = await req.json();
-  const { to, type } = payload;
+  const { type } = payload;
+
+  const cronToken = req.headers.get("x-cron-secret");
+  const isCron = !!process.env.CRON_SECRET && timingSafeEqual(cronToken, process.env.CRON_SECRET);
+
+  let to;
+  let recordQuotaOnSuccess = null;
+  if (isCron) {
+    to = payload.to;
+    if (!to) return new Response("Unauthorized", { status: 401 });
+  } else {
+    const supabase = await createRouteSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new Response("Unauthorized", { status: 401 });
+
+    to = await resolveDestinationEmail(supabase, user, payload.petId);
+    if (!to) return new Response("Unauthorized", { status: 401 });
+
+    const quota = await checkEmailTestQuota(user.id);
+    if (!quota.allowed) {
+      return Response.json({ error: "Alcanzaste el límite de emails de prueba por hoy. Puedes intentar de nuevo mañana." }, { status: 429 });
+    }
+
+    // Se registra recién si el envío es exitoso — ver más abajo.
+    recordQuotaOnSuccess = () => recordAiUsage(user.id, "email_test");
+  }
 
   const build = BUILDERS[type] || BUILDERS.medication;
   const { subject, subtitle, bodyHtml } = build(payload);
   const html = buildEmail({ subtitle, bodyHtml });
 
+  const resend = new Resend(process.env.RESEND_API_KEY);
   try {
     const { data, error } = await resend.emails.send({
       from: "Firus&Michis <notificaciones@firusymichis.cl>",
@@ -189,6 +260,7 @@ export async function POST(req) {
     });
 
     if (error) return Response.json({ error }, { status: 500 });
+    if (recordQuotaOnSuccess) await recordQuotaOnSuccess();
     return Response.json({ success: true, id: data.id });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });

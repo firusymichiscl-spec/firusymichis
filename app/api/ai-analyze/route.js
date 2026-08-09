@@ -49,15 +49,23 @@ export async function POST(req) {
     return Response.json({ error: msg }, { status: 429 });
   }
 
+  // Límites server-side (Lote K1) — pet/medications/history vienen del
+  // cliente; sin tope, un solo request con campos gigantes ya cuesta
+  // tokens caros antes de que la cuota diaria frene el siguiente intento.
+  const trunc = (s, n = 500) => (s == null ? "" : String(s).slice(0, n));
+  const truncList = (arr, n = 500) => (arr || []).map(v => trunc(v, n));
+  const safeMeds = (medications || []).slice(0, 50);
+  const safeHistory = (history || []).slice(0, 50);
+
   const petContext = `
-Mascota: ${pet.name}, ${pet.species === "dog" ? "Perro" : pet.species === "cat" ? "Gato" : "Otro"}, ${pet.breed || "raza desconocida"}
+Mascota: ${trunc(pet.name, 200)}, ${pet.species === "dog" ? "Perro" : pet.species === "cat" ? "Gato" : "Otro"}, ${trunc(pet.breed, 200) || "raza desconocida"}
 Edad: calculada desde ${pet.birth_date || "desconocida"}
 Peso: ${pet.weight_kg || "desconocido"} kg
-Condiciones: ${pet.conditions?.join(", ") || "ninguna"}
-Medicamentos activos: ${medications?.filter(m => m.active).map(m => `${m.name} ${m.dose} ${m.frequency}`).join(", ") || "ninguno"}
-Dieta: ${pet.diet || "no especificada"}
-Alergias: ${pet.allergies?.join(", ") || "ninguna"}
-Historial reciente: ${history?.slice(0, 5).map(h => `${h.event_date}: ${h.event}`).join(" | ") || "sin historial"}
+Condiciones: ${truncList(pet.conditions).join(", ") || "ninguna"}
+Medicamentos activos: ${safeMeds.filter(m => m.active).map(m => `${trunc(m.name)} ${trunc(m.dose)} ${trunc(m.frequency)}`).join(", ") || "ninguno"}
+Dieta: ${trunc(pet.diet) || "no especificada"}
+Alergias: ${truncList(pet.allergies).join(", ") || "ninguna"}
+Historial reciente: ${safeHistory.slice(0, 5).map(h => `${h.event_date}: ${trunc(h.event)}`).join(" | ") || "sin historial"}
   `;
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

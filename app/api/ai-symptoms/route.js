@@ -19,6 +19,17 @@ export async function POST(req) {
 
   const { pet, medications, history, symptom } = await req.json();
 
+  // Límite server-side (Lote K1) — el cliente ya valida, pero es evitable
+  // llamando la API directo. Un symptom gigante encarece la llamada a
+  // Claude antes de que la cuota diaria pueda frenar el siguiente intento.
+  const SYMPTOM_MAX_LENGTH = 1000;
+  if (typeof symptom !== "string" || !symptom.trim()) {
+    return Response.json({ error: "Cuéntanos qué le está pasando a tu mascota 🐾" }, { status: 400 });
+  }
+  if (symptom.length > SYMPTOM_MAX_LENGTH) {
+    return Response.json({ error: `La descripción del síntoma no puede superar los ${SYMPTOM_MAX_LENGTH} caracteres. Intenta resumirla un poco 🐾` }, { status: 400 });
+  }
+
   // Ownership
   if (pet?.id) {
     const svc = serviceClient();

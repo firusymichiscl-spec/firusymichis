@@ -227,7 +227,7 @@ async function sendNotif(to, type, data) {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "https://firusymichis.cl"}/api/send-notification`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-cron-secret": process.env.CRON_SECRET },
       body: JSON.stringify({ to, type, ...data }),
     });
     return await res.json();

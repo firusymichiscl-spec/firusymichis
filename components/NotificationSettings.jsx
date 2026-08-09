@@ -10,6 +10,7 @@ export default function NotificationSettings({ pet, user, onClose }) {
   const [saved, setSaved] = useState(false);
   const [testSending, setTestSending] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  const [testError, setTestError] = useState("");
 
   useEffect(() => { loadPrefs(); }, []);
 
@@ -54,11 +55,18 @@ export default function NotificationSettings({ pet, user, onClose }) {
 
   const sendTest = async () => {
     setTestSending(true);
-    await fetch("/api/send-notification", {
+    setTestError("");
+    // El destino ya NO se manda desde acá — el servidor lo resuelve solo a
+    // partir de petId (email guardado en notification_preferences para esta
+    // mascota, o el email de la cuenta si no hay uno guardado). Ver
+    // app/api/send-notification/route.js — el "to" del body se ignora
+    // siempre para esta vía, así que aunque el campo de email de arriba
+    // tenga algo sin guardar todavía, la prueba llega al destino real.
+    const res = await fetch("/api/send-notification", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        to: prefs.email,
+        petId: pet.id,
         type: "medication",
         petName: pet.name,
         medicationName: "Medicamento de prueba",
@@ -66,8 +74,15 @@ export default function NotificationSettings({ pet, user, onClose }) {
       }),
     });
     setTestSending(false);
-    setTestSent(true);
-    setTimeout(() => setTestSent(false), 3000);
+    if (res.ok) {
+      setTestSent(true);
+      setTimeout(() => setTestSent(false), 3000);
+    } else if (res.status === 429) {
+      const { error } = await res.json().catch(() => ({}));
+      setTestError(error || "Alcanzaste el límite de emails de prueba por hoy.");
+    } else {
+      setTestError("No se pudo enviar el email de prueba.");
+    }
   };
 
   const inputS = { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#fff", fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#3D1F0A", outline: "none", boxSizing: "border-box" };
@@ -146,9 +161,10 @@ export default function NotificationSettings({ pet, user, onClose }) {
 
               {/* Test */}
               <button onClick={sendTest} disabled={testSending || !prefs.email}
-                style={{ width: "100%", padding: 11, borderRadius: 12, background: testSent ? "#059669" : "#fff", color: testSent ? "#fff" : "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>
+                style={{ width: "100%", padding: 11, borderRadius: 12, background: testSent ? "#059669" : "#fff", color: testSent ? "#fff" : "#FF6B35", border: "1.5px solid #FFD0BC", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: testError ? 4 : 10 }}>
                 {testSent ? "✓ Email de prueba enviado" : testSending ? "Enviando..." : "📧 Enviar email de prueba"}
               </button>
+              {testError && <div style={{ fontSize: 11, color: "#dc2626", marginBottom: 10 }}>{testError}</div>}
             </>
           )}
 

@@ -35,6 +35,7 @@ const calcNextDose = (startDate, startTime, freqStr) => {
 };
 
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
+const SYMPTOM_MAX_LENGTH = 1000; // debe calzar con el límite server-side en app/api/ai-symptoms/route.js
 
 export default function AITab({ pet, medications, history, isArchived, onTreatmentSaved, onGoToTratamiento }) {
   const supabase = createClient();
@@ -508,9 +509,12 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         <div style={card}>
           <style>{`@media print{body *{visibility:hidden}#ai-print-area,#ai-print-area *{visibility:visible}#ai-print-area{position:absolute;left:0;top:0;width:100%;padding:20px}#ai-print-area .no-print{display:none!important}#ai-print-logo{display:block!important}}`}</style>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#2EC4B6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Consulta de síntomas</div>
-          <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={SYMPTOM_PLACEHOLDERS[placeholderIdx]} value={symptom} onChange={e => setSymptom(e.target.value)} />
+          <textarea style={{ ...inputS, resize: "vertical", minHeight: 80 }} placeholder={SYMPTOM_PLACEHOLDERS[placeholderIdx]} value={symptom} maxLength={SYMPTOM_MAX_LENGTH} onChange={e => setSymptom(e.target.value)} />
+          <div style={{ fontSize: 10, color: symptom.length >= SYMPTOM_MAX_LENGTH ? "#dc2626" : "#C4845A", textAlign: "right", marginTop: 3 }}>
+            {symptom.length}/{SYMPTOM_MAX_LENGTH}
+          </div>
           {renderQuotaBanner(quotaSymptom)}
-          <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim() || (quotaSymptom && !quotaSymptom.allowed)} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10, opacity: (quotaSymptom && !quotaSymptom.allowed) ? 0.5 : 1 }}>
+          <button onClick={consultSymptom} disabled={symptomLoading || !symptom.trim() || symptom.length > SYMPTOM_MAX_LENGTH || (quotaSymptom && !quotaSymptom.allowed)} style={{ width: "100%", padding: 13, borderRadius: 13, background: "#2EC4B6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 10, opacity: (quotaSymptom && !quotaSymptom.allowed) ? 0.5 : 1 }}>
             {symptomLoading ? (
               <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 Consultando
