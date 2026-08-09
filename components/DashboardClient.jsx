@@ -226,7 +226,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   useEffect(() => {
     if (!deletedPetInfo) return;
-    const t = setTimeout(() => setDeletedPetInfo(null), 6000);
+    const t = setTimeout(() => setDeletedPetInfo(null), 12000);
     return () => clearTimeout(t);
   }, [deletedPetInfo]);
 
