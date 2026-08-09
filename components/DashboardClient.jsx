@@ -17,6 +17,7 @@ import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
+import DeletedPetToast from "@/components/DeletedPetToast";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { PET_CHILD_TABLES } from "@/lib/petChildTables";
@@ -77,6 +78,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
   const [showActivatedToast, setShowActivatedToast] = useState(false);
+  const [deletedPetInfo, setDeletedPetInfo] = useState(null);
   const [tab, setTab] = useState("ficha");
   const [editingPet, setEditingPet] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -205,6 +207,28 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       return () => clearTimeout(t);
     }
   }, []);
+
+  // Banner de "mascota eliminada" — a diferencia de "activated" (siempre
+  // llega en un mount fresco tras el redirect de pago), este puede llegar
+  // con el componente YA montado: cuando queda otra mascota, onDeleted no
+  // navega a otra página, solo actualiza la URL con router.replace. Por eso
+  // este efecto depende de `searchParams` en vez de correr una sola vez.
+  useEffect(() => {
+    const eliminada = searchParams.get("eliminada");
+    if (!eliminada) return;
+    setDeletedPetInfo({ name: eliminada, sex: searchParams.get("eliminadaSex") });
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("eliminada");
+    params.delete("eliminadaSex");
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : window.location.pathname, { scroll: false });
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!deletedPetInfo) return;
+    const t = setTimeout(() => setDeletedPetInfo(null), 6000);
+    return () => clearTimeout(t);
+  }, [deletedPetInfo]);
 
   const switchPet = async (newPetId) => {
     if (newPetId === activePetId) { setShowPetSwitcher(false); return; }
@@ -889,6 +913,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           </div>
         )}
 
+        {deletedPetInfo && (
+          <DeletedPetToast name={deletedPetInfo.name} sex={deletedPetInfo.sex} onClose={() => setDeletedPetInfo(null)} />
+        )}
+
         {showActivatedToast && (
           <div style={{ position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 1500, background: "#059669", color: "#fff", padding: "12px 22px", borderRadius: 14, fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, boxShadow: "0 8px 24px rgba(5,150,105,0.35)" }}>
             ✓ ¡Plan activado! Bienvenido a {userPlan.toUpperCase()}
@@ -954,12 +982,22 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             }}
             onDeleted={async () => {
               setShowDangerZone(false);
+              const deletedName = petData.name;
+              const deletedSex = petData.sex;
               const remaining = allPetsData.filter(p => p.id !== petData.id);
               if (remaining.length === 0) {
-                window.location.href = "/nueva-mascota";
+                const params = new URLSearchParams({ eliminada: deletedName });
+                if (deletedSex) params.set("eliminadaSex", deletedSex);
+                window.location.href = `/nueva-mascota?${params.toString()}`;
               } else {
                 setAllPetsData(remaining);
                 await switchPet(remaining[0].id);
+                // switchPet ya reemplazó la URL con "?pet=...", así que acá se
+                // agrega "eliminada" preservando ese param en vez de pisarlo.
+                const params = new URLSearchParams(window.location.search);
+                params.set("eliminada", deletedName);
+                if (deletedSex) params.set("eliminadaSex", deletedSex);
+                router.replace(`?${params.toString()}`, { scroll: false });
               }
             }}
             onOpenArchive={() => { setShowDangerZone(false); setShowArchiveModal(true); }}

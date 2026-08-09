@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
+import DeletedPetToast from "@/components/DeletedPetToast";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
 // guardado siga siendo editable/seleccionable ahí después).
@@ -23,10 +24,24 @@ const SPECIES_OPTIONS = [
   { value: 'other', icon: '🐰', label: 'Otro' },
 ];
 
+// useSearchParams() exige un límite Suspense — a diferencia de dashboard/
+// page.jsx (Server Component que ya envuelve a DashboardClient en
+// <Suspense>), esta ruta es 100% Client Component, así que el límite se
+// arma acá mismo con este wrapper.
 export default function NuevaMascota() {
+  return (
+    <Suspense fallback={null}>
+      <NuevaMascotaInner />
+    </Suspense>
+  );
+}
+
+function NuevaMascotaInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [step, setStep] = useState(1);
+  const [deletedPetInfo, setDeletedPetInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     species: 'dog', speciesIcon: '🐶', speciesLabel: 'Perro',
@@ -62,6 +77,23 @@ export default function NuevaMascota() {
       }
     })();
   }, []);
+
+  // Caso borde del banner de "mascota eliminada": si el usuario borra su
+  // única mascota, DashboardClient redirige acá (window.location.href) con
+  // los mismos query params — este mount fresco los detecta igual que el
+  // toast "activated" en DashboardClient.jsx (ver auditoría Lote J).
+  useEffect(() => {
+    const eliminada = searchParams.get("eliminada");
+    if (!eliminada) return;
+    setDeletedPetInfo({ name: eliminada, sex: searchParams.get("eliminadaSex") });
+    router.replace("/nueva-mascota", { scroll: false });
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!deletedPetInfo) return;
+    const t = setTimeout(() => setDeletedPetInfo(null), 6000);
+    return () => clearTimeout(t);
+  }, [deletedPetInfo]);
 
   const breeds = form.species === 'cat' ? BREEDS_CAT : form.species === 'other' ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
@@ -198,6 +230,10 @@ export default function NuevaMascota() {
   return (
     <div style={css.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
+
+      {deletedPetInfo && (
+        <DeletedPetToast name={deletedPetInfo.name} sex={deletedPetInfo.sex} onClose={() => setDeletedPetInfo(null)} />
+      )}
 
       {/* HEADER */}
       <div style={css.header}>
