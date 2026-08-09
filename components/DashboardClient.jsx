@@ -693,8 +693,19 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     .brand-name{font-family:'Baloo 2',cursive;font-size:20px;font-weight:800;color:#fff;}
     .brand-name span{color:var(--yellow);}
     .signout-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:10px;padding:6px 12px;color:#fff;font-family:'Nunito',sans-serif;font-size:11px;font-weight:700;cursor:pointer;}
-    .user-email{font-size:11px;color:rgba(255,255,255,0.7);}
-    @media(max-width:599px){.user-email{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom;}}
+    /* Email del header: en desktop se ve completo (como siempre). En móvil
+       el ancho disponible es demasiado chico para un ellipsis del email
+       completo ("hugocarcamo22@gma..." no dice nada útil) — se muestra solo
+       la parte antes del @, y esa parte recién usa ellipsis si tampoco
+       cabe. Dos <span> con display alternado por media query en vez de una
+       sola clase, para no calcular nada en JS ni arriesgar un mismatch de
+       hidratación entre servidor y cliente. */
+    .user-email-full{font-size:11px;color:rgba(255,255,255,0.7);}
+    .user-email-local{display:none;font-size:11px;color:rgba(255,255,255,0.7);}
+    @media(max-width:599px){
+      .user-email-full{display:none;}
+      .user-email-local{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+    }
     .pet-card{display:flex;align-items:center;gap:14px;margin-bottom:20px;max-width:860px;margin-left:auto;margin-right:auto;}
     .brand{max-width:860px;margin-left:auto;margin-right:auto;}
     .conditions-row{max-width:860px;margin-left:auto;margin-right:auto;}
@@ -778,14 +789,17 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 🎨
               </button>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2 }}>
-                <div className="user-email" title={user.email}>{user.email}</div>
+            <div style={{ textAlign: "right", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginBottom: 2, minWidth: 0 }}>
+                <div title={user.email} style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+                  <span className="user-email-full">{user.email}</span>
+                  <span className="user-email-local">{user.email.split("@")[0]}</span>
+                </div>
                 <span style={{
                   background: userPlan === "free" ? "rgba(255,255,255,0.12)" : "var(--color-accent)",
                   color: userPlan === "free" ? "rgba(255,255,255,0.45)" : "#3D1F0A",
                   fontSize: 9, fontWeight: 800, padding: "2px 7px", borderRadius: 10,
-                  letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px",
+                  letterSpacing: "0.5px", textTransform: "uppercase", lineHeight: "16px", flexShrink: 0,
                 }}>
                   {userPlan === "free" ? "FREE" : diasRestantes !== null ? `⏳ ${userPlan.toUpperCase()}` : userPlan.toUpperCase()}
                 </span>
