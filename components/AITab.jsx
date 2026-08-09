@@ -141,10 +141,19 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     const timer = setInterval(() => setAnalyzeElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     try {
       const res = await fetch("/api/ai-analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history }) });
-      const data = await res.json();
       const ms = Date.now() - startedAt;
-      if (data.error) {
-        setAnalyzeResult({ text: data.error, error: true, at: new Date(), ms });
+      const data = await res.json().catch(() => null);
+      // Primero se chequea res.ok — si el servidor bloqueó por cuota (429) o
+      // rechazó por validación (400), la respuesta no trae "result", solo
+      // "error". Intentar leer .result ahí antes de mirar el status es lo
+      // que producía el "Cannot read properties of undefined" en pantalla.
+      // Si fue justo por cuota (429), el banner de arriba (renderQuotaBanner)
+      // ya va a mostrar el mismo aviso apenas se recargue quotaAnalyze más
+      // abajo — no se duplica acá.
+      if (res.status === 429) {
+        // no-op: el banner de cuota se encarga del mensaje
+      } else if (!res.ok || !data || typeof data.result !== "string") {
+        setAnalyzeResult({ text: data?.error || "No pudimos procesar tu consulta. Intenta nuevamente en unos minutos.", error: true, at: new Date(), ms });
       } else {
         setAnalyzeResult({ text: data.result, error: false, at: new Date(), ms });
         logActivity(supabase, pet.id, "Consulta IA", `Análisis · ${(ms / 1000).toFixed(1)}s`);
@@ -166,10 +175,15 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     const timer = setInterval(() => setSymptomElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     try {
       const res = await fetch("/api/ai-symptoms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pet, medications, history, symptom }) });
-      const data = await res.json();
       const ms = Date.now() - startedAt;
-      if (data.error) {
-        setSymptomResult({ text: data.error, error: true, at: new Date(), ms });
+      const data = await res.json().catch(() => null);
+      // Ver comentario equivalente en analyze() — mismo fix: chequear res.ok
+      // antes de asumir que la respuesta trae "result", y no duplicar el
+      // mensaje si ya lo muestra el banner de cuota.
+      if (res.status === 429) {
+        // no-op: el banner de cuota se encarga del mensaje
+      } else if (!res.ok || !data || typeof data.result !== "string") {
+        setSymptomResult({ text: data?.error || "No pudimos procesar tu consulta. Intenta nuevamente en unos minutos.", error: true, at: new Date(), ms });
       } else {
         setSymptomResult({ text: data.result, error: false, at: new Date(), ms });
         logActivity(supabase, pet.id, "Consulta IA", `Síntomas · ${(ms / 1000).toFixed(1)}s`);

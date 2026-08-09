@@ -54,10 +54,15 @@ export async function POST(req) {
         { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } }
       );
     } catch {
-      return Response.json({ error: "No se pudo procesar la receta" });
+      // Faltaba el status acá — sin él, esta respuesta de error salía como
+      // 200 OK, así que un cliente que solo mirara res.ok la habría tomado
+      // como éxito (Lote K1, bug 2).
+      return Response.json({ error: "No se pudo procesar la receta. Intenta con una foto más clara." }, { status: 422 });
     }
   } catch (e) {
+    // Detalle real solo en consola del servidor — nunca texto técnico en
+    // inglés al usuario.
     console.error("[ai-recipe] error:", e);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "No pudimos leer la receta. Intenta nuevamente en unos minutos." }, { status: 500 });
   }
 }

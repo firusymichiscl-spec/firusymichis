@@ -37,12 +37,17 @@ export async function POST(req) {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-5",
-    max_tokens: 1024,
-    messages: [{
-      role: "user",
-      content: `Eres un experto en precios de medicamentos veterinarios en Chile.
+  // Antes esta llamada no tenía try/catch: si Claude fallaba (red, rate
+  // limit, etc.) la excepción quedaba sin manejar y Next.js devolvía una
+  // página de error genérica en vez de JSON — el cliente reventaba al
+  // intentar res.json() sobre eso (Lote K1, bug 2).
+  try {
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 1024,
+      messages: [{
+        role: "user",
+        content: `Eres un experto en precios de medicamentos veterinarios en Chile.
       El tutor quiere vender: ${name}, ${quantity} ${unit} a $${price_clp} CLP.
 
       Analiza si el precio es justo considerando:
@@ -64,17 +69,18 @@ export async function POST(req) {
       El precio_sugerido_venta debe ser el precio que paga el comprador.
       El precio_plataforma es el 25% del precio_sugerido_venta.
       El pago_vendedor es el 75% del precio_sugerido_venta.`
-    }]
-  });
+      }]
+    });
 
-  // Solo se consume cuota si Claude respondió con éxito.
-  await recordAiUsage(user.id, "price_check");
-
-  try {
     const txt = message.content[0].text;
     const json = JSON.parse(txt.replace(/```json|```/g, "").trim());
+
+    // Solo se consume cuota si Claude respondió Y el JSON se pudo parsear.
+    await recordAiUsage(user.id, "price_check");
+
     return Response.json(json, { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } });
-  } catch {
-    return Response.json({ error: "No se pudo analizar el precio" }, { status: 500 });
+  } catch (e) {
+    console.error("[ai-price-check] error:", e);
+    return Response.json({ error: "No pudimos analizar el precio. Intenta nuevamente en unos minutos." }, { status: 500 });
   }
 }

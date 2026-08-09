@@ -91,8 +91,14 @@ export default function MarketplacePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: listingForm.name, quantity: listingForm.quantity, unit: listingForm.unit, price_clp: parseInt(listingForm.price_clp) }),
       });
-      const data = await res.json();
-      setPriceAnalysis(data);
+      const data = await res.json().catch(() => null);
+      // Antes se guardaba data tal cual sin mirar res.ok — un 429/400 sin
+      // campo "error" reconocible dejaba la UI sin ningún feedback.
+      if (!res.ok || !data || typeof data.precio_sugerido_venta !== "number") {
+        setPriceAnalysis({ error: data?.error || "No pudimos verificar el precio. Intenta nuevamente en unos minutos." });
+      } else {
+        setPriceAnalysis(data);
+      }
     } catch { setPriceAnalysis({ error: "No se pudo verificar el precio" }); }
     setPriceChecking(false);
   };
@@ -513,6 +519,12 @@ export default function MarketplacePage() {
                   <div style={{ fontSize: 11, color: "#7A4522", background: "#fff", borderRadius: 8, padding: "8px 10px" }}>
                     {priceAnalysis.analisis}
                   </div>
+                </div>
+              )}
+
+              {priceAnalysis?.error && (
+                <div style={{ background: "#fef2f2", borderRadius: 12, padding: 12, marginBottom: 12, color: "#dc2626", fontSize: 12, fontWeight: 600, border: "1px solid #fecaca" }}>
+                  ⚠️ {priceAnalysis.error}
                 </div>
               )}
 

@@ -89,7 +89,9 @@ Historial médico: ${history?.slice(0, 8).map(h => `${h.event_date} (${h.type}):
       { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } }
     );
   } catch (e) {
+    // Detalle real solo en consola del servidor — nunca texto técnico en
+    // inglés al usuario (Lote K1, bug 2).
     console.error("[ai-symptoms] error:", e);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "No pudimos analizar el síntoma. Intenta nuevamente en unos minutos." }, { status: 500 });
   }
 }

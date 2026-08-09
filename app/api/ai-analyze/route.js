@@ -87,7 +87,11 @@ Historial reciente: ${safeHistory.slice(0, 5).map(h => `${h.event_date}: ${trunc
       { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } }
     );
   } catch (e) {
+    // El detalle real (incluye casos como Claude devolviendo un content[]
+    // vacío, "Cannot read properties of undefined (reading 'text')") queda
+    // solo en la consola del servidor — nunca se le manda texto técnico en
+    // inglés al usuario (Lote K1, bug 2).
     console.error("[ai-analyze] error:", e);
-    return Response.json({ error: e.message }, { status: 500 });
+    return Response.json({ error: "No pudimos generar el análisis. Intenta nuevamente en unos minutos." }, { status: 500 });
   }
 }
