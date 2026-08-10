@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteSupabase } from "@/lib/supabase-route";
 import { checkAiQuota, recordAiUsage, getPetQuotaStatus, recordPetUsage } from "@/lib/ai/quota";
 import { formatFecha } from "@/lib/fechas";
+import { ANTI_INJECTION_REINFORCEMENT } from "@/lib/ai/prompts";
 
 function serviceClient() {
   return createClient(
@@ -70,14 +71,23 @@ Alergias: ${pet.allergies?.join(", ") || "ninguna"}
 Historial médico: ${history?.slice(0, 8).map(h => `${h.event_date} (${h.type}): ${h.event}${h.vet_clinic ? " en " + h.vet_clinic : ""}`).join(" | ") || "sin historial"}
   `;
 
+  // Lote K2 — instrucciones en `system`, dato del usuario delimitado. El
+  // síntoma es el campo de texto libre más expuesto de los 3 endpoints (lo
+  // escribe el usuario a mano, sin estructura), así que va en su propia
+  // etiqueta <sintoma> separada de la ficha.
+  const systemPrompt = `Eres un asistente veterinario experto. Vas a recibir el síntoma que describe un tutor dentro de las etiquetas <sintoma></sintoma>, junto con la ficha de la mascota dentro de <ficha_mascota></ficha_mascota>, ambos en el mensaje del usuario. Analiza el síntoma considerando el historial completo de la mascota y responde en español latinoamericano con buena ortografía y gramática. Estructura tu respuesta en 4 secciones claramente separadas: 1) Posible causa considerando el historial, 2) Qué hacer de inmediato (productos y cuidados concretos), 3) Urgencia de ir al veterinario, 4) Si tiene historial en alguna clínica conocida, recomienda volver ahí. Finaliza siempre con un aviso de que esto no reemplaza la consulta veterinaria.
+
+${ANTI_INJECTION_REINFORCEMENT}`;
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
+      system: systemPrompt,
       messages: [{
         role: "user",
-        content: `Eres un asistente veterinario experto. El tutor describe este síntoma: "${symptom}". Analiza considerando el historial completo de la mascota y responde en español latinoamericano con buena ortografía y gramática. Estructura tu respuesta en 4 secciones claramente separadas: 1) Posible causa considerando el historial, 2) Qué hacer de inmediato (productos y cuidados concretos), 3) Urgencia de ir al veterinario, 4) Si tiene historial en alguna clínica conocida, recomienda volver ahí. Finaliza siempre con un aviso de que esto no reemplaza la consulta veterinaria. Contexto: ${petContext}`
+        content: `<sintoma>${symptom}</sintoma>\n<ficha_mascota>${petContext}</ficha_mascota>`
       }]
     });
     // Solo se consume cuota si Claude respondió con éxito.

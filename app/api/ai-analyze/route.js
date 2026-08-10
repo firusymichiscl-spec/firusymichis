@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createRouteSupabase } from "@/lib/supabase-route";
 import { checkAiQuota, recordAiUsage, getPetQuotaStatus, recordPetUsage } from "@/lib/ai/quota";
 import { formatFecha } from "@/lib/fechas";
+import { ANTI_INJECTION_REINFORCEMENT } from "@/lib/ai/prompts";
 
 function serviceClient() {
   return createClient(
@@ -68,14 +69,23 @@ Alergias: ${truncList(pet.allergies).join(", ") || "ninguna"}
 Historial reciente: ${safeHistory.slice(0, 5).map(h => `${h.event_date}: ${trunc(h.event)}`).join(" | ") || "sin historial"}
   `;
 
+  // Lote K2 — instrucciones de rol/formato en `system` (separadas del dato
+  // del usuario, que la API trata con más autoridad que el turno "user"),
+  // y el dato envuelto en <ficha_mascota> para que quede delimitado sin
+  // ambigüedad. Ver lib/ai/prompts.js para el porqué del texto de refuerzo.
+  const systemPrompt = `Eres un asistente veterinario experto. Vas a recibir la ficha de una mascota dentro de las etiquetas <ficha_mascota></ficha_mascota> en el mensaje del usuario. Analízala y entrega recomendaciones prácticas y personalizadas en español latinoamericano, con buena ortografía y gramática. Usa formato claro con puntos numerados. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y consejos según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones.
+
+${ANTI_INJECTION_REINFORCEMENT}`;
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
+      system: systemPrompt,
       messages: [{
         role: "user",
-        content: `Eres un asistente veterinario experto. Analiza esta mascota y entrega recomendaciones prácticas y personalizadas en español latinoamericano, con buena ortografía y gramática. Usa formato claro con puntos numerados. Incluye suplementos naturales, productos de farmacia veterinaria, cuidados preventivos y consejos según su raza, edad y condiciones. Sé concreto y menciona nombres de productos cuando sea posible. Máximo 5 recomendaciones. Contexto: ${petContext}`
+        content: `<ficha_mascota>${petContext}</ficha_mascota>`
       }]
     });
     // Solo se consume cuota si Claude respondió con éxito.
