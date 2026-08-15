@@ -1,0 +1,21 @@
+-- ============================================================
+-- MIGRACIÓN: treatment_items.phases — fases estructuradas (Lote M, Feature 1)
+-- Fecha: 2026-08-15
+-- Ejecutar en: Supabase → SQL Editor → New query → Run
+-- Idempotente: seguro de ejecutar más de una vez
+-- NO TOCA RLS de la tabla pets ni de treatment_items — solo agrega una
+-- columna nullable a una tabla que ya tiene sus GRANTs/RLS correctos.
+-- ============================================================
+
+-- Formato esperado (array ordenado, ver lib/doseSchedule.js validatePhases):
+-- [
+--   {"interval_hours": 12, "duration_days": 1},
+--   {"interval_hours": 24, "duration_days": 3},
+--   {"interval_hours": 48, "duration_days": null}
+-- ]
+-- interval_hours: 48 = "día por medio". duration_days null = fase abierta,
+-- solo permitido en el ÚLTIMO elemento (hasta el fin del tratamiento, si lo
+-- tiene). NULL en la columna completa = sin fases estructuradas guardadas;
+-- ahí lib/doseSchedule.js cae al parser de texto libre sobre `frequency`
+-- (retrocompatibilidad con tratamientos guardados antes de este lote).
+ALTER TABLE treatment_items ADD COLUMN IF NOT EXISTS phases jsonb NULL;

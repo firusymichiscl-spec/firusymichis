@@ -64,7 +64,7 @@ export default async function Dashboard() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, plan_expires_at, theme, theme_custom_color")
+    .select("plan, plan_expires_at, theme, theme_custom_color, dose_view_pref")
     .eq("id", user.id)
     .single();
 
@@ -81,6 +81,7 @@ export default async function Dashboard() {
 
   const userTheme = profile?.theme || "clasico";
   const userThemeCustomColor = profile?.theme_custom_color || null;
+  const userDoseViewPref = profile?.dose_view_pref || null;
 
   // Banner de aviso: últimos 10 días de un trial PRO (plan_expires_at presente,
   // no un plan pagado permanente que tiene plan_expires_at = null).
@@ -141,6 +142,7 @@ export default async function Dashboard() {
           showTrialBanner={showTrialBanner}
           trialExpired={trialExpired}
           lastPetSnapshot={lastPetSnapshot}
+          initialDoseViewPref={userDoseViewPref}
         />
       </Suspense>
     </ThemeProvider>

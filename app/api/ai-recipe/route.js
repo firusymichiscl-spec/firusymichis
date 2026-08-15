@@ -51,7 +51,14 @@ export async function POST(req) {
   // adversarial escrito a mano en la foto de la receta (una nota, un post-it,
   // lo que sea) llega a Claude igual que el texto de la receta real. El
   // texto de refuerzo cubre explícitamente el contenido de imágenes.
-  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria adjunta como imagen. Analízala y devuelve SOLO un array JSON válido sin backticks ni markdown. Cada elemento del array representa un medicamento con estos campos exactos: [{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":""}]. Si hay múltiples medicamentos en la receta, incluye todos en el array.
+  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria adjunta como imagen. Analízala y devuelve SOLO un array JSON válido sin backticks ni markdown. Cada elemento del array representa un medicamento con estos campos exactos: [{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":"","phases":null}]. Si hay múltiples medicamentos en la receta, incluye todos en el array.
+
+El campo "frecuencia" es SIEMPRE texto libre legible, tal como debe leerlo un humano (ej. "Cada 12 horas por 1 día, luego cada 24 horas por 3 días, luego día por medio") — eso no cambia.
+
+Además, completa "phases" con la MISMA información pero estructurada, para que el sistema no tenga que volver a interpretar el texto:
+- Si la frecuencia es simple (ej. "cada 12 horas por 7 días"), "phases" es un array de UN solo elemento: [{"interval_hours":12,"duration_days":7}].
+- Si hay escalonamiento en el tiempo (palabras como "luego", "después", "posteriormente", "a continuación"), agrega un elemento por cada fase, EN ORDEN: [{"interval_hours":12,"duration_days":1},{"interval_hours":24,"duration_days":3},{"interval_hours":48,"duration_days":null}]. "interval_hours":48 representa "día por medio". "duration_days":null solo puede ir en el ÚLTIMO elemento del array, cuando esa fase no tiene una duración indicada en la receta (continúa hasta terminar el tratamiento).
+- Si NO puedes determinar con certeza los intervalos en horas de cada fase (la receta es ambigua, ilegible en esa parte, o usa una frecuencia que no es un intervalo de horas fijo, como "según necesidad" o "una vez por semana"), devuelve "phases":null. NUNCA inventes un intervalo — es preferible null a un dato incorrecto, porque esto alimenta directamente cuándo se le recuerda al dueño dar cada dosis.
 
 ${ANTI_INJECTION_REINFORCEMENT}`;
 

@@ -19,7 +19,7 @@ import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DoseTracker from "@/components/DoseTracker";
-import { getScheduledDoses, getTreatmentStart, getTreatmentProgress } from "@/lib/doseSchedule";
+import { getScheduledDoses, getTreatmentStart, getTreatmentProgress, validatePhases } from "@/lib/doseSchedule";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import DrugClassLabel from "@/components/DrugClassLabel";
 import { compressImage } from "@/lib/images/compress";
@@ -91,7 +91,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'', drug_class: '',
 };
 
-export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
+export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot, initialDoseViewPref }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -177,13 +177,26 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [treatmentItems, setTreatmentItems] = useState([]);
   const [selectedTreatmentGroupId, setSelectedTreatmentGroupId] = useState(null);
   const [expandedTreatmentCards, setExpandedTreatmentCards] = useState({});
-  // dose_log (Lote L) — registro real de dosis. doseView es la vista elegida
-  // (Hoy/Semana/Fases): se guarda como estado de componente, no en
-  // localStorage (no permitido en este proyecto) ni en una columna nueva —
-  // es la opción más simple, se recuerda mientras se navega el dashboard y
-  // vuelve al valor por defecto en una recarga completa de página.
   const [doseLogs, setDoseLogs] = useState([]);
-  const [doseView, setDoseView] = useState("hoy");
+  // Lote M Feature 2 — la vista elegida (Hoy/Semana/Fases) se recuerda entre
+  // sesiones en profiles.dose_view_pref (RPC set_profile_dose_view; no se
+  // puede hacer un update directo, RLS de profiles solo permite SELECT
+  // propio — ver supabase/migrations/20260815_dose_view_pref.sql). El
+  // cambio de vista es optimista: la UI se actualiza al instante y el
+  // guardado corre en segundo plano sin bloquear la interacción si falla
+  // (Feature 2.5) — si el fetch no llega a buen puerto, en la próxima
+  // recarga simplemente vuelve a leer la preferencia anterior, nada se
+  // corrompe. Si el tratamiento abierto no tiene fases, DoseTracker ya
+  // cae solo a "hoy" (activeView), sin tocar esta preferencia guardada.
+  const [doseView, setDoseViewState] = useState(initialDoseViewPref || "hoy");
+  const setDoseView = (v) => {
+    setDoseViewState(v);
+    fetch("/api/profile/dose-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doseView: v }),
+    }).catch(() => {});
+  };
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -227,10 +240,20 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const openEditTreatmentItem = (ti) => {
     const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "", drug_class: ti.drug_class || "" });
+    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "", drug_class: ti.drug_class || "", phases: Array.isArray(ti.phases) ? ti.phases : [] });
     setEditingTreatmentItem(ti);
     setTiSaved(false);
   };
+
+  // Lote M Feature 1.5 — editor manual de fases. Shape igual al de la base
+  // (interval_hours/duration_days) para no tener que convertir en el save;
+  // "" en duration_days de la última fila = fase abierta (sin fin).
+  const addPhase = () => setTiForm(f => ({ ...f, phases: [...(f.phases || []), { interval_hours: "", duration_days: "" }] }));
+  const removePhase = (idx) => setTiForm(f => ({ ...f, phases: f.phases.filter((_, i) => i !== idx) }));
+  const updatePhase = (idx, field, value) => setTiForm(f => ({
+    ...f,
+    phases: f.phases.map((p, i) => i === idx ? { ...p, [field]: value } : p),
+  }));
 
   // Feature 3 — adherencia real a partir de dose_log, no estimada por tiempo
   // transcurrido. Las dosis "sin registro" (sin fila en dose_log) quedan
@@ -446,6 +469,20 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     if (!editingTreatmentItem) return;
     setTiSaving(true);
     const startTime = `${tiForm.start_hour.toString().padStart(2, "0")}:${tiForm.start_min}`;
+    // Lote M Feature 1.5/1.6 — si el usuario editó las fases a mano, eso
+    // manda sobre lo que haya dicho la IA (se sobrescribe directo). Se
+    // valida acá igual que en AITab.jsx: si no calza (array vacío, algún
+    // interval_hours vacío/no numérico, o un duration_days vacío en una
+    // fase que no es la última), se guarda null y el tratamiento cae al
+    // parser de texto libre sobre `frequency` — nunca se guarda a medias.
+    const phasesForSave = (() => {
+      if (!tiForm.phases || tiForm.phases.length === 0) return null;
+      const converted = tiForm.phases.map(p => ({
+        interval_hours: p.interval_hours === "" || p.interval_hours == null ? null : Number(p.interval_hours),
+        duration_days: p.duration_days === "" || p.duration_days == null ? null : Number(p.duration_days),
+      }));
+      return validatePhases(converted);
+    })();
     await supabase.from("treatment_items").update({
       name: tiForm.name, prescribed_dose: tiForm.prescribed_dose, frequency: tiForm.frequency,
       duration_days: tiForm.duration_days ? parseInt(tiForm.duration_days) : null,
@@ -454,6 +491,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
       indicaciones: tiForm.indicaciones || null,
       drug_class: tiForm.drug_class?.trim() || null,
+      phases: phasesForSave,
     }).eq("id", editingTreatmentItem.id);
     await logActivity(supabase, petData.id, "Editó tratamiento", tiForm.name);
     setTiSaving(false); setTiSaved(true);
@@ -2003,6 +2041,38 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </div>
                 <input style={inputS} placeholder="O escribe frecuencia libre..." value={tiForm.frequency || ""} onChange={e => setTiForm(f => ({ ...f, frequency: e.target.value }))} />
               </div>
+
+              {/* Lote M Feature 1.5 — fases estructuradas, editables a mano.
+                  Si se completan, mandan sobre lo que haya interpretado la IA
+                  o el parser de texto libre de "Frecuencia" de arriba. */}
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Fases (opcional)")}
+                <div style={{ fontSize: 10, color: "#C4845A", marginBottom: 8 }}>
+                  Si el medicamento cambia de frecuencia con el tiempo (ej. cada 12h los primeros días, luego cada 24h), definilo fase por fase acá. La última fase puede dejarse sin días para que dure hasta el fin del tratamiento. Si lo dejas vacío, se usa el texto de &quot;Frecuencia&quot;.
+                </div>
+                {(tiForm.phases || []).map((phase, idx) => {
+                  const isLast = idx === tiForm.phases.length - 1;
+                  return (
+                    <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, color: "#7A4522", fontWeight: 700, flexShrink: 0 }}>{idx + 1}.</span>
+                      <span style={{ fontSize: 12, color: "#7A4522", flexShrink: 0 }}>cada</span>
+                      <input style={{ ...inputS, width: 56, padding: "9px 6px", textAlign: "center" }} type="number" min="1" placeholder="12"
+                        value={phase.interval_hours ?? ""} onChange={e => { const v = parseInt(e.target.value); updatePhase(idx, "interval_hours", v > 0 ? v : ""); }} />
+                      <span style={{ fontSize: 12, color: "#7A4522", flexShrink: 0 }}>h, por</span>
+                      <input style={{ ...inputS, width: 56, padding: "9px 6px", textAlign: "center" }} type="number" min="1" placeholder={isLast ? "sin fin" : "días"}
+                        value={phase.duration_days ?? ""} onChange={e => { const v = parseInt(e.target.value); updatePhase(idx, "duration_days", v > 0 ? v : ""); }} />
+                      <span style={{ fontSize: 12, color: "#7A4522", flexShrink: 0 }}>días</span>
+                      <button onClick={() => removePhase(idx)} title="Quitar fase"
+                        style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", fontSize: 12, width: 26, height: 26, flexShrink: 0, cursor: "pointer", marginLeft: "auto" }}>✕</button>
+                    </div>
+                  );
+                })}
+                <button onClick={addPhase}
+                  style={{ padding: "6px 12px", borderRadius: 8, background: "#f5f3ff", border: "1.5px solid #C4B5FD", color: "#7c3aed", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                  + Agregar fase
+                </button>
+              </div>
+
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Días de tratamiento")}
                 <input style={inputS} type="number" min="1" placeholder="ej: 30" value={tiForm.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); setTiForm(f => ({ ...f, duration_days: v > 0 ? v : "" })); }} />

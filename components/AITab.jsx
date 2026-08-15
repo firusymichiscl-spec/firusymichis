@@ -7,6 +7,7 @@ import { formatFecha, formatFechaHora } from "@/lib/fechas";
 import MarkdownText from "@/components/MarkdownText";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import DrugClassLabel from "@/components/DrugClassLabel";
+import { validatePhases } from "@/lib/doseSchedule";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -236,6 +237,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           prescribed_dose: item.dosis_recetada || "",
           frequency: item.frecuencia || "",
           duration_days: parseInt(item.duracion) || null,
+          // Lote M Feature 1: fases estructuradas que devuelve el lector de
+          // recetas — se validan recién al guardar (ver saveRecipe más abajo);
+          // acá se guardan tal cual para poder mostrarlas/editarlas mientras
+          // se revisa la receta.
+          phases: Array.isArray(item.phases) ? item.phases : null,
           indicaciones: item.indicaciones || "",
           notas: item.notas || "",
           start_date: today,
@@ -343,6 +349,13 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
         indicaciones: item.indicaciones || null,
         drug_class: item.drug_class?.trim() || null,
+        // Lote M Feature 1.6 — se valida acá, no se confía en lo que haya
+        // devuelto el modelo: si no calza (array vacío, interval_hours no
+        // numérico, duration_days null en una fase que no es la última...),
+        // se guarda null y el tratamiento cae al parser de texto libre de
+        // lib/doseSchedule.js sobre `frequency`, que sigue siendo la red de
+        // seguridad real.
+        phases: validatePhases(item.phases),
       });
       if (item.lifelong) {
         await supabase.from("medications").insert({
