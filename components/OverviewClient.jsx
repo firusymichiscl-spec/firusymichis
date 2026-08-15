@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatFecha } from "@/lib/fechas";
 import { getHeaderBackgroundStyle } from "@/lib/fondos";
+import DrugClassLabel from "@/components/DrugClassLabel";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
@@ -301,7 +302,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                         <span style={{ fontWeight: 700 }}>{pet?.name || "—"}</span>
                       </span>
                     </td>
-                    <td style={{ fontWeight: 600 }}>{m.name}</td>
+                    <td style={{ fontWeight: 600 }}>{m.name}<DrugClassLabel drugClass={m.drug_class} /></td>
                     <td>{m.dose || "—"}</td>
                     <td>{m.frequency || "—"}</td>
                     <td>
@@ -525,7 +526,7 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
                 <div key={m.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 0", borderBottom: "1px solid #F1F5F9" }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: m.color || color, marginTop: 7, flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{m.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{m.name}<DrugClassLabel drugClass={m.drug_class} /></div>
                     <div style={{ fontSize: 13, color: "#64748B" }}>{m.dose} · {m.frequency}</div>
                   </div>
                   {m.stock != null && (

@@ -19,7 +19,9 @@ import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DoseTracker from "@/components/DoseTracker";
-import { getScheduledDoses, getTreatmentStart } from "@/lib/doseSchedule";
+import { getScheduledDoses, getTreatmentStart, getTreatmentProgress } from "@/lib/doseSchedule";
+import { guessDrugClass } from "@/lib/clasesFarmacologicas";
+import DrugClassLabel from "@/components/DrugClassLabel";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { PET_CHILD_TABLES } from "@/lib/petChildTables";
@@ -86,7 +88,7 @@ const VACCINES_OTHER = ["Rabia", "Mixomatosis"];
 const emptyMedForm = {
   name:'', dose:'', frequency:'', frequency_custom:'',
   stock:'', unit:'comp.', color:'#FF6B35', in_ayunas: false,
-  mg_per_unit:'', prescribed_dose:'',
+  mg_per_unit:'', prescribed_dose:'', drug_class: '',
 };
 
 export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot }) {
@@ -225,7 +227,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const openEditTreatmentItem = (ti) => {
     const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "" });
+    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "", drug_class: ti.drug_class || "" });
     setEditingTreatmentItem(ti);
     setTiSaved(false);
   };
@@ -415,41 +417,29 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setActivityLoading(false);
   };
 
+  // Lote L2 Fix 3 — delega en getTreatmentProgress (lib/doseSchedule.js),
+  // que es fase-consciente. El cálculo anterior vivía acá duplicado y solo
+  // reconocía la PRIMERA frecuencia del texto ("cada 12 horas" en un
+  // esquema por fases), aplicando duration_days completo a ese único
+  // intervalo — así un tratamiento con fases se declaraba "completado" al
+  // terminar la fase 1. Solo arma el nextLabel (texto localizado), que es
+  // responsabilidad de la vista, no del cálculo de horario en sí.
   const calcTreatmentProgress = (ti) => {
-    if (!ti.start_date || !ti.start_time || !ti.frequency) return null;
-    const freqMap = {
-      "cada 6 horas": 6, "cada 6h": 6,
-      "cada 8 horas": 8, "cada 8h": 8,
-      "cada 12 horas": 12, "cada 12h": 12,
-      "cada 24 horas": 24, "cada 24h": 24,
-      "1 vez al día": 24, "una vez al día": 24,
-      "2 veces al día": 12, "dos veces al día": 12,
-      "3 veces al día": 8, "tres veces al día": 8,
-    };
-    const freqKey = Object.keys(freqMap).find(k => ti.frequency.toLowerCase().includes(k));
-    const intervalHours = freqKey ? freqMap[freqKey] : null;
-    if (!intervalHours) return null;
-    const start = new Date(`${ti.start_date}T${ti.start_time}:00`);
+    const prog = getTreatmentProgress(ti, new Date());
+    if (!prog) return null;
     const now = new Date();
-    const totalDays = ti.duration_days || 0;
-    const totalDoses = Math.round((totalDays * 24) / intervalHours);
-    const elapsedHours = Math.max(0, (now - start) / 3600000);
-    const dosesDone = Math.min(totalDoses, Math.floor(elapsedHours / intervalHours));
-    const dosesLeft = Math.max(0, totalDoses - dosesDone);
-    const daysDone = Math.floor(dosesDone * intervalHours / 24);
-    const daysLeft = Math.max(0, totalDays - daysDone);
-    const nextDoseTime = new Date(start.getTime() + (dosesDone + 1) * intervalHours * 3600000);
-    const isToday = nextDoseTime.toDateString() === now.toDateString();
-    const isTomorrow = nextDoseTime.toDateString() === new Date(now.getTime() + 86400000).toDateString();
-    const timeStr = nextDoseTime.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-    const nextLabel = dosesDone >= totalDoses ? "Tratamiento finalizado" :
-      isToday ? `Hoy a las ${timeStr}` :
-      isTomorrow ? `Mañana a las ${timeStr}` :
-      formatFecha(nextDoseTime) + ` a las ${timeStr}`;
-    const progress = totalDoses > 0 ? Math.round((dosesDone / totalDoses) * 100) : 0;
-    const [h] = ti.start_time.split(":").map(Number);
-    const momento = h >= 6 && h < 12 ? "mañana" : h >= 12 && h < 15 ? "mediodia" : h >= 15 && h < 19 ? "tarde" : "noche";
-    return { intervalHours, totalDoses, dosesDone, dosesLeft, daysDone, daysLeft, totalDays, progress, nextLabel, momento };
+    let nextLabel;
+    if (prog.completed) {
+      nextLabel = "Tratamiento finalizado";
+    } else if (prog.nextDoseTime) {
+      const isToday = prog.nextDoseTime.toDateString() === now.toDateString();
+      const isTomorrow = prog.nextDoseTime.toDateString() === new Date(now.getTime() + 86400000).toDateString();
+      const timeStr = prog.nextDoseTime.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+      nextLabel = isToday ? `Hoy a las ${timeStr}` : isTomorrow ? `Mañana a las ${timeStr}` : formatFecha(prog.nextDoseTime) + ` a las ${timeStr}`;
+    } else {
+      nextLabel = "En curso";
+    }
+    return { ...prog, nextLabel };
   };
 
   const saveTreatmentItem = async () => {
@@ -463,6 +453,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       mg_per_unit: tiForm.mg_per_unit ? parseFloat(tiForm.mg_per_unit) : null,
       units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
       indicaciones: tiForm.indicaciones || null,
+      drug_class: tiForm.drug_class?.trim() || null,
     }).eq("id", editingTreatmentItem.id);
     await logActivity(supabase, petData.id, "Editó tratamiento", tiForm.name);
     setTiSaving(false); setTiSaved(true);
@@ -478,7 +469,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const openMedModal = (med = null) => {
     if (med) {
       const isCustom = !FREQUENCIES.includes(med.frequency);
-      setMedForm({ name: med.name||'', dose: med.dose||'', frequency: isCustom?'__custom__':(med.frequency||''), frequency_custom: isCustom?(med.frequency||''):'', stock: med.stock?.toString()||'', unit: med.unit||'comp.', color: med.color||'#FF6B35', in_ayunas: med.in_ayunas||false, mg_per_unit:'', prescribed_dose:'' });
+      setMedForm({ name: med.name||'', dose: med.dose||'', frequency: isCustom?'__custom__':(med.frequency||''), frequency_custom: isCustom?(med.frequency||''):'', stock: med.stock?.toString()||'', unit: med.unit||'comp.', color: med.color||'#FF6B35', in_ayunas: med.in_ayunas||false, mg_per_unit:'', prescribed_dose:'', drug_class: med.drug_class || '' });
       setCustomFreq(isCustom);
       setEditingMedId(med.id);
     } else {
@@ -501,7 +492,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setMedErrors({});
     setMedSaving(true);
     const freq = medForm.frequency === '__custom__' ? medForm.frequency_custom : medForm.frequency;
-    const payload = { pet_id: petData.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true };
+    const payload = { pet_id: petData.id, name: medForm.name, dose: medForm.dose||null, frequency: freq||null, stock: medForm.stock ? parseFloat(medForm.stock) : null, unit: medForm.unit, color: medForm.color, active: true, drug_class: medForm.drug_class?.trim() || null };
     if (editingMedId) {
       await supabase.from('medications').update(payload).eq('id', editingMedId);
       await logActivity(supabase, petData.id, "Editó medicamento", medForm.name);
@@ -1167,7 +1158,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   <div className="empty-state"><div className="empty-icon">💊</div><p>Sin medicamentos registrados</p></div>
                 ) : meds.map(med => (
                   <div className="row" key={med.id}>
-                    <span className="row-label">{med.name}{!med.active ? " (inactivo)" : ""}</span>
+                    <span className="row-label">{med.name}<DrugClassLabel drugClass={med.drug_class} />{!med.active ? " (inactivo)" : ""}</span>
                     <span className="row-value">{[med.dose, med.frequency].filter(Boolean).join(" · ") || "—"}</span>
                   </div>
                 ))}
@@ -1207,7 +1198,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                 <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "16px 0 0 16px" }} />
                                 <div style={{ paddingLeft: 14, flex: 1 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} style={{ fontSize: 12 }} /></div>
                                     {daysLeft !== null && (
                                       <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: daysLeft < 3 ? "#fef2f2" : daysLeft < 7 ? "#fff7ed" : "#f0fdf4", color: daysLeft < 3 ? "#dc2626" : daysLeft < 7 ? "#d97706" : "#059669" }}>
                                         {daysLeft > 0 ? `${daysLeft}d` : "Fin"}
@@ -1231,7 +1222,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                             <div key={med.id} style={{ background: "#fff", borderRadius: 16, padding: "12px 16px", marginBottom: 10, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
                               <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "var(--color-primary)", borderRadius: "16px 0 0 16px" }} />
                               <div style={{ paddingLeft: 14, flex: 1 }}>
-                                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
+                                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{med.name}<DrugClassLabel drugClass={med.drug_class} style={{ fontSize: 12 }} /></div>
                                 {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
                                 {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
                                 {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
@@ -1254,7 +1245,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         {historyMeds.map((med, i) => (
                           <div key={med.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < historyMeds.length - 1 ? "1px solid #FFF0EB" : "none" }}>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}<DrugClassLabel drugClass={med.drug_class} /></div>
                               {med.dose && <div style={{ fontSize: 11, color: "#C4845A" }}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ""}</div>}
                             </div>
                             <button onClick={() => setMedActive(med.id, true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#e8faf4", color: "#059669", border: "1px solid #a7f3d0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reactivar</button>
@@ -1295,7 +1286,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                             const isSelected = selectedTreatmentGroupId === t.treatment_id;
                             const fecha = t.emission_date || t.recipe_date;
                             const progresos = t.items.map(ti => calcTreatmentProgress(ti)).filter(Boolean);
-                            const estado = progresos.length === 0 ? null : progresos.every(p => p.daysLeft === 0) ? "Finalizado" : "Activo";
+                            const estado = progresos.length === 0 ? null : progresos.every(p => p.completed) ? "Finalizado" : "Activo";
                             return (
                               <div key={t.treatment_id} style={{ background: "#fff", borderRadius: 16, border: `1.5px solid ${isSelected ? "#8B5CF6" : "#E9D8FD"}`, marginBottom: 10, overflow: "hidden" }}>
                                 <div onClick={() => { setExpandedTreatmentCards(p => ({ ...p, [t.treatment_id]: !isExpanded })); setSelectedTreatmentGroupId(t.treatment_id); }}
@@ -1331,7 +1322,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                     {t.items.map(ti => (
                                       <div key={ti.id} style={{ padding: "10px 0", borderTop: "1px solid #F5E6DA" }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                                          <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
                                           <button onClick={() => openEditTreatmentItem(ti)}
                                             style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "3px 9px", fontSize: 10, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>✏️ Editar</button>
                                         </div>
@@ -1373,7 +1364,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                               <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
                               <div style={{ paddingLeft: 10 }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
-                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} style={{ fontSize: 12 }} /></div>
                                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                                     <button onClick={() => openEditTreatmentItem(ti)}
                                       style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
@@ -1382,6 +1373,20 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                       style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>🗑️</button>
                                   </div>
                                 </div>
+                                {/* Lote L2 Fix 4 — fase en curso debajo del nombre. Un solo medicamento,
+                                    no se fragmenta en varias tarjetas; el desglose completo vive en
+                                    Vista Fases. Se oculta si el tratamiento ya completó todas sus fases
+                                    (ahí manda el mensaje "✓ Tratamiento completado" de más abajo). */}
+                                {prog?.phaseInfo && !prog.completed && (
+                                  <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>
+                                    Fase {prog.phaseInfo.index + 1} de {prog.phaseInfo.total} · cada {prog.phaseInfo.intervalHours} horas
+                                    <div style={{ fontSize: 10, color: "#C4845A", fontWeight: 400, marginTop: 1 }}>
+                                      {prog.phaseInfo.totalDaysInPhase != null
+                                        ? `Día ${prog.phaseInfo.dayInPhase} de ${prog.phaseInfo.totalDaysInPhase} en esta fase · ${prog.phaseInfo.doseInPhase} de ${prog.phaseInfo.totalDosesInPhase} dosis totales`
+                                        : `Día ${prog.phaseInfo.dayInPhase} en esta fase · ${prog.phaseInfo.doseInPhase} dosis en esta fase`}
+                                    </div>
+                                  </div>
+                                )}
                                 {ti.treatments?.diagnostico && <div style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>🩺 {ti.treatments.diagnostico}</div>}
                                 {(ti.treatments?.doctor || ti.treatments?.vet_clinic) && (
                                   <div style={{ fontSize: 10, color: "#C4845A", marginBottom: 6 }}>
@@ -1393,9 +1398,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                 {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
                                 {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
                                 {prog && (
-                                  <div style={{ background: prog.daysLeft === 0 ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "var(--color-primary)" }}>
-                                      {prog.daysLeft === 0 ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
+                                  <div style={{ background: prog.completed ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: prog.completed ? "#059669" : "var(--color-primary)" }}>
+                                      {prog.completed ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
                                     </div>
                                   </div>
                                 )}
@@ -1419,6 +1424,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                           );
                         })}
                         <DoseTracker
+                          key={selectedTreatmentGroupId}
                           supabase={supabase}
                           petData={petData}
                           items={filteredTreatmentItems}
@@ -1449,7 +1455,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         <div key={med.id} style={{ background: "#fff", borderRadius: 18, padding: "14px 16px", marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden", display: "flex" }}>
                           <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: med.color || "var(--color-primary)", borderRadius: "18px 0 0 18px" }} />
                           <div style={{ paddingLeft: 14, flex: 1 }}>
-                            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{med.name}</div>
+                            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A" }}>{med.name}<DrugClassLabel drugClass={med.drug_class} style={{ fontSize: 13 }} /></div>
                             {med.dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {med.dose}</div>}
                             {med.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {med.frequency}</div>}
                             {med.stock != null && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 Stock: <strong>{med.stock} {med.unit}</strong></div>}
@@ -1470,7 +1476,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         {historyMeds.map((med, i) => (
                           <div key={med.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < historyMeds.length - 1 ? "1px solid #FFF0EB" : "none" }}>
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#7A4522" }}>{med.name}<DrugClassLabel drugClass={med.drug_class} /></div>
                               {med.dose && <div style={{ fontSize: 11, color: "#C4845A" }}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ""}</div>}
                             </div>
                             <button onClick={() => setMedActive(med.id, true)} style={{ padding: "4px 10px", borderRadius: 8, background: "#e8faf4", color: "#059669", border: "1px solid #a7f3d0", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reactivar</button>
@@ -1658,9 +1664,23 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Nombre *")}
                 <input id="med-name-main" style={inputS} list="meds-dl" placeholder="Buscar o escribir medicamento..."
-                  value={medForm.name} onChange={e => { setMedForm(f => ({ ...f, name: e.target.value })); setMedErrors(er => ({ ...er, name: null })); }} />
+                  value={medForm.name} onChange={e => {
+                    const name = e.target.value;
+                    // Lote L2 Feature 5: solo pre-llena si el usuario no escribió
+                    // ya una clase a mano — nunca pisa una edición manual.
+                    setMedForm(f => ({ ...f, name, drug_class: f.drug_class ? f.drug_class : (guessDrugClass(name) || f.drug_class) }));
+                    setMedErrors(er => ({ ...er, name: null }));
+                  }} />
                 <datalist id="meds-dl">{MEDS_LIST.map(m => <option key={m} value={m} />)}</datalist>
                 {medErrors.name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {medErrors.name}</div>}
+              </div>
+
+              {/* Clase farmacológica (Lote L2 Feature 5) */}
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Clase farmacológica")}
+                <input style={inputS} placeholder="Ej: antibiótico"
+                  value={medForm.drug_class} onChange={e => setMedForm(f => ({ ...f, drug_class: e.target.value }))} />
+                <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Se sugiere automáticamente si se reconoce el nombre — es solo referencial, puedes editarla.</div>
               </div>
 
               {/* Dosis */}
@@ -1956,7 +1976,16 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             <div style={{ padding: 20 }}>
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Medicamento")}
-                <input style={inputS} value={tiForm.name || ""} onChange={e => setTiForm(f => ({ ...f, name: e.target.value }))} />
+                <input style={inputS} value={tiForm.name || ""} onChange={e => {
+                  const name = e.target.value;
+                  setTiForm(f => ({ ...f, name, drug_class: f.drug_class ? f.drug_class : (guessDrugClass(name) || f.drug_class) }));
+                }} />
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                {fLabel("Clase farmacológica")}
+                <input style={inputS} placeholder="Ej: antibiótico"
+                  value={tiForm.drug_class || ""} onChange={e => setTiForm(f => ({ ...f, drug_class: e.target.value }))} />
+                <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Se sugiere automáticamente si se reconoce el nombre — es solo referencial, puedes editarla.</div>
               </div>
               <div style={{ marginBottom: 12 }}>
                 {fLabel("Dosis recetada")}

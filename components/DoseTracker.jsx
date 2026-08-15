@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatFechaHora } from "@/lib/fechas";
+import DrugClassLabel from "@/components/DrugClassLabel";
 import {
   getScheduledDoses, getTreatmentStart, getTreatmentEnd,
   hasReliablePhases, getPhaseSchedule, doseKey,
@@ -18,7 +19,7 @@ function momentoOf(date) {
   return MOMENTOS.find(m => (m.to <= 24 ? h >= m.from && h < m.to : h >= m.from || h < m.to - 24)) || MOMENTOS[3];
 }
 
-const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]; // índice = Date.getDay()
 
 // Clave de día en hora de Chile — NUNCA toISOString().split("T")[0]: eso da
 // el día calendario en UTC, que puede quedar un día adelantado/atrasado
@@ -30,12 +31,6 @@ function chileDayKey(date) {
 }
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
-function startOfWeek(d) {
-  const x = startOfDay(d);
-  const dow = (x.getDay() + 6) % 7; // 0 = lunes
-  x.setDate(x.getDate() - dow);
-  return x;
-}
 
 // ── Círculo de 3 estados: sin registro → dada → omitida → sin registro ──
 function DoseCircle({ status, onClick, disabled, size = 30 }) {
@@ -243,7 +238,7 @@ function DoseRow({ ti, date, status, busy, onCycle }) {
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", borderRadius: 14, padding: "10px 14px", marginBottom: 8, boxShadow: "var(--card-shadow)" }}>
       <DoseCircle status={status} onClick={onCycle} disabled={busy} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
         <div style={{ fontSize: 11, color: "#C4845A" }}>
           🕐 {date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
           {ti.prescribed_dose ? ` · ${ti.prescribed_dose}` : ""}
@@ -254,39 +249,89 @@ function DoseRow({ ti, date, status, busy, onCycle }) {
 }
 
 // ── VISTA B: SEMANA ──────────────────────────────────────────────────
+// Lote L2 Fix 1/2 — la grilla arranca en start_date del tratamiento (no en
+// el lunes calendario, que antes mostraba días previos al inicio como puro
+// ruido punteado) y navega en bloques de 7 días en vez de scroll horizontal
+// (incómodo en pantallas angostas). overallStart/overallEnd son el rango
+// del tratamiento COMPLETO (el más temprano/tardío entre todos los ítems),
+// no de un solo medicamento — varios medicamentos de la misma receta
+// comparten una sola navegación de semanas.
 function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
-  const weekStart = startOfWeek(now);
+  // Reglas de hooks: useState no puede quedar después de un return
+  // condicional, así que todo lo derivado de `items` que alimenta el
+  // estado inicial se calcula ANTES, con null-safety propia, y el "no hay
+  // horario" se revisa recién después de declarar el hook.
+  const starts = items.map(getTreatmentStart).filter(Boolean);
+  const overallStart = starts.length ? new Date(Math.min(...starts.map(d => d.getTime()))) : null;
+
+  const ends = items.map(getTreatmentEnd);
+  // El tratamiento completo solo tiene fin conocido si TODOS sus ítems lo
+  // tienen — si uno queda abierto (última fase sin duration_days), no se
+  // puede afirmar cuándo termina el conjunto tampoco (mismo principio del
+  // Fix 3: no declarar un fin que no se conoce).
+  const overallEnd = overallStart && ends.every(Boolean) ? new Date(Math.max(...ends.map(d => d.getTime()))) : null;
+
+  const weekBlockStart = (idx) => new Date(overallStart.getTime() + (idx - 1) * 7 * 86400000);
+  const totalWeeks = !overallStart ? 1 : overallEnd
+    ? Math.max(1, Math.ceil((overallEnd - overallStart) / (7 * 86400000)))
+    : Math.max(1, Math.floor((now - overallStart) / (7 * 86400000)) + 1);
+
+  const defaultWeek = !overallStart ? 1 : overallEnd && now >= overallEnd
+    ? totalWeeks
+    : Math.min(totalWeeks, Math.max(1, Math.floor((now - overallStart) / (7 * 86400000)) + 1));
+
+  const [weekIndex, setWeekIndex] = useState(defaultWeek);
+
+  if (!overallStart) {
+    return <div className="card"><div className="empty-state"><p>Sin horario definido para este tratamiento</p></div></div>;
+  }
+
+  const clampedWeek = Math.min(Math.max(weekIndex, 1), totalWeeks);
+
+  const weekStart = weekBlockStart(clampedWeek);
   const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
   const days = Array.from({ length: 7 }, (_, i) => new Date(weekStart.getTime() + i * 86400000));
 
+  // Resumen del TRATAMIENTO COMPLETO (todas las semanas navegables), no
+  // solo de la semana visible — Fix 2.4.
+  const summaryHorizon = overallEnd || weekBlockStart(totalWeeks + 1);
   let dadas = 0, omitidas = 0, porVenir = 0;
+  items.forEach(ti => {
+    getScheduledDoses(ti, overallStart, summaryHorizon).forEach(d => {
+      const st = statusFor(ti, d);
+      if (st === "dada") dadas++;
+      else if (st === "omitida") omitidas++;
+      else if (d > now) porVenir++;
+    });
+  });
 
   const grids = items.map(ti => {
     const doses = getScheduledDoses(ti, weekStart, weekEnd);
     const start = getTreatmentStart(ti);
     const end = getTreatmentEnd(ti);
     const horarios = [...new Set(doses.map(d => d.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })))].sort();
-    if (horarios.length === 0) return null;
-
-    doses.forEach(d => {
-      const st = statusFor(ti, d);
-      if (st === "dada") dadas++;
-      else if (st === "omitida") omitidas++;
-      else if (d > now) porVenir++;
-    });
-
     return { ti, horarios, doses, start, end };
-  }).filter(Boolean);
-
-  if (grids.length === 0) {
-    return <div className="card"><div className="empty-state"><p>Sin horario definido para esta semana</p></div></div>;
-  }
+  });
 
   return (
     <div>
-      {grids.map(({ ti, horarios, doses, start, end }) => (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <button onClick={() => setWeekIndex(w => Math.max(1, w - 1))} disabled={clampedWeek <= 1}
+          style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek <= 1 ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek <= 1 ? "default" : "pointer" }}>
+          ◄
+        </button>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#7A4522" }}>Semana {clampedWeek} de {totalWeeks}</div>
+        <button onClick={() => setWeekIndex(w => Math.min(totalWeeks, w + 1))} disabled={clampedWeek >= totalWeeks}
+          style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek >= totalWeeks ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek >= totalWeeks ? "default" : "pointer" }}>
+          ►
+        </button>
+      </div>
+
+      {grids.every(g => g.horarios.length === 0) ? (
+        <div className="card"><div className="empty-state"><p>Sin tomas programadas esta semana</p></div></div>
+      ) : grids.map(({ ti, horarios, doses, start, end }) => horarios.length > 0 && (
         <div key={ti.id} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A", marginBottom: 8 }}>{ti.name}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A", marginBottom: 8 }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 420 }}>
               <thead>
@@ -294,7 +339,7 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
                   <th style={{ fontSize: 10, color: "#C4845A", textAlign: "left", padding: "2px 6px" }}></th>
                   {days.map((d, i) => (
                     <th key={i} style={{ fontSize: 10, color: "#7A4522", fontWeight: 700, padding: "2px 4px", textAlign: "center" }}>
-                      {DIAS[i]}<br /><span style={{ fontWeight: 400 }}>{d.getDate()}</span>
+                      {DIAS[d.getDay()]}<br /><span style={{ fontWeight: 400 }}>{d.getDate()}</span>
                     </th>
                   ))}
                 </tr>
@@ -325,6 +370,7 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
           </div>
         </div>
       ))}
+      <div style={{ fontSize: 9, color: "#C4845A", marginBottom: 4, textAlign: "center" }}>Resumen del tratamiento completo, no solo de esta semana</div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#7A4522", fontWeight: 700, background: "#fff", borderRadius: 10, padding: "8px 12px" }}>
         <span>✓ {dadas} dadas</span>
         <span>✕ {omitidas} omitidas</span>
@@ -347,7 +393,7 @@ function VistaFases({ items, statusFor, onCycle, busyKey, now }) {
         if (!schedule) return null;
         return (
           <div key={ti.id} style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A", marginBottom: 8 }}>{ti.name}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A", marginBottom: 8 }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
             {schedule.map(phase => {
               const total = phase.doses.length;
               const done = phase.doses.filter(d => statusFor(ti, d) !== null).length;
@@ -424,7 +470,7 @@ function BackfillModal({ backlog, busy, onApplyBulk, onApplyOne, onClose }) {
               {byDay[dayKey].map(({ ti, date }) => (
                 <div key={`${ti.id}-${date.getTime()}`} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 12, padding: "8px 12px", marginBottom: 6 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
                     <div style={{ fontSize: 10, color: "#C4845A" }}>{date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}</div>
                   </div>
                   <button disabled={busy} onClick={() => onApplyOne(ti, date, "dada")}

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { validateRequired } from "@/lib/formValidation";
+import { guessDrugClass } from "@/lib/clasesFarmacologicas";
+import DrugClassLabel from "@/components/DrugClassLabel";
 
 const MEDS_LIST = [
   'Nexgard', 'Bravecto', 'Simparica', 'Frontline', 'Revolution', 'Milbemax', 'Drontal',
@@ -33,7 +35,7 @@ const COLORS = [
 
 const emptyForm = {
   name: '', dose: '', frequency: '', frequency_custom: '',
-  stock: '', unit: 'comp.', color: '#FF6B35',
+  stock: '', unit: 'comp.', color: '#FF6B35', drug_class: '',
 };
 
 const inputStyle = {
@@ -96,6 +98,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
       stock: med.stock?.toString() || '',
       unit: med.unit || 'comp.',
       color: med.color || '#FF6B35',
+      drug_class: med.drug_class || '',
     });
     setCustomFreq(isCustom);
     setEditingId(med.id);
@@ -123,6 +126,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
       unit: form.unit,
       color: form.color,
       active: true,
+      drug_class: form.drug_class?.trim() || null,
     };
     if (editingId) {
       await supabase.from('medications').update(payload).eq('id', editingId);
@@ -202,7 +206,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                 <div key={med.id} style={css.card}>
                   <div style={css.accent(med.color)} />
                   <div style={css.cardBody}>
-                    <div style={css.medName}>{med.name}</div>
+                    <div style={css.medName}>{med.name}<DrugClassLabel drugClass={med.drug_class} style={{ fontSize: 13 }} /></div>
                     {med.dose && <div style={css.medDetail}>💊 {med.dose}</div>}
                     {med.frequency && <div style={css.medDetail}>🕐 {med.frequency}</div>}
                     {med.stock != null && (
@@ -230,7 +234,7 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                 {history.map((med, i) => (
                   <div key={med.id} style={{ ...css.histItem, ...(i === history.length - 1 ? { borderBottom: 'none' } : {}) }}>
                     <div>
-                      <div style={css.histName}>{med.name}</div>
+                      <div style={css.histName}>{med.name}<DrugClassLabel drugClass={med.drug_class} /></div>
                       {med.dose && <div style={css.histDetail}>{med.dose}{med.frequency ? ` · ${med.frequency}` : ''}</div>}
                     </div>
                     <button style={css.reactiveBtn} onClick={() => setActive(med.id, true)}>Reactivar</button>
@@ -266,12 +270,26 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                   list="meds-list"
                   placeholder="Buscar o escribir medicamento..."
                   value={form.name}
-                  onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setErrors(er => ({ ...er, name: null })); }}
+                  onChange={e => {
+                    const name = e.target.value;
+                    // Lote L2 Feature 5: solo pre-llena si no hay una clase
+                    // ya escrita a mano — nunca pisa una edición manual.
+                    setForm(f => ({ ...f, name, drug_class: f.drug_class ? f.drug_class : (guessDrugClass(name) || f.drug_class) }));
+                    setErrors(er => ({ ...er, name: null }));
+                  }}
                 />
                 <datalist id="meds-list">
                   {MEDS_LIST.map(m => <option key={m} value={m} />)}
                 </datalist>
                 {errors.name && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.name}</div>}
+              </div>
+
+              {/* CLASE FARMACOLÓGICA */}
+              <div style={{ marginBottom: 12 }}>
+                {fieldLabel('Clase farmacológica')}
+                <input style={inputStyle} placeholder="Ej: antibiótico"
+                  value={form.drug_class} onChange={e => setForm(f => ({ ...f, drug_class: e.target.value }))} />
+                <div style={{ fontSize: 10, color: '#C4845A', marginTop: 3 }}>Se sugiere automáticamente si se reconoce el nombre — es solo referencial, puedes editarla.</div>
               </div>
 
               {/* DOSIS */}

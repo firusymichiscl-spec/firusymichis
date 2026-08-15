@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { formatFecha } from "@/lib/fechas";
 import { formatChipDisplay } from "@/lib/chip";
+import DrugClassLabel from "@/components/DrugClassLabel";
 
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
@@ -155,7 +156,7 @@ export default async function FichaPublica({ params }) {
                 <div key={m.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid #F5E6DA" }}>
                   <div style={{ width: 4, height: "100%", minHeight: 36, background: m.color || "#FF6B35", borderRadius: 4, flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#3D1F0A" }}>{m.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#3D1F0A" }}>{m.name}<DrugClassLabel drugClass={m.drug_class} /></div>
                     {m.dose && <div style={{ fontSize: 12, color: "#C4845A" }}>{m.dose}</div>}
                     {m.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>{m.frequency}</div>}
                   </div>

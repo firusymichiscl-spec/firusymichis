@@ -5,6 +5,8 @@ import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatFechaHora } from "@/lib/fechas";
 import MarkdownText from "@/components/MarkdownText";
+import { guessDrugClass } from "@/lib/clasesFarmacologicas";
+import DrugClassLabel from "@/components/DrugClassLabel";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -228,6 +230,9 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         setRecipeItems(data.result.map((item, i) => ({
           id: i,
           name: item.medicamento || "",
+          // Lote L2 Feature 5: sugerencia inicial por nombre reconocido —
+          // sigue siendo editable, nunca la decide la IA que leyó la receta.
+          drug_class: guessDrugClass(item.medicamento || ""),
           prescribed_dose: item.dosis_recetada || "",
           frequency: item.frecuencia || "",
           duration_days: parseInt(item.duracion) || null,
@@ -337,6 +342,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         units_per_dose: upd, boxes_needed: calc?.boxesNeeded || null,
         units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
         indicaciones: item.indicaciones || null,
+        drug_class: item.drug_class?.trim() || null,
       });
       if (item.lifelong) {
         await supabase.from("medications").insert({
@@ -344,6 +350,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           frequency: item.frequency,
           stock: calc ? calc.boxes * parseInt(item.units_per_box) : null,
           unit: item.box_unit || "comp.", color: "#8B5CF6", active: true,
+          drug_class: item.drug_class?.trim() || null,
         });
         await logActivity(supabase, pet.id, "Agregó medicamento", item.name);
       }
@@ -648,7 +655,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                   <div key={item.id} style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
                     <div onClick={() => toggleExpand(item.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                       <div>
-                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, color: "#3D1F0A" }}>{item.name || "Sin nombre"}</div>
+                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, color: "#3D1F0A" }}>{item.name || "Sin nombre"}<DrugClassLabel drugClass={item.drug_class} style={{ fontSize: 12 }} /></div>
                         <div style={{ fontSize: 11, color: "#C4845A" }}>{item.prescribed_dose}{item.frequency ? ` · ${item.frequency}` : ""}{item.duration_days ? ` · ${item.duration_days} días` : ""}</div>
                       </div>
                       <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700 }}>{item.expanded ? "▲" : "▼"}</div>
@@ -660,9 +667,27 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                           {[["Medicamento","name"],["Dosis recetada","prescribed_dose"]].map(([label, field]) => (
                             <div key={field}>
                               <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{label}</div>
-                              <input style={inputS} value={item[field]} onChange={e => updateItem(item.id, field, e.target.value)} />
+                              <input style={inputS} value={item[field]} onChange={e => {
+                                const value = e.target.value;
+                                if (field === "name") {
+                                  // Lote L2 Feature 5: solo pre-llena si el usuario no escribió ya
+                                  // una clase a mano — nunca pisa una edición manual.
+                                  updateItem(item.id, "name", value);
+                                  if (!item.drug_class) {
+                                    const guess = guessDrugClass(value);
+                                    if (guess) updateItem(item.id, "drug_class", guess);
+                                  }
+                                } else {
+                                  updateItem(item.id, field, value);
+                                }
+                              }} />
                             </div>
                           ))}
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Clase farmacológica</div>
+                            <input style={inputS} placeholder="Ej: antibiótico" value={item.drug_class || ""} onChange={e => updateItem(item.id, "drug_class", e.target.value)} />
+                            <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Se sugiere automáticamente si se reconoce el nombre — es solo referencial, puedes editarla.</div>
+                          </div>
                           <div style={{ gridColumn: "1 / -1" }}>
                             <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Frecuencia</div>
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
