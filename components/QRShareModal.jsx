@@ -30,7 +30,10 @@ export default function QRShareModal({ pet, onClose }) {
 
   const loadShare = async () => {
     setLoading(true);
-    const { data } = await supabase.from("pet_shares").select("*").eq("pet_id", pet.id).eq("active", true).single();
+    // maybeSingle: no tener ningún share activo es el estado normal antes de
+    // generar el primer QR — .single() lo trataba como error y el 406 de
+    // PostgREST quedaba en la consola en cada apertura del modal (Fix post-CSP).
+    const { data } = await supabase.from("pet_shares").select("*").eq("pet_id", pet.id).eq("active", true).maybeSingle();
     if (data) {
       setShare(data);
       setConfig({

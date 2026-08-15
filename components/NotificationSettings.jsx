@@ -16,12 +16,14 @@ export default function NotificationSettings({ pet, user, onClose }) {
 
   const loadPrefs = async () => {
     setLoading(true);
+    // maybeSingle: no tener preferencias guardadas todavía es el estado
+    // normal para una mascota nueva — ver nota en QRShareModal.jsx.
     const { data } = await supabase
       .from("notification_preferences")
       .select("*")
       .eq("user_id", user.id)
       .eq("pet_id", pet.id)
-      .single();
+      .maybeSingle();
 
     if (data) {
       setPrefs(data);

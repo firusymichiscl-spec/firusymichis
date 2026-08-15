@@ -86,7 +86,18 @@ export default function TutorTab({ pet, isArchived }) {
       const placeAutocomplete = new window.google.maps.places.PlaceAutocompleteElement({
         componentRestrictions: { country: "cl" },
       });
+      // El host del web component acepta estas propiedades CSS estándar
+      // directamente (documentadas en la referencia de PlaceAutocompleteElement:
+      // background-color, border, border-radius, color, font*) — el resto del
+      // widget (input interno, lista/ítems de sugerencias) vive en shadow DOM
+      // y solo es alcanzable vía los selectores ::part() en <style> más abajo.
       placeAutocomplete.style.width = "100%";
+      placeAutocomplete.style.backgroundColor = "#fff";
+      placeAutocomplete.style.color = "#3D1F0A";
+      placeAutocomplete.style.border = "1.5px solid #FFD9C8";
+      placeAutocomplete.style.borderRadius = "10px";
+      placeAutocomplete.style.fontFamily = "'Nunito', sans-serif";
+      placeAutocomplete.style.fontSize = "14px";
       containerRef.current.appendChild(placeAutocomplete);
       placeAutocomplete.addEventListener("gmp-select", async (event) => {
         const place = event.placePrediction.toPlace();
@@ -438,7 +449,39 @@ export default function TutorTab({ pet, isArchived }) {
                 )}
               </div>
 
-              {/* DIRECCIÓN — Google Places PlaceAutocompleteElement */}
+              {/* DIRECCIÓN — Google Places PlaceAutocompleteElement.
+                  El input mismo se estiliza en JS (ver placeAutocomplete.style
+                  más arriba); la lista de sugerencias vive en shadow DOM y solo
+                  es alcanzable con ::part(), que exige una hoja de estilos real
+                  (no se puede asignar por JS) — de ahí este <style>. */}
+              <style>{`
+                gmp-place-autocomplete::part(input) {
+                  color: #3D1F0A;
+                  background-color: #fff;
+                }
+                gmp-place-autocomplete::part(prediction-list) {
+                  background-color: #fff;
+                  border: 1.5px solid #FFD9C8;
+                  border-radius: 10px;
+                }
+                gmp-place-autocomplete::part(prediction-item) {
+                  background-color: #fff;
+                  color: #3D1F0A;
+                }
+                gmp-place-autocomplete::part(prediction-item-selected) {
+                  background-color: #FFF0EB;
+                }
+                gmp-place-autocomplete::part(prediction-item-main-text) {
+                  color: #3D1F0A;
+                }
+                gmp-place-autocomplete::part(prediction-item-secondary-text) {
+                  color: #7A4522;
+                }
+                gmp-place-autocomplete::part(prediction-item-match) {
+                  color: #FF6B35;
+                  font-weight: 700;
+                }
+              `}</style>
               <div style={{ marginBottom: 12 }}>
                 {fieldLabel("Buscar dirección")}
                 {googleLoaded

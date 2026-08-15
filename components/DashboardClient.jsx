@@ -274,12 +274,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setShowHistModal(false);
     setShowMedModal(false);
 
-    // Cargar datos de la nueva mascota
+    // Cargar datos de la nueva mascota. weight_logs usa maybeSingle: una
+    // mascota sin peso registrado todavía es normal, no un error (Fix post-CSP).
     const [petRes, medsRes, histRes, weightRes, treatRes] = await Promise.all([
       supabase.from("pets").select("*").eq("id", newPetId).single(),
       supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false }),
       supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false }),
-      supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).single(),
+      supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", newPetId).eq("active", true).order("created_at", { ascending: false }),
     ]);
 
@@ -812,7 +813,21 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           </div>
 
           <div className="pet-card">
-            <PetPhotoUpload key={`photo-${activePetId}`} pet={petData} avatarEmoji={getPetAvatar(petData.species, petData.breed, petData.photo_url)} readOnly={isArchived} />
+            <PetPhotoUpload
+              key={`photo-${activePetId}`}
+              pet={petData}
+              avatarEmoji={getPetAvatar(petData.species, petData.breed, petData.photo_url)}
+              readOnly={isArchived}
+              onUpdate={(url) => {
+                // Sin esto, PetPhotoUpload subía la foto pero DashboardClient
+                // nunca se enteraba: petData/allPetsData quedaban con el
+                // photo_url viejo (o null) hasta el próximo refresh completo,
+                // así que el switcher "Mis mascotas" seguía mostrando el
+                // emoji aunque la foto ya estuviera guardada (Fix post-CSP).
+                setPetData(p => ({ ...p, photo_url: url }));
+                setAllPetsData(list => list.map(p => p.id === petData.id ? { ...p, photo_url: url } : p));
+              }}
+            />
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>

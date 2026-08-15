@@ -6,6 +6,16 @@ import type { NextConfig } from "next";
 //   vía @import/<link> en casi todos los componentes.
 // - maps.googleapis.com: SDK de Google Maps/Places (VetMapTab.jsx,
 //   TutorTab.jsx) + el proxy server-side app/api/places/route.js.
+// - places.googleapis.com: llamadas RPC que hace el propio elemento
+//   <gmp-place-autocomplete> (TutorTab.jsx) contra la Places API nueva
+//   (google.maps.places.v1.Places/Autocomplete) — es un dominio DISTINTO
+//   de maps.googleapis.com, no cubierto por ese. Sin esto el autocompletado
+//   de direcciones fallaba en producción con "violates connect-src" /
+//   "network request error" (Fix post-CSP, detectado en producción).
+//   Se agrega solo este dominio especifico, no un comodín *.googleapis.com:
+//   es el unico que la consola señaló como bloqueado, y sumar un comodín
+//   ampliaria la superficie a cualquier servicio de Google (Analytics,
+//   Drive, etc.) sin que la app use ninguno de ellos hoy.
 // - maps.gstatic.com: tiles/íconos que sirve el propio widget de Maps.
 // - *.supabase.co: fotos de mascotas y de recetas (Supabase Storage).
 // - api.qrserver.com: generación del QR en QRShareModal.jsx.
@@ -36,7 +46,7 @@ const CSP_SHARED = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https://*.supabase.co https://maps.gstatic.com https://maps.googleapis.com https://api.qrserver.com",
-  "connect-src 'self' https://*.supabase.co https://maps.googleapis.com",
+  "connect-src 'self' https://*.supabase.co https://maps.googleapis.com https://places.googleapis.com",
   "base-uri 'self'",
   "form-action 'self'",
 ];

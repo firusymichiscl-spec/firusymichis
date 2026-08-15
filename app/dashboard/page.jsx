@@ -52,13 +52,15 @@ export default async function Dashboard() {
     .eq("pet_id", firstPet.id)
     .order("event_date", { ascending: false });
 
+  // maybeSingle: una mascota sin peso registrado es el estado normal, no un
+  // error — .single() generaba un 406 de PostgREST en cada carga (Fix post-CSP).
   const { data: lastWeight } = await supabase
     .from("weight_logs")
     .select("weight_kg, logged_date")
     .eq("pet_id", firstPet.id)
     .order("logged_date", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -109,7 +111,7 @@ export default async function Dashboard() {
       .eq("pet_id", newestPet.id)
       .order("logged_date", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     lastPetSnapshot = {
       name: newestPet.name,
