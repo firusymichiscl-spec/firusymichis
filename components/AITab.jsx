@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
-import { formatFecha, formatFechaHora } from "@/lib/fechas";
+import { formatFecha, formatFechaHora, todayInChile, sumarDias } from "@/lib/fechas";
 import MarkdownText from "@/components/MarkdownText";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import DrugClassLabel from "@/components/DrugClassLabel";
@@ -74,7 +74,13 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   const [clinicSearching, setClinicSearching] = useState(false);
   const fileRef = useRef();
 
-  const today = new Date().toISOString().split("T")[0];
+  // Lote M2 — hora de Chile, no UTC (ver lib/fechas.js): el límite "no
+  // posterior a hoy" se evaluaba mal cerca de medianoche si se usaba
+  // new Date().toISOString().split("T")[0].
+  const today = todayInChile();
+  const minStartDate = sumarDias(today, -30);
+  const maxStartDate = today;
+  const [globalStartDate, setGlobalStartDate] = useState(today);
 
   const loadTreatments = async () => {
     setLoadingTreatments(true);
@@ -223,6 +229,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     setRecipeLoading(true);
     setRecipeItems([]);
     setRecipeError(null);
+    // Lote M2 — nueva receta, nueva fecha por defecto. El lector de recetas
+    // no extrae hoy la fecha real de la receta (el JSON que pide ai-recipe
+    // no incluye una fecha) — "hoy" es el mejor default disponible hasta
+    // que eso exista; el selector de abajo deja corregirlo a mano.
+    setGlobalStartDate(today);
     try {
       const res = await fetch("/api/ai-recipe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageBase64: b64, mediaType }) });
       const data = await res.json();
@@ -263,6 +274,22 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
 
   const updateItem = (id, field, value) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, [field]: value } : item));
   const toggleExpand = (id) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, expanded: !item.expanded } : item));
+
+  // Lote M2 Feature 1.5 — el selector global es el valor inicial, no una
+  // imposición: si algún medicamento ya tiene una fecha distinta (porque el
+  // usuario la cambió a mano, ej. tratamientos que empiezan escalonados),
+  // avisa antes de pisarla en todos.
+  const applyGlobalStartDate = (newDate) => {
+    const hasCustomDates = recipeItems.some(item => item.start_date !== globalStartDate);
+    if (hasCustomDates) {
+      const confirmed = window.confirm(
+        `Ya cambiaste la fecha de inicio de algún medicamento por separado. ¿Aplicar el ${formatFecha(newDate)} a TODOS los medicamentos de esta receta de todas formas?`
+      );
+      if (!confirmed) return;
+    }
+    setGlobalStartDate(newDate);
+    setRecipeItems(items => items.map(item => ({ ...item, start_date: newDate })));
+  };
 
   const parseDoseUnits = (doseStr) => {
     if (!doseStr) return null;
@@ -305,6 +332,17 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   };
 
   const saveTreatment = async () => {
+    // Lote M2 Feature 1.3 — validación en cliente antes de guardar (además
+    // de los min/max de cada <input type="date">, que un usuario podría
+    // saltarse editando el DOM o mandando la petición directo). El servidor
+    // tiene su propia validación real: ver migración
+    // 20260815_treatment_items_start_date.sql (trigger, no ejecutada aún).
+    const invalidItem = recipeItems.find(item => item.start_date < minStartDate || item.start_date > maxStartDate);
+    if (invalidItem) {
+      alert(`La fecha de inicio de "${invalidItem.name}" (${formatFecha(invalidItem.start_date)}) está fuera del rango permitido: entre el ${formatFecha(minStartDate)} y el ${formatFecha(maxStartDate)}.`);
+      return;
+    }
+
     if (treatmentMeta.emission_date || treatmentMeta.vet_clinic) {
       const possible = savedTreatments.find(t =>
         (treatmentMeta.emission_date && t.emission_date === treatmentMeta.emission_date) ||
@@ -321,7 +359,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       .from("treatments")
       .insert({
         pet_id: pet.id,
-        recipe_date: today,
+        // Lote M2 — antes era siempre `today`, sin relación con la fecha de
+        // inicio real que el usuario acaba de elegir arriba. recipe_date es
+        // literalmente "fecha de la receta", así que corresponde que sea la
+        // misma fecha que el selector global, no la fecha en que se digitalizó.
+        recipe_date: globalStartDate,
         diagnostico: treatmentMeta.diagnostico || null,
         doctor: treatmentMeta.doctor || null,
         vet_clinic: treatmentMeta.vet_clinic || null,
@@ -369,6 +411,12 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       }
     }
     await logActivity(supabase, pet.id, "Guardó receta desde IA", treatmentMeta.diagnostico || null);
+    // Lote M2 Feature 2.2 — si algún medicamento arrancó en el pasado, van a
+    // quedar dosis sin registrar hasta hoy (Feature 2.1: es esperado). Se
+    // captura acá, antes de limpiar recipeItems, para que el padre pueda
+    // mostrar directamente el aviso de "Ponerse al día" en vez de dejar que
+    // el usuario lo descubra solo.
+    const hasPastStartDate = recipeItems.some(item => item.start_date < today);
     setSaving(false);
     setSaved(true);
     setTimeout(() => {
@@ -379,7 +427,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       setTreatmentMeta({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
       setClinicQuery("");
       setClinicSuggestions([]);
-      onTreatmentSaved?.();
+      onTreatmentSaved?.({ treatmentId: treatment.id, hasPastStartDate });
     }, 1500);
   };
 
@@ -610,6 +658,20 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
             <>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Medicamentos extraídos ({recipeItems.length})</div>
 
+              {/* Lote M2 — fecha de inicio del tratamiento. Bien visible y
+                  arriba de todo: las recetas suelen digitalizarse días
+                  después de la consulta, y arrancar "hoy" por defecto
+                  corría todo el cálculo de dosis/fases/adherencia. */}
+              <div style={{ background: "#FFF0EB", borderRadius: 16, border: "1.5px solid #FFD0BC", padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#FF6B35", marginBottom: 3 }}>📅 Fecha de inicio del tratamiento</div>
+                <input type="date" style={{ ...inputS, background: "#fff", marginTop: 6 }}
+                  value={globalStartDate} min={minStartDate} max={maxStartDate}
+                  onChange={e => applyGlobalStartDate(e.target.value)} />
+                <div style={{ fontSize: 10, color: "#7A4522", marginTop: 6 }}>
+                  Se aplicará a todos los medicamentos de esta receta. Puedes elegir hasta 30 días atrás (desde el {formatFecha(minStartDate)}) — útil si digitalizas la receta días después de la consulta.
+                </div>
+              </div>
+
               {/* Datos de la receta */}
               <div style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #FFD9C8", padding: 14, marginBottom: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Datos de la receta</div>
@@ -732,7 +794,12 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                           <div style={{ fontSize: 11, color: "#FF6B35", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
                           <div style={{ marginBottom: 8 }}>
                             <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Fecha</div>
-                            <input type="date" style={{ ...inputS, background: "#fff" }} value={item.start_date} min={today} onChange={e => updateItem(item.id, "start_date", e.target.value)} />
+                            {/* Lote M2 — antes min={today} bloqueaba fechas pasadas por
+                                completo, hasta a mano; ahora respeta el mismo rango de
+                                30 días atrás que el selector global (Feature 1.5: cada
+                                medicamento puede tener su propia fecha, ej. tratamientos
+                                escalonados). */}
+                            <input type="date" style={{ ...inputS, background: "#fff" }} value={item.start_date} min={minStartDate} max={maxStartDate} onChange={e => updateItem(item.id, "start_date", e.target.value)} />
                           </div>
                           <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Hora</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>

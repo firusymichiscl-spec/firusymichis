@@ -26,7 +26,7 @@ import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { PET_CHILD_TABLES } from "@/lib/petChildTables";
 import { getHeaderBackgroundStyle } from "@/lib/fondos";
-import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno } from "@/lib/fechas";
+import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno, todayInChile, sumarDias } from "@/lib/fechas";
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
 
@@ -95,6 +95,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  // Lote M2 Feature 1.3/3.1 — mismo límite que AITab.jsx al guardar una
+  // receta: la fecha de inicio de un medicamento (nuevo o editado) no puede
+  // ser futura ni anterior a 30 días atrás.
+  const minStartDate = sumarDias(todayInChile(), -30);
+  const maxStartDate = todayInChile();
   const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [showBanner, setShowBanner] = useState(true);
@@ -197,6 +202,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       body: JSON.stringify({ doseView: v }),
     }).catch(() => {});
   };
+
+  // Lote M2 Feature 2.2 — tras guardar una receta con fecha de inicio
+  // pasada, abre directo el modal "Ponerse al día" del tratamiento recién
+  // creado en vez de dejar que el usuario descubra el aviso solo. Se
+  // consume una sola vez (DoseTracker lo resetea con onAutoOpenHandled) para
+  // no reabrirse en cada re-render mientras siga en true.
+  const [autoOpenBackfill, setAutoOpenBackfill] = useState(false);
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -467,6 +479,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const saveTreatmentItem = async () => {
     if (!editingTreatmentItem) return;
+    // Lote M2 Feature 1.3/3.1 — validación en cliente además del min/max del
+    // input (saltable a mano); el servidor tiene la suya real, ver migración
+    // 20260815_treatment_items_start_date.sql (trigger, no ejecutada aún).
+    if (tiForm.start_date && (tiForm.start_date < minStartDate || tiForm.start_date > maxStartDate)) {
+      alert(`La fecha de inicio (${formatFecha(tiForm.start_date)}) está fuera del rango permitido: entre el ${formatFecha(minStartDate)} y el ${formatFecha(maxStartDate)}.`);
+      return;
+    }
     setTiSaving(true);
     const startTime = `${tiForm.start_hour.toString().padStart(2, "0")}:${tiForm.start_min}`;
     // Lote M Feature 1.5/1.6 — si el usuario editó las fases a mano, eso
@@ -1472,6 +1491,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                           reloadDoseLogs={loadDoseLogs}
                           view={doseView}
                           setView={setDoseView}
+                          autoOpenBackfill={autoOpenBackfill}
+                          onAutoOpenBackfillHandled={() => setAutoOpenBackfill(false)}
                         />
                       </>
                     );
@@ -1604,7 +1625,18 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           {tab === "tutor" && <TutorTab key={`tutor-${activePetId}`} pet={petData} isArchived={isArchived} />}
 
           {/* IA */}
-          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} isArchived={isArchived} onTreatmentSaved={() => { setTab("medicamentos"); setMedsView("tratamiento"); loadTreatmentItems(); }} onGoToTratamiento={() => { setTab("medicamentos"); setMedsView("tratamiento"); }} />}
+          {tab === "ia" && <AITab key={`ia-${activePetId}`} pet={petData} medications={meds} history={historyData} isArchived={isArchived} onTreatmentSaved={(info) => {
+            setTab("medicamentos"); setMedsView("tratamiento");
+            // Selecciona el tratamiento recién guardado explícitamente — el
+            // efecto que auto-selecciona el primer tratamiento solo actúa
+            // cuando no había ninguno elegido todavía, así que si ya había
+            // otro tratamiento abierto, guardar uno nuevo no cambiaba la
+            // vista sin esto.
+            if (info?.treatmentId) setSelectedTreatmentGroupId(info.treatmentId);
+            if (info?.hasPastStartDate) setAutoOpenBackfill(true);
+            loadTreatmentItems();
+            loadDoseLogs();
+          }} onGoToTratamiento={() => { setTab("medicamentos"); setMedsView("tratamiento"); }} />}
 
           {/* ACTIVIDAD */}
           {tab === "actividad" && (
@@ -2081,7 +2113,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 <div style={{ fontSize: 11, color: "var(--color-primary)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Inicio del tratamiento</div>
                 <div style={{ marginBottom: 8 }}>
                   {fLabel("Fecha")}
-                  <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
+                  {/* Lote M2 — antes sin límites: permitía cualquier fecha,
+                      pasada o futura, sin advertencia. Mismo rango que el
+                      selector de AITab.jsx (30 días atrás, no más allá de hoy). */}
+                  <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} min={minStartDate} max={maxStartDate} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
                 </div>
                 {fLabel("Hora")}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>

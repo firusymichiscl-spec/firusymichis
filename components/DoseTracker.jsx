@@ -99,6 +99,7 @@ function dayLabelFor(date, now) {
 export default function DoseTracker({
   supabase, petData, items, meds, doseLogs,
   reloadMeds, reloadDoseLogs, view, setView,
+  autoOpenBackfill, onAutoOpenBackfillHandled,
 }) {
   const [busyKey, setBusyKey] = useState(null);
   const [showBackfill, setShowBackfill] = useState(false);
@@ -173,6 +174,18 @@ export default function DoseTracker({
     });
     return list.sort((a, b) => a.date - b.date);
   }, [items, doseLogs]);
+
+  // Lote M2 Feature 2.2 — tras guardar una receta con fecha de inicio
+  // pasada, abre el modal directo en vez de dejar el aviso esperando un
+  // clic. Espera a que `backlog` refleje los datos recién cargados (items/
+  // doseLogs pueden llegar un instante después del primer render, ver
+  // DashboardClient.jsx) antes de decidir si hay algo que mostrar.
+  useEffect(() => {
+    if (autoOpenBackfill && backlog.length > 0) {
+      setShowBackfill(true);
+      onAutoOpenBackfillHandled?.();
+    }
+  }, [autoOpenBackfill, backlog.length]);
 
   const applyBulk = async (status) => {
     const label = status === "dada" ? "todas como dadas" : "todas como omitidas";
