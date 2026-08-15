@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatFechaHora } from "@/lib/fechas";
 import DrugClassLabel from "@/components/DrugClassLabel";
@@ -35,10 +35,21 @@ function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x
 // ── Círculo de 3 estados: sin registro → dada → omitida → sin registro ──
 // Lote L2 Fix 1 — `future` bloquea la dosis independientemente de `busy`:
 // una dosis cuyo horario todavía no llegó no se puede marcar, con un
-// estilo más tenue que el de "guardando" y un tooltip que explica por qué
-// ("Disponible a las HH:MM" / "Disponible el DD/MM/AAAA a las HH:MM").
-function DoseCircle({ status, onClick, busy, future, futureLabel, size = 30 }) {
-  const isDisabled = busy || future;
+// estilo más tenue que el de "guardando".
+//
+// El tooltip (title) por sí solo NO alcanza para comunicar esto — dos
+// causas reales, no una: en escritorio, un <button disabled> no dispara
+// hover/mouseover en Chrome/Safari (los controles de formulario
+// deshabilitados no reciben eventos de puntero), así que el title nunca
+// llega a mostrarse aunque esté seteado; en móvil no existe hover en
+// absoluto, así que title tampoco serviría ahí ni corrigiendo lo anterior.
+// Por eso: aria-disabled en vez de disabled (mantiene el botón enfocable
+// e interactivo para lectores de pantalla y toque — el click se maneja a
+// mano, ver onFutureClick) + la información SIEMPRE visible en cada vista
+// (texto en Vista Hoy/Fases, mensaje temporal en Vista Semana). title
+// queda como complemento para escritorio, ya no como única vía.
+function DoseCircle({ status, onClick, onFutureClick, busy, future, futureLabel, size = 30 }) {
+  const isBlocked = busy || future;
   const cfg = status === "dada"
     ? { bg: "var(--green,#06D6A0)", border: "var(--green,#06D6A0)", icon: "✓", color: "#fff" }
     : status === "omitida"
@@ -49,16 +60,21 @@ function DoseCircle({ status, onClick, busy, future, futureLabel, size = 30 }) {
     : status === "dada" ? "Dada — clic para marcar omitida"
     : status === "omitida" ? "Omitida — clic para quitar registro"
     : "Sin registro — clic para marcar dada";
+  const handleClick = () => {
+    if (busy) return;
+    if (future) { onFutureClick?.(); return; }
+    onClick?.();
+  };
   return (
     <button
-      onClick={onClick}
-      disabled={isDisabled}
+      onClick={handleClick}
+      aria-disabled={isBlocked ? "true" : undefined}
       title={title}
       style={{
         width: size, height: size, borderRadius: "50%", flexShrink: 0,
         border: `2px solid ${cfg.border}`, background: cfg.bg, color: cfg.color,
         fontSize: size * 0.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: isDisabled ? "default" : "pointer", opacity: future ? 0.35 : (busy ? 0.4 : 1), padding: 0,
+        cursor: isBlocked ? "default" : "pointer", opacity: future ? 0.35 : (busy ? 0.4 : 1), padding: 0,
         transition: "background 0.15s, border-color 0.15s",
       }}>
       {cfg.icon}
@@ -70,6 +86,14 @@ function futureTooltip(date, now) {
   const hora = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
   const sameDay = date.toDateString() === now.toDateString();
   return sameDay ? `Disponible a las ${hora}` : `Disponible el ${formatFecha(chileDayKey(date))} a las ${hora}`;
+}
+
+// "hoy" / "mañana" / fecha formateada — usado en el mensaje de Vista Semana.
+function dayLabelFor(date, now) {
+  if (date.toDateString() === now.toDateString()) return "hoy";
+  const tomorrow = new Date(now.getTime() + 86400000);
+  if (date.toDateString() === tomorrow.toDateString()) return "mañana";
+  return formatFecha(chileDayKey(date));
 }
 
 export default function DoseTracker({
@@ -261,6 +285,12 @@ function DoseRow({ ti, date, status, busy, onCycle, now }) {
           {ti.prescribed_dose ? ` · ${ti.prescribed_dose}` : ""}
         </div>
       </div>
+      {/* Lote L2 — visible sin interactuar, no depende de hover/title */}
+      {future && (
+        <div style={{ fontSize: 11, color: "#C4845A", fontStyle: "italic", flexShrink: 0, textAlign: "right" }}>
+          Disponible a las {date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
+        </div>
+      )}
     </div>
   );
 }
@@ -311,6 +341,19 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
     : Math.min(totalWeeks, weeksElapsed);
 
   const [weekIndex, setWeekIndex] = useState(defaultWeek);
+
+  // Lote L2 — al tocar una celda futura no hay espacio para texto por
+  // celda, así que se muestra un mensaje breve bajo la grilla que
+  // desaparece solo a los 3 segundos; la celda no cambia de estado.
+  const [futureMsg, setFutureMsg] = useState(null);
+  const futureMsgTimer = useRef(null);
+  const showFutureMessage = (ti, date) => {
+    const hora = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+    setFutureMsg(`Esa dosis es de ${dayLabelFor(date, now)} a las ${hora}, aún no se puede registrar`);
+    if (futureMsgTimer.current) clearTimeout(futureMsgTimer.current);
+    futureMsgTimer.current = setTimeout(() => setFutureMsg(null), 3000);
+  };
+  useEffect(() => () => { if (futureMsgTimer.current) clearTimeout(futureMsgTimer.current); }, []);
 
   if (!overallStart) {
     return <div className="card"><div className="empty-state"><p>Sin horario definido para este tratamiento</p></div></div>;
@@ -389,7 +432,7 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
                       return (
                         <td key={i} style={{ textAlign: "center", padding: 4 }}>
                           {dose ? (
-                            <DoseCircle size={26} status={statusFor(ti, dose)} busy={busyKey === key} future={future} futureLabel={future ? futureTooltip(dose, now) : undefined} onClick={() => onCycle(ti, dose)} />
+                            <DoseCircle size={26} status={statusFor(ti, dose)} busy={busyKey === key} future={future} futureLabel={future ? futureTooltip(dose, now) : undefined} onClick={() => onCycle(ti, dose)} onFutureClick={() => showFutureMessage(ti, dose)} />
                           ) : (
                             <div style={{ width: 26, height: 26, margin: "0 auto", borderRadius: "50%", border: outOfRange ? "2px dashed #E9D8FD" : "none" }} />
                           )}
@@ -403,6 +446,11 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
           </div>
         </div>
       ))}
+      {futureMsg && (
+        <div style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 10, padding: "8px 12px", marginBottom: 10, fontSize: 11, color: "#7A4522", fontWeight: 700, textAlign: "center" }}>
+          {futureMsg}
+        </div>
+      )}
       <div style={{ fontSize: 9, color: "#C4845A", marginBottom: 4, textAlign: "center" }}>Resumen del tratamiento completo, no solo de esta semana</div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#7A4522", fontWeight: 700, background: "#fff", borderRadius: 10, padding: "8px 12px" }}>
         <span>✓ {dadas} dadas</span>
@@ -453,8 +501,15 @@ function VistaFases({ items, statusFor, onCycle, busyKey, now }) {
                           const key = `${ti.id}-${date.getTime()}`;
                           const future = date > now;
                           return (
-                            <div key={key} title={future ? undefined : date.toLocaleString("es-CL")}>
+                            <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}
+                              title={future ? undefined : date.toLocaleString("es-CL")}>
                               <DoseCircle size={24} status={statusFor(ti, date)} busy={busyKey === key} future={future} futureLabel={future ? futureTooltip(date, now) : undefined} onClick={() => onCycle(ti, date)} />
+                              {/* No cabe texto al lado en esta grilla compacta — la hora va debajo */}
+                              {future && (
+                                <div style={{ fontSize: 8, color: "#C4845A", lineHeight: 1 }}>
+                                  {date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
