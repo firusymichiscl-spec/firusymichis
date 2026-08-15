@@ -40,19 +40,11 @@ function isBirthdayToday(birthDate) {
   return bm === today.getMonth() + 1 && bd === today.getDate();
 }
 
-// Misma tabla de frecuencias que components/DashboardClient.jsx (calcProgress) —
-// no hay tabla de "dosis marcadas" con timestamp, así que hoy/adherencia se
-// estiman a partir del horario del tratamiento, igual que el resto de la app.
-const FREQ_HOURS = {
-  "cada 6 horas": 6, "cada 8 horas": 8, "cada 12 horas": 12, "cada 24 horas": 24,
-  "una vez al día": 24, "1 vez al día": 24, "dos veces al día": 12, "2 veces al día": 12,
-  "tres veces al día": 8, "3 veces al día": 8,
-};
-function freqHours(freq) {
-  if (!freq) return null;
-  const key = Object.keys(FREQ_HOURS).find(k => freq.toLowerCase().includes(k));
-  return key ? FREQ_HOURS[key] : null;
-}
+// Lote L, Feature 3.3 — "dosis tomadas hoy" y "adherencia semanal" ahora
+// salen de dose_log (registro real), no de una estimación por tiempo
+// transcurrido asumiendo cumplimiento perfecto (lo que hacía esta función
+// antes de Lote L — ver auditoría). Las dosis "sin registro" no cuentan en
+// el denominador de adherencia: no se puede afirmar que no se dieron.
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap');
@@ -98,7 +90,7 @@ const css = `
   @media(min-width:1024px){.ov-mobile{display:none;}}
 `;
 
-export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history }) {
+export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history, doseLogs }) {
   const router = useRouter();
   const [selectedPet, setSelectedPet] = useState(null);
 
@@ -134,22 +126,20 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
   }
   function petDoseStats(petId) {
     const items = treatments.filter(t => t.pet_id === petId).flatMap(t => t.treatment_items || []);
+    const itemIds = new Set(items.map(ti => ti.id));
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    let dosesToday = 0, progressSum = 0, progressCount = 0;
-    items.forEach(ti => {
-      const hrs = freqHours(ti.frequency);
-      if (!hrs || !ti.start_date || !ti.start_time) return;
-      const start = new Date(`${ti.start_date}T${ti.start_time}:00`);
-      const totalDoses = Math.round(((ti.duration_days || 0) * 24) / hrs);
-      if (totalDoses <= 0) return;
-      const dosesUpTo = (t) => Math.min(totalDoses, Math.max(0, Math.floor((t - start) / 3600000 / hrs)));
-      const doneNow = dosesUpTo(now);
-      dosesToday += Math.max(0, doneNow - dosesUpTo(dayStart));
-      progressSum += Math.round((doneNow / totalDoses) * 100);
-      progressCount++;
-    });
-    return { dosesToday, adherence: progressCount ? Math.round(progressSum / progressCount) : null };
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+
+    const petLogs = doseLogs.filter(d => itemIds.has(d.treatment_item_id));
+    const dosesToday = petLogs.filter(d => d.status === "dada" && new Date(d.scheduled_at) >= dayStart).length;
+
+    const weekLogs = petLogs.filter(d => new Date(d.scheduled_at) >= weekAgo);
+    const dadas = weekLogs.filter(d => d.status === "dada").length;
+    const omitidas = weekLogs.filter(d => d.status === "omitida").length;
+    const adherence = (dadas + omitidas) > 0 ? Math.round((dadas / (dadas + omitidas)) * 100) : null;
+
+    return { dosesToday, adherence };
   }
 
   // ── Sidebar ───────────────────────────────────────

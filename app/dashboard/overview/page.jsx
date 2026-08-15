@@ -46,7 +46,7 @@ export default async function OverviewPage() {
   // — las archivadas (En Memoria) no generan alertas ni stats agregadas.
   const petIds = activePets.map(p => p.id);
 
-  const [medsRes, vaccinesRes, treatmentsRes, weightsRes, tutorsRes, historyRes] = await Promise.all([
+  const [medsRes, vaccinesRes, treatmentsRes, weightsRes, tutorsRes, historyRes, doseLogsRes] = await Promise.all([
     supabase.from("medications").select("*").in("pet_id", petIds),
     // Las vacunas reales viven en medical_history (type='vaccine', next_date) —
     // la tabla "vaccines" nunca recibe INSERT/UPDATE desde el código (hallazgo Lote G3).
@@ -55,6 +55,8 @@ export default async function OverviewPage() {
     supabase.from("weight_logs").select("pet_id, weight_kg, logged_date").in("pet_id", petIds).order("logged_date", { ascending: false }),
     supabase.from("tutors").select("*").in("pet_id", petIds),
     supabase.from("medical_history").select("*").in("pet_id", petIds).order("event_date", { ascending: false }).limit(50),
+    // Lote L, Feature 3.3 — adherencia real (dose_log) en vez de estimada.
+    supabase.from("dose_log").select("*").in("pet_id", petIds),
   ]);
 
   const medications = medsRes.data || [];
@@ -63,6 +65,7 @@ export default async function OverviewPage() {
   const weightLogs = weightsRes.data || [];
   const tutors = tutorsRes.data || [];
   const history = historyRes.data || [];
+  const doseLogs = doseLogsRes.data || [];
 
   // Latest weight per pet
   const latestWeights = {};
@@ -82,6 +85,7 @@ export default async function OverviewPage() {
       latestWeights={latestWeights}
       tutors={tutors}
       history={history}
+      doseLogs={doseLogs}
     />
   );
 }

@@ -18,6 +18,8 @@ import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
+import DoseTracker from "@/components/DoseTracker";
+import { getScheduledDoses, getTreatmentStart } from "@/lib/doseSchedule";
 import { compressImage } from "@/lib/images/compress";
 import { logActivity } from "@/lib/activityLog";
 import { PET_CHILD_TABLES } from "@/lib/petChildTables";
@@ -171,10 +173,15 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const historyMeds = meds.filter(m => !m.active);
   const [medsView, setMedsView] = useState("todos");
   const [treatmentItems, setTreatmentItems] = useState([]);
-  const [momentosExpanded, setMomentosExpanded] = useState({});
   const [selectedTreatmentGroupId, setSelectedTreatmentGroupId] = useState(null);
   const [expandedTreatmentCards, setExpandedTreatmentCards] = useState({});
-  const [dosisMsg, setDosisMsg] = useState({});
+  // dose_log (Lote L) — registro real de dosis. doseView es la vista elegida
+  // (Hoy/Semana/Fases): se guarda como estado de componente, no en
+  // localStorage (no permitido en este proyecto) ni en una columna nueva —
+  // es la opción más simple, se recuerda mientras se navega el dashboard y
+  // vuelve al valor por defecto en una recarga completa de página.
+  const [doseLogs, setDoseLogs] = useState([]);
+  const [doseView, setDoseView] = useState("hoy");
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -186,7 +193,12 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setTreatmentItems(data || []);
   };
 
-  useEffect(() => { loadTreatmentItems(); }, []);
+  const loadDoseLogs = async () => {
+    const { data } = await supabase.from("dose_log").select("*").eq("pet_id", petData.id);
+    setDoseLogs(data || []);
+  };
+
+  useEffect(() => { loadTreatmentItems(); loadDoseLogs(); }, []);
 
   const deleteTreatmentGroup = async (treatmentId) => {
     if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
@@ -196,6 +208,42 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     await logActivity(supabase, petData.id, "Eliminó tratamiento", names || null);
     if (selectedTreatmentGroupId === treatmentId) setSelectedTreatmentGroupId(null);
     await loadTreatmentItems();
+  };
+
+  // Fix 6 — eliminar un medicamento individual de un tratamiento (antes solo
+  // se podía borrar el tratamiento completo). Las filas de dose_log del ítem
+  // se borran solas por el ON DELETE CASCADE de la FK treatment_item_id (ver
+  // migración 20260815_dose_log.sql) — no hace falta borrarlas a mano acá.
+  const deleteTreatmentItem = async (ti) => {
+    if (!confirm(`¿Eliminar "${ti.name}" de este tratamiento? Esta acción no se puede deshacer.`)) return;
+    await supabase.from("treatment_items").delete().eq("id", ti.id);
+    await logActivity(supabase, petData.id, "Eliminó medicamento del tratamiento", ti.name);
+    await loadTreatmentItems();
+    await loadDoseLogs();
+    setEditingTreatmentItem(null);
+  };
+
+  const openEditTreatmentItem = (ti) => {
+    const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
+    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "" });
+    setEditingTreatmentItem(ti);
+    setTiSaved(false);
+  };
+
+  // Feature 3 — adherencia real a partir de dose_log, no estimada por tiempo
+  // transcurrido. Las dosis "sin registro" (sin fila en dose_log) quedan
+  // fuera del denominador: no hay forma de afirmar que no se dieron.
+  const treatmentItemAdherence = (ti) => {
+    const start = getTreatmentStart(ti);
+    if (!start) return null;
+    const scheduledSoFar = getScheduledDoses(ti, start, new Date()).length;
+    if (scheduledSoFar === 0) return null;
+    const logs = doseLogs.filter(d => d.treatment_item_id === ti.id);
+    const dadas = logs.filter(d => d.status === "dada").length;
+    const omitidas = logs.filter(d => d.status === "omitida").length;
+    const sinRegistro = Math.max(0, scheduledSoFar - dadas - omitidas);
+    const pct = (dadas + omitidas) > 0 ? Math.round((dadas / (dadas + omitidas)) * 100) : null;
+    return { pct, sinRegistro, dadas, omitidas };
   };
 
   useEffect(() => {
@@ -265,6 +313,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setMeds([]);
     setCurrentWeight(null);
     setTreatmentItems([]);
+    setDoseLogs([]);
     setTab("ficha");
     setMedsView("todos");
     setHistFilter("all");
@@ -276,12 +325,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
     // Cargar datos de la nueva mascota. weight_logs usa maybeSingle: una
     // mascota sin peso registrado todavía es normal, no un error (Fix post-CSP).
-    const [petRes, medsRes, histRes, weightRes, treatRes] = await Promise.all([
+    const [petRes, medsRes, histRes, weightRes, treatRes, doseLogRes] = await Promise.all([
       supabase.from("pets").select("*").eq("id", newPetId).single(),
       supabase.from("medications").select("*").eq("pet_id", newPetId).order("created_at", { ascending: false }),
       supabase.from("medical_history").select("*").eq("pet_id", newPetId).order("event_date", { ascending: false }),
       supabase.from("weight_logs").select("weight_kg, logged_date").eq("pet_id", newPetId).order("logged_date", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", newPetId).eq("active", true).order("created_at", { ascending: false }),
+      supabase.from("dose_log").select("*").eq("pet_id", newPetId),
     ]);
 
     setPetData(petRes.data);
@@ -289,6 +339,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setHistoryData(histRes.data || []);
     setCurrentWeight(weightRes.data?.weight_kg || petRes.data?.weight_kg || null);
     setTreatmentItems(treatRes.data || []);
+    setDoseLogs(doseLogRes.data || []);
     setActivityFeed([]);
     setActivePetId(newPetId);
     // Slug legible en la URL si ya existe (columna slug agregada en migración);
@@ -399,15 +450,6 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     const [h] = ti.start_time.split(":").map(Number);
     const momento = h >= 6 && h < 12 ? "mañana" : h >= 12 && h < 15 ? "mediodia" : h >= 15 && h < 19 ? "tarde" : "noche";
     return { intervalHours, totalDoses, dosesDone, dosesLeft, daysDone, daysLeft, totalDays, progress, nextLabel, momento };
-  };
-
-  const getMomentoActual = () => {
-    const now = new Date();
-    const h = now.getHours(); // hora local del browser, no UTC
-    if (h >= 6 && h < 12) return "mañana";
-    if (h >= 12 && h < 15) return "mediodia";
-    if (h >= 15 && h < 19) return "tarde";
-    return "noche";
   };
 
   const saveTreatmentItem = async () => {
@@ -1245,13 +1287,6 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                     const filteredTreatmentItems = selectedTreatmentGroupId
                       ? treatmentItems.filter(ti => ti.treatment_id === selectedTreatmentGroupId)
                       : treatmentItems;
-                    const momentos = [
-                      { id: "mañana", icon: "🌅", label: "Mañana", range: "06:00 – 11:59" },
-                      { id: "mediodia", icon: "☀️", label: "Mediodía", range: "12:00 – 14:59" },
-                      { id: "tarde", icon: "🌆", label: "Tarde", range: "15:00 – 18:59" },
-                      { id: "noche", icon: "🌙", label: "Noche", range: "19:00 – 23:30" },
-                    ];
-                    const momentoActual = getMomentoActual();
                     return (
                       <>
                         <div style={{ marginBottom: 16 }}>
@@ -1297,11 +1332,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                       <div key={ti.id} style={{ padding: "10px 0", borderTop: "1px solid #F5E6DA" }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                                           <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}</div>
-                                          <button onClick={() => {
-                                            const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-                                            setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"", indicaciones: ti.indicaciones||"" });
-                                            setEditingTreatmentItem(ti); setTiSaved(false);
-                                          }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "3px 9px", fontSize: 10, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>✏️ Editar</button>
+                                          <button onClick={() => openEditTreatmentItem(ti)}
+                                            style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "3px 9px", fontSize: 10, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>✏️ Editar</button>
                                         </div>
                                         {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {ti.prescribed_dose}</div>}
                                         {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>🕐 {ti.frequency}</div>}
@@ -1333,100 +1365,70 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                             <div style={{ marginTop: 8, fontSize: 10, color: "#C4845A", fontStyle: "italic" }}>🔜 Envío por WhatsApp/correo próximamente</div>
                           </div>
                         )}
-                        {momentos.map(momento => {
-                          const items = filteredTreatmentItems.filter(ti => calcTreatmentProgress(ti)?.momento === momento.id);
-                          if (items.length === 0) return null;
-                          const isNow = momento.id === momentoActual;
-                          const isExpanded = momentosExpanded[momento.id] !== undefined ? momentosExpanded[momento.id] : isNow;
+                        {filteredTreatmentItems.map(ti => {
+                          const prog = calcTreatmentProgress(ti);
+                          const adherence = treatmentItemAdherence(ti);
                           return (
-                            <div key={momento.id} style={{ marginBottom: 16 }}>
-                              <div onClick={() => setMomentosExpanded(p => ({ ...p, [momento.id]: !isExpanded }))}
-                                style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: isExpanded ? 10 : 0, padding: "10px 14px", borderRadius: 12, background: isNow ? "#FFF0EB" : "#fff", border: `1.5px solid ${isNow ? "#FFD0BC" : "#FFD9C8"}`, cursor: "pointer" }}>
-                                <div style={{ fontSize: 18 }}>{momento.icon}</div>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: isNow ? "var(--color-primary)" : "#7A4522" }}>{momento.label}</div>
-                                  <div style={{ fontSize: 10, color: "#C4845A" }}>{momento.range} · {items.length} medicamento{items.length !== 1 ? "s" : ""}</div>
+                            <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
+                              <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
+                              <div style={{ paddingLeft: 10 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
+                                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
+                                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                                    <button onClick={() => openEditTreatmentItem(ti)}
+                                      style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
+                                    <button onClick={() => deleteTreatmentItem(ti)}
+                                      title="Eliminar medicamento"
+                                      style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#dc2626", fontWeight: 700, cursor: "pointer" }}>🗑️</button>
+                                  </div>
                                 </div>
-                                {isNow && <div style={{ background: "var(--color-primary)", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10 }}>Ahora</div>}
-                                <div style={{ fontSize: 12, color: "#C4845A" }}>{isExpanded ? "▲" : "▼"}</div>
-                              </div>
-                              {isExpanded && items.map(ti => {
-                                const prog = calcTreatmentProgress(ti);
-                                return (
-                                  <div key={ti.id} style={{ background: "#fff", borderRadius: 18, padding: 16, marginBottom: 12, boxShadow: "var(--card-shadow)", position: "relative", overflow: "hidden" }}>
-                                    <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 5, background: "#8B5CF6", borderRadius: "18px 0 0 18px" }} />
-                                    <div style={{ paddingLeft: 10 }}>
-                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{ti.name}</div>
-                                        <button onClick={() => {
-                                          const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-                                          setTiForm({ name: ti.name||"", prescribed_dose: ti.prescribed_dose||"", frequency: ti.frequency||"", duration_days: ti.duration_days||"", start_date: ti.start_date||new Date().toISOString().split("T")[0], start_hour: h||20, start_min: m===30?"30":"00", mg_per_unit: ti.mg_per_unit||"", units_per_box: ti.units_per_box||"", indicaciones: ti.indicaciones||"" });
-                                          setEditingTreatmentItem(ti); setTiSaved(false);
-                                        }} style={{ background: "#FFF0EB", border: "1px solid #FFD0BC", borderRadius: 8, padding: "4px 10px", fontSize: 11, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>
-                                      </div>
-                                      {ti.treatments?.diagnostico && <div style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>🩺 {ti.treatments.diagnostico}</div>}
-                                      {(ti.treatments?.doctor || ti.treatments?.vet_clinic) && (
-                                        <div style={{ fontSize: 10, color: "#C4845A", marginBottom: 6 }}>
-                                          {ti.treatments?.doctor && <span>👨‍⚕️ {ti.treatments.doctor}</span>}
-                                          {ti.treatments?.doctor && ti.treatments?.vet_clinic && <span> · </span>}
-                                          {ti.treatments?.vet_clinic && <span>🏥 {ti.treatments.vet_clinic}</span>}
-                                        </div>
-                                      )}
-                                      {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
-                                      {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
-                                      {prog && (
-                                        <div style={{ background: prog.daysLeft === 0 ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
-                                          <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "var(--color-primary)" }}>
-                                            {prog.daysLeft === 0 ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {prog && prog.totalDays > 0 && (
-                                        <div>
-                                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A", marginBottom: 4 }}>
-                                            <span>✓ {prog.daysDone} días completados</span>
-                                            <span>{prog.daysLeft} días restantes</span>
-                                          </div>
-                                          <div style={{ height: 8, borderRadius: 4, background: "#f5f3ff", overflow: "hidden", marginBottom: 4 }}>
-                                            <div style={{ height: "100%", width: `${prog.progress}%`, background: prog.daysLeft === 0 ? "#059669" : prog.daysLeft < 3 ? "#dc2626" : prog.daysLeft < 7 ? "#d97706" : "#8B5CF6", borderRadius: 4, transition: "width 0.3s" }} />
-                                          </div>
-                                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A" }}>
-                                            <span>{prog.dosesDone} dosis dadas</span>
-                                            <span>{prog.progress}% completado</span>
-                                          </div>
-                                        </div>
-                                      )}
-                                      {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 8 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias{ti.units_remaining > 0 ? ` · sobran ${ti.units_remaining} unidades` : ""}</div>}
-                                      <div style={{ marginTop: 10 }}>
-                                        {dosisMsg[ti.id] && (
-                                          <div style={{ background: "#E8FAF9", borderRadius: 8, padding: "6px 12px", marginBottom: 6, fontSize: 11, fontWeight: 700, color: "#059669", textAlign: "center" }}>
-                                            {dosisMsg[ti.id]}
-                                          </div>
-                                        )}
-                                        <button onClick={async () => {
-                                          const upd = ti.units_per_dose || 1;
-                                          const med = meds.find(m => m.name.toLowerCase() === ti.name.toLowerCase() && m.active);
-                                          if (med && med.stock > 0) {
-                                            const newStock = Math.max(0, parseFloat(med.stock) - upd);
-                                            await supabase.from("medications").update({ stock: newStock }).eq("id", med.id);
-                                            await reloadMeds();
-                                            setDosisMsg(p => ({ ...p, [ti.id]: `✓ Dosis marcada · Stock: ${newStock} ${med.unit}` }));
-                                          } else {
-                                            setDosisMsg(p => ({ ...p, [ti.id]: "✓ Dosis marcada" }));
-                                          }
-                                          await logActivity(supabase, petData.id, "Marcó dosis dada", ti.name);
-                                          setTimeout(() => setDosisMsg(p => ({ ...p, [ti.id]: null })), 3000);
-                                        }} style={{ width: "100%", padding: "8px", borderRadius: 10, background: "#E8FAF9", color: "#059669", border: "1.5px solid #9FE1CB", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                          ✓ Marcar dosis dada
-                                        </button>
-                                      </div>
+                                {ti.treatments?.diagnostico && <div style={{ fontSize: 10, color: "#8B5CF6", fontWeight: 700, marginBottom: 4 }}>🩺 {ti.treatments.diagnostico}</div>}
+                                {(ti.treatments?.doctor || ti.treatments?.vet_clinic) && (
+                                  <div style={{ fontSize: 10, color: "#C4845A", marginBottom: 6 }}>
+                                    {ti.treatments?.doctor && <span>👨‍⚕️ {ti.treatments.doctor}</span>}
+                                    {ti.treatments?.doctor && ti.treatments?.vet_clinic && <span> · </span>}
+                                    {ti.treatments?.vet_clinic && <span>🏥 {ti.treatments.vet_clinic}</span>}
+                                  </div>
+                                )}
+                                {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
+                                {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
+                                {prog && (
+                                  <div style={{ background: prog.daysLeft === 0 ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 700, color: prog.daysLeft === 0 ? "#059669" : "var(--color-primary)" }}>
+                                      {prog.daysLeft === 0 ? "✓ Tratamiento completado" : `⏰ Próxima toma: ${prog.nextLabel}`}
                                     </div>
                                   </div>
-                                );
-                              })}
+                                )}
+                                {prog && prog.totalDays > 0 && (
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#C4845A", marginBottom: 6 }}>
+                                    <span>✓ {prog.daysDone} días completados</span>
+                                    <span>{prog.daysLeft} días restantes</span>
+                                  </div>
+                                )}
+                                {/* Feature 3: adherencia real (dadas / (dadas+omitidas)), no estimada por
+                                    tiempo transcurrido — las dosis "sin registro" no cuentan en el % porque
+                                    no se puede afirmar que no se dieron. */}
+                                {adherence && (
+                                  <div style={{ fontSize: 10, color: "#C4845A" }}>
+                                    {adherence.pct != null ? `📊 ${adherence.pct}% de adherencia` : "📊 Sin dosis registradas todavía"}
+                                    {adherence.sinRegistro > 0 ? ` · ${adherence.sinRegistro} dosis sin registro` : ""}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
+                        <DoseTracker
+                          supabase={supabase}
+                          petData={petData}
+                          items={filteredTreatmentItems}
+                          meds={meds}
+                          doseLogs={doseLogs}
+                          reloadMeds={reloadMeds}
+                          reloadDoseLogs={loadDoseLogs}
+                          view={doseView}
+                          setView={setDoseView}
+                        />
                       </>
                     );
                   })()}
@@ -1965,7 +1967,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
                   {["cada 6 horas", "cada 8 horas", "cada 12 horas", "cada 24 horas"].map(f => (
                     <div key={f} onClick={() => setTiForm(p => ({ ...p, frequency: f }))}
-                      style={{ padding: "5px 10px", borderRadius: 8, border: `${tiForm.frequency === f ? "2px solid #8B5CF6" : "1.5px solid #C4B5FD"}`, background: tiForm.frequency === f ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: tiForm.frequency === f ? 700 : 400, color: tiForm.frequency === f ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
+                      style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${tiForm.frequency === f ? "var(--color-primary)" : "#C4B5FD"}`, background: tiForm.frequency === f ? "var(--color-primary)" : "#fff", fontSize: 11, fontWeight: tiForm.frequency === f ? 700 : 400, color: tiForm.frequency === f ? "#fff" : "#7A4522", cursor: "pointer" }}>
                       {f.replace("cada ", "")}
                     </div>
                   ))}
@@ -2017,8 +2019,12 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 <textarea style={{ ...inputS, resize: "vertical", minHeight: 60 }} placeholder="ej: administrar con comida, no suspender antes de terminar..." value={tiForm.indicaciones || ""} onChange={e => setTiForm(f => ({ ...f, indicaciones: e.target.value }))} />
               </div>
               <button onClick={saveTreatmentItem} disabled={tiSaving}
-                style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "var(--color-secondary)" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
+                style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "var(--color-secondary)" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s", marginBottom: 8 }}>
                 {tiSaved ? "✓ Actualizado" : tiSaving ? "Guardando..." : "✓ Actualizar medicamento"}
+              </button>
+              <button onClick={() => deleteTreatmentItem(editingTreatmentItem)}
+                style={{ width: "100%", padding: 11, borderRadius: 13, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                🗑️ Eliminar medicamento
               </button>
             </div>
           </div>

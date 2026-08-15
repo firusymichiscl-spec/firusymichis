@@ -668,7 +668,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                             <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
                               {["cada 6 horas", "cada 8 horas", "cada 12 horas", "cada 24 horas"].map(f => (
                                 <div key={f} onClick={() => updateItem(item.id, "frequency", f)}
-                                  style={{ padding: "5px 10px", borderRadius: 8, border: `${item.frequency === f ? "2px solid #8B5CF6" : "1.5px solid #C4B5FD"}`, background: item.frequency === f ? "#f5f3ff" : "#fff", fontSize: 11, fontWeight: item.frequency === f ? 700 : 400, color: item.frequency === f ? "#7c3aed" : "#7A4522", cursor: "pointer" }}>
+                                  style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${item.frequency === f ? "var(--color-primary)" : "#C4B5FD"}`, background: item.frequency === f ? "var(--color-primary)" : "#fff", fontSize: 11, fontWeight: item.frequency === f ? 700 : 400, color: item.frequency === f ? "#fff" : "#7A4522", cursor: "pointer" }}>
                                   {f.replace("cada ", "")}
                                 </div>
                               ))}
