@@ -33,27 +33,43 @@ function chileDayKey(date) {
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 
 // ── Círculo de 3 estados: sin registro → dada → omitida → sin registro ──
-function DoseCircle({ status, onClick, disabled, size = 30 }) {
+// Lote L2 Fix 1 — `future` bloquea la dosis independientemente de `busy`:
+// una dosis cuyo horario todavía no llegó no se puede marcar, con un
+// estilo más tenue que el de "guardando" y un tooltip que explica por qué
+// ("Disponible a las HH:MM" / "Disponible el DD/MM/AAAA a las HH:MM").
+function DoseCircle({ status, onClick, busy, future, futureLabel, size = 30 }) {
+  const isDisabled = busy || future;
   const cfg = status === "dada"
     ? { bg: "var(--green,#06D6A0)", border: "var(--green,#06D6A0)", icon: "✓", color: "#fff" }
     : status === "omitida"
     ? { bg: "var(--red,#FF4757)", border: "var(--red,#FF4757)", icon: "✕", color: "#fff" }
     : { bg: "#fff", border: "#D9C4B0", icon: "", color: "#C4845A" };
+  const title = future
+    ? futureLabel
+    : status === "dada" ? "Dada — clic para marcar omitida"
+    : status === "omitida" ? "Omitida — clic para quitar registro"
+    : "Sin registro — clic para marcar dada";
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
-      title={disabled ? "Fuera del rango del tratamiento" : status === "dada" ? "Dada — clic para marcar omitida" : status === "omitida" ? "Omitida — clic para quitar registro" : "Sin registro — clic para marcar dada"}
+      disabled={isDisabled}
+      title={title}
       style={{
         width: size, height: size, borderRadius: "50%", flexShrink: 0,
         border: `2px solid ${cfg.border}`, background: cfg.bg, color: cfg.color,
         fontSize: size * 0.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, padding: 0,
+        cursor: isDisabled ? "default" : "pointer", opacity: future ? 0.35 : (busy ? 0.4 : 1), padding: 0,
         transition: "background 0.15s, border-color 0.15s",
       }}>
       {cfg.icon}
     </button>
   );
+}
+
+function futureTooltip(date, now) {
+  const hora = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  const sameDay = date.toDateString() === now.toDateString();
+  return sameDay ? `Disponible a las ${hora}` : `Disponible el ${formatFecha(chileDayKey(date))} a las ${hora}`;
 }
 
 export default function DoseTracker({
@@ -225,7 +241,7 @@ function VistaHoy({ items, statusFor, onCycle, busyKey, now }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 6 }}>{g.icon} {g.label}</div>
           {g.doses.map(({ ti, date }) => (
             <DoseRow key={`${ti.id}-${date.getTime()}`} ti={ti} date={date} status={statusFor(ti, date)}
-              busy={busyKey === `${ti.id}-${date.getTime()}`} onCycle={() => onCycle(ti, date)} />
+              busy={busyKey === `${ti.id}-${date.getTime()}`} onCycle={() => onCycle(ti, date)} now={now} />
           ))}
         </div>
       ))}
@@ -233,10 +249,11 @@ function VistaHoy({ items, statusFor, onCycle, busyKey, now }) {
   );
 }
 
-function DoseRow({ ti, date, status, busy, onCycle }) {
+function DoseRow({ ti, date, status, busy, onCycle, now }) {
+  const future = date > now;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, background: "#fff", borderRadius: 14, padding: "10px 14px", marginBottom: 8, boxShadow: "var(--card-shadow)" }}>
-      <DoseCircle status={status} onClick={onCycle} disabled={busy} />
+      <DoseCircle status={status} onClick={onCycle} busy={busy} future={future} futureLabel={future ? futureTooltip(date, now) : undefined} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
         <div style={{ fontSize: 11, color: "#C4845A" }}>
@@ -265,20 +282,33 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
   const overallStart = starts.length ? new Date(Math.min(...starts.map(d => d.getTime()))) : null;
 
   const ends = items.map(getTreatmentEnd);
-  // El tratamiento completo solo tiene fin conocido si TODOS sus ítems lo
-  // tienen — si uno queda abierto (última fase sin duration_days), no se
-  // puede afirmar cuándo termina el conjunto tampoco (mismo principio del
-  // Fix 3: no declarar un fin que no se conoce).
-  const overallEnd = overallStart && ends.every(Boolean) ? new Date(Math.max(...ends.map(d => d.getTime()))) : null;
+  // El tratamiento completo solo tiene fin CONOCIDO (para mostrarlo como
+  // fecha real) si TODOS sus ítems lo tienen — si uno queda abierto (p.ej.
+  // última fase sin duration_days), no se puede afirmar cuándo termina el
+  // conjunto (mismo principio del Fix 3: no declarar un fin que no se
+  // conoce). PERO eso es distinto de cuántas semanas hay que dejar
+  // NAVEGABLES: antes un solo ítem abierto (ej. un medicamento de por vida
+  // junto a un curso de 14 días) hacía que ends.every(Boolean) fallara y
+  // totalWeeks cayera siempre a "semana actual" — la famotidina de 14 días
+  // quedaba invisible aunque su propia fecha de fin sí se conocía (Lote L2
+  // bug 2, reportado en vivo). totalWeeks ahora usa el fin conocido MÁS
+  // LEJANO entre los ítems acotados, sin dejar que un ítem abierto lo anule.
+  const boundedEnds = ends.filter(Boolean);
+  const overallEnd = overallStart && ends.every(Boolean) && boundedEnds.length
+    ? new Date(Math.max(...boundedEnds.map(d => d.getTime())))
+    : null;
+  const farthestBoundedEnd = boundedEnds.length ? new Date(Math.max(...boundedEnds.map(d => d.getTime()))) : null;
 
   const weekBlockStart = (idx) => new Date(overallStart.getTime() + (idx - 1) * 7 * 86400000);
-  const totalWeeks = !overallStart ? 1 : overallEnd
-    ? Math.max(1, Math.ceil((overallEnd - overallStart) / (7 * 86400000)))
-    : Math.max(1, Math.floor((now - overallStart) / (7 * 86400000)) + 1);
+  const weeksElapsed = overallStart ? Math.max(1, Math.floor((now - overallStart) / (7 * 86400000)) + 1) : 1;
+  const weeksForBounded = overallStart && farthestBoundedEnd
+    ? Math.ceil((farthestBoundedEnd - overallStart) / (7 * 86400000))
+    : 0;
+  const totalWeeks = !overallStart ? 1 : Math.max(1, weeksForBounded, weeksElapsed);
 
   const defaultWeek = !overallStart ? 1 : overallEnd && now >= overallEnd
     ? totalWeeks
-    : Math.min(totalWeeks, Math.max(1, Math.floor((now - overallStart) / (7 * 86400000)) + 1));
+    : Math.min(totalWeeks, weeksElapsed);
 
   const [weekIndex, setWeekIndex] = useState(defaultWeek);
 
@@ -315,17 +345,19 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <button onClick={() => setWeekIndex(w => Math.max(1, w - 1))} disabled={clampedWeek <= 1}
-          style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek <= 1 ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek <= 1 ? "default" : "pointer" }}>
-          ◄
-        </button>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#7A4522" }}>Semana {clampedWeek} de {totalWeeks}</div>
-        <button onClick={() => setWeekIndex(w => Math.min(totalWeeks, w + 1))} disabled={clampedWeek >= totalWeeks}
-          style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek >= totalWeeks ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek >= totalWeeks ? "default" : "pointer" }}>
-          ►
-        </button>
-      </div>
+      {totalWeeks > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <button onClick={() => setWeekIndex(w => Math.max(1, w - 1))} disabled={clampedWeek <= 1}
+            style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek <= 1 ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek <= 1 ? "default" : "pointer" }}>
+            ◄
+          </button>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7A4522" }}>Semana {clampedWeek} de {totalWeeks}</div>
+          <button onClick={() => setWeekIndex(w => Math.min(totalWeeks, w + 1))} disabled={clampedWeek >= totalWeeks}
+            style={{ background: "#fff", border: "1.5px solid #FFD9C8", borderRadius: 10, width: 32, height: 32, fontSize: 14, color: clampedWeek >= totalWeeks ? "#E9D8FD" : "var(--color-primary)", cursor: clampedWeek >= totalWeeks ? "default" : "pointer" }}>
+            ►
+          </button>
+        </div>
+      )}
 
       {grids.every(g => g.horarios.length === 0) ? (
         <div className="card"><div className="empty-state"><p>Sin tomas programadas esta semana</p></div></div>
@@ -353,10 +385,11 @@ function VistaSemana({ items, statusFor, onCycle, busyKey, now }) {
                         && x.toDateString() === d.toDateString());
                       const outOfRange = !dose && ((start && d < startOfDay(start)) || (end && d >= end));
                       const key = dose ? `${ti.id}-${dose.getTime()}` : null;
+                      const future = dose && dose > now;
                       return (
                         <td key={i} style={{ textAlign: "center", padding: 4 }}>
                           {dose ? (
-                            <DoseCircle size={26} status={statusFor(ti, dose)} disabled={busyKey === key} onClick={() => onCycle(ti, dose)} />
+                            <DoseCircle size={26} status={statusFor(ti, dose)} busy={busyKey === key} future={future} futureLabel={future ? futureTooltip(dose, now) : undefined} onClick={() => onCycle(ti, dose)} />
                           ) : (
                             <div style={{ width: 26, height: 26, margin: "0 auto", borderRadius: "50%", border: outOfRange ? "2px dashed #E9D8FD" : "none" }} />
                           )}
@@ -418,9 +451,10 @@ function VistaFases({ items, statusFor, onCycle, busyKey, now }) {
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         {phase.doses.map(date => {
                           const key = `${ti.id}-${date.getTime()}`;
+                          const future = date > now;
                           return (
-                            <div key={key} title={date.toLocaleString("es-CL")}>
-                              <DoseCircle size={24} status={statusFor(ti, date)} disabled={busyKey === key} onClick={() => onCycle(ti, date)} />
+                            <div key={key} title={future ? undefined : date.toLocaleString("es-CL")}>
+                              <DoseCircle size={24} status={statusFor(ti, date)} busy={busyKey === key} future={future} futureLabel={future ? futureTooltip(date, now) : undefined} onClick={() => onCycle(ti, date)} />
                             </div>
                           );
                         })}
