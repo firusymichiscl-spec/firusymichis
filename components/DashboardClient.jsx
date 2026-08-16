@@ -19,7 +19,7 @@ import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DoseTracker from "@/components/DoseTracker";
-import { getScheduledDoses, getTreatmentStart, getTreatmentProgress, validatePhases } from "@/lib/doseSchedule";
+import { getScheduledDoses, getTreatmentStart, getTreatmentProgress, validatePhases, filterValidDoseLogs, countOrphanedDoseLogs } from "@/lib/doseSchedule";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import DrugClassLabel from "@/components/DrugClassLabel";
 import { compressImage } from "@/lib/images/compress";
@@ -270,17 +270,24 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   // Feature 3 — adherencia real a partir de dose_log, no estimada por tiempo
   // transcurrido. Las dosis "sin registro" (sin fila en dose_log) quedan
   // fuera del denominador: no hay forma de afirmar que no se dieron.
+  // Lote N Fix 1 — `logs` pasa por filterValidDoseLogs: si el horario de
+  // este medicamento cambió (start_date/frequency/phases) después de que
+  // ya hubiera registros, esas filas viejas quedan con un scheduled_at que
+  // el horario ACTUAL ya no genera. Sin este filtro seguían sumando en
+  // dadas/omitidas aunque fueran invisibles en Vista Hoy/Semana/Fases — el
+  // % de adherencia mostrado podía no corresponder a ningún horario real.
   const treatmentItemAdherence = (ti) => {
     const start = getTreatmentStart(ti);
     if (!start) return null;
     const scheduledSoFar = getScheduledDoses(ti, start, new Date()).length;
     if (scheduledSoFar === 0) return null;
-    const logs = doseLogs.filter(d => d.treatment_item_id === ti.id);
+    const logs = filterValidDoseLogs(ti, doseLogs);
     const dadas = logs.filter(d => d.status === "dada").length;
     const omitidas = logs.filter(d => d.status === "omitida").length;
     const sinRegistro = Math.max(0, scheduledSoFar - dadas - omitidas);
     const pct = (dadas + omitidas) > 0 ? Math.round((dadas / (dadas + omitidas)) * 100) : null;
-    return { pct, sinRegistro, dadas, omitidas };
+    const orphanCount = countOrphanedDoseLogs(ti, doseLogs);
+    return { pct, sinRegistro, dadas, omitidas, orphanCount };
   };
 
   useEffect(() => {
@@ -431,6 +438,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [tiForm, setTiForm] = useState({});
   const [tiSaving, setTiSaving] = useState(false);
   const [tiSaved, setTiSaved] = useState(false);
+  // Lote N Fix 2 — { phasesForSave, existingLogCount } mientras se espera la
+  // elección del usuario (conservar/borrar/cancelar); null = sin confirmación pendiente.
+  const [scheduleChangeConfirm, setScheduleChangeConfirm] = useState(null);
 
   const ACTIVITY_PAGE_SIZE = 50;
   const [activityFeed, setActivityFeed] = useState([]);
@@ -486,8 +496,6 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       alert(`La fecha de inicio (${formatFecha(tiForm.start_date)}) está fuera del rango permitido: entre el ${formatFecha(minStartDate)} y el ${formatFecha(maxStartDate)}.`);
       return;
     }
-    setTiSaving(true);
-    const startTime = `${tiForm.start_hour.toString().padStart(2, "0")}:${tiForm.start_min}`;
     // Lote M Feature 1.5/1.6 — si el usuario editó las fases a mano, eso
     // manda sobre lo que haya dicho la IA (se sobrescribe directo). Se
     // valida acá igual que en AITab.jsx: si no calza (array vacío, algún
@@ -502,6 +510,39 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       }));
       return validatePhases(converted);
     })();
+
+    // Lote N Fix 2 — start_date/frequency/phases son justo los campos que
+    // getScheduledDoses usa para generar el horario (ver lib/doseSchedule.js).
+    // Cambiar cualquiera de los tres deja huérfanas las filas de dose_log
+    // que ya existan para este medicamento (Fix 1 las excluye del cálculo,
+    // pero el usuario puede no esperar que su historial "desaparezca" del
+    // %). Nombre/dosis/indicaciones no afectan el horario, así que editarlos
+    // solos no dispara esta confirmación (sería ruido, punto 2.3 del pedido).
+    const oldPhasesNorm = validatePhases(editingTreatmentItem.phases) || null;
+    const scheduleChanged =
+      tiForm.start_date !== editingTreatmentItem.start_date ||
+      tiForm.frequency !== editingTreatmentItem.frequency ||
+      JSON.stringify(phasesForSave) !== JSON.stringify(oldPhasesNorm);
+    const existingLogCount = doseLogs.filter(d => d.treatment_item_id === editingTreatmentItem.id).length;
+
+    if (scheduleChanged && existingLogCount > 0) {
+      setScheduleChangeConfirm({ phasesForSave, existingLogCount });
+      return;
+    }
+    await performTreatmentItemUpdate(phasesForSave, false);
+  };
+
+  // Ejecuta el guardado real — separado de saveTreatmentItem para poder
+  // llamarlo tanto directo (sin cambio de horario, o sin registros previos)
+  // como después de que el usuario resuelva el modal de confirmación.
+  const performTreatmentItemUpdate = async (phasesForSave, deleteExistingLogs) => {
+    setTiSaving(true);
+    const startTime = `${tiForm.start_hour.toString().padStart(2, "0")}:${tiForm.start_min}`;
+    if (deleteExistingLogs) {
+      const toDelete = doseLogs.filter(d => d.treatment_item_id === editingTreatmentItem.id);
+      await supabase.from("dose_log").delete().eq("treatment_item_id", editingTreatmentItem.id);
+      await logActivity(supabase, petData.id, "Borró registros de dosis por cambio de horario", `${tiForm.name} · ${toDelete.length} registro${toDelete.length !== 1 ? "s" : ""}`);
+    }
     await supabase.from("treatment_items").update({
       name: tiForm.name, prescribed_dose: tiForm.prescribed_dose, frequency: tiForm.frequency,
       duration_days: tiForm.duration_days ? parseInt(tiForm.duration_days) : null,
@@ -515,7 +556,17 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     await logActivity(supabase, petData.id, "Editó tratamiento", tiForm.name);
     setTiSaving(false); setTiSaved(true);
     await loadTreatmentItems();
+    if (deleteExistingLogs) await loadDoseLogs();
     setTimeout(() => { setEditingTreatmentItem(null); setTiSaved(false); setTiForm({}); }, 800);
+  };
+
+  // choice: "keep" (default — conserva dose_log como historial) | "delete" | "cancel"
+  const confirmScheduleChange = async (choice) => {
+    if (!scheduleChangeConfirm) return;
+    const { phasesForSave } = scheduleChangeConfirm;
+    setScheduleChangeConfirm(null);
+    if (choice === "cancel") return;
+    await performTreatmentItemUpdate(phasesForSave, choice === "delete");
   };
 
   const reloadMeds = async () => {
@@ -1476,6 +1527,14 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                     {adherence.sinRegistro > 0 ? ` · ${adherence.sinRegistro} dosis sin registro` : ""}
                                   </div>
                                 )}
+                                {/* Lote N Fix 1.4 — cuando el horario cambió después de tener registros,
+                                    el % de arriba ya no incluye esas filas viejas (Fix 1); este aviso
+                                    explica por qué el conteo puede diferir de lo que el usuario recuerda. */}
+                                {adherence?.orphanCount > 0 && (
+                                  <div style={{ fontSize: 9, color: "#C4845A", fontStyle: "italic", marginTop: 2 }}>
+                                    ℹ️ {adherence.orphanCount} registro{adherence.orphanCount !== 1 ? "s" : ""} anterior{adherence.orphanCount !== 1 ? "es" : ""} no coincide{adherence.orphanCount !== 1 ? "n" : ""} con el horario actual
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -2161,6 +2220,30 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 🗑️ Eliminar medicamento
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AVISO — desalinear horario con dosis ya registradas (Lote N Fix 2) */}
+      {scheduleChangeConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", zIndex: 1100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div style={{ background: "#FFF8F3", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 480, padding: 20 }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#3D1F0A", marginBottom: 8 }}>⚠️ Este cambio afecta el historial</div>
+            <div style={{ fontSize: 13, color: "#7A4522", lineHeight: 1.5, marginBottom: 18 }}>
+              Este medicamento tiene {scheduleChangeConfirm.existingLogCount} dosis registrada{scheduleChangeConfirm.existingLogCount !== 1 ? "s" : ""}. Al cambiar el horario, {scheduleChangeConfirm.existingLogCount !== 1 ? "esos registros dejarán" : "ese registro dejará"} de coincidir con el nuevo calendario y no se {scheduleChangeConfirm.existingLogCount !== 1 ? "contarán" : "contará"} en la adherencia.
+            </div>
+            <button onClick={() => confirmScheduleChange("keep")}
+              style={{ width: "100%", padding: 13, borderRadius: 13, background: "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+              Conservar como historial
+            </button>
+            <button onClick={() => confirmScheduleChange("delete")}
+              style={{ width: "100%", padding: 12, borderRadius: 13, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 8 }}>
+              Borrar los registros anteriores
+            </button>
+            <button onClick={() => confirmScheduleChange("cancel")}
+              style={{ width: "100%", padding: 11, borderRadius: 13, background: "transparent", color: "#7A4522", border: "1.5px solid #FFD9C8", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              Cancelar
+            </button>
           </div>
         </div>
       )}

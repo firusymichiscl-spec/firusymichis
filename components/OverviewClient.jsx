@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { formatFecha } from "@/lib/fechas";
 import { getHeaderBackgroundStyle } from "@/lib/fondos";
 import DrugClassLabel from "@/components/DrugClassLabel";
+import { filterValidDoseLogs } from "@/lib/doseSchedule";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
@@ -125,14 +126,18 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
   function petNextVaccine(petId) {
     return petVaccines(petId).map(v => ({ ...v, days: daysUntil(v.next_date) })).filter(v => v.days !== null && v.days >= 0).sort((a, b) => a.days - b.days)[0];
   }
+  // Lote N Fix 1 — `petLogs` se arma por ítem con filterValidDoseLogs, no
+  // con un filtro directo por treatment_item_id: igual que en
+  // DashboardClient.jsx, un dose_log cuyo horario cambió después de tener
+  // registros deja filas "huérfanas" que ya no corresponden a ninguna
+  // dosis del horario actual, y sin este filtro seguían sumando acá.
   function petDoseStats(petId) {
     const items = treatments.filter(t => t.pet_id === petId).flatMap(t => t.treatment_items || []);
-    const itemIds = new Set(items.map(ti => ti.id));
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(now.getTime() - 7 * 86400000);
 
-    const petLogs = doseLogs.filter(d => itemIds.has(d.treatment_item_id));
+    const petLogs = items.flatMap(ti => filterValidDoseLogs(ti, doseLogs, now));
     const dosesToday = petLogs.filter(d => d.status === "dada" && new Date(d.scheduled_at) >= dayStart).length;
 
     const weekLogs = petLogs.filter(d => new Date(d.scheduled_at) >= weekAgo);
