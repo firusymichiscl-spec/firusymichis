@@ -63,6 +63,42 @@ const css = `
   }
 `;
 
+const SITE_URL = "https://www.firusymichis.cl";
+
+// CSP (next.config.ts) tiene 'unsafe-inline' en script-src por requerimiento
+// de hidratación de Next.js (ver comentario en next.config.ts), así que un
+// <script type="application/ld+json"> inline no viola la política — no hace
+// falta nonce ni un endpoint aparte.
+const JSON_LD = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Firus & Michis",
+    description:
+      "Controla medicamentos, vacunas e historial médico de tus perros y gatos. Recordatorios automáticos y asistente veterinario con IA.",
+    applicationCategory: "HealthApplication",
+    operatingSystem: "Web",
+    url: SITE_URL,
+    inLanguage: "es-CL",
+    offers: {
+      "@type": "Offer",
+      name: "Prueba gratuita",
+      price: "0",
+      priceCurrency: "CLP",
+      description: "1 mes de acceso PRO gratis, sin tarjeta de crédito.",
+    },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "GO COMPUTACIÓN SpA",
+    url: SITE_URL,
+    logo: `${SITE_URL}/icon-512.png`,
+    email: "contacto@firusymichis.cl",
+    areaServed: "CL",
+  },
+];
+
 export default async function Home() {
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -93,6 +129,10 @@ export default async function Home() {
   return (
     <div className="lp">
       <style>{css}</style>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
 
       <nav className="lp-nav">
         <div className="lp-logo">Firus<span>&</span>Michis</div>
@@ -132,7 +172,7 @@ export default async function Home() {
       </section>
 
       <section id="features" className="lp-section">
-        <div className="lp-section-title">Todo lo que tu mascota necesita</div>
+        <h2 className="lp-section-title">Todo lo que tu mascota necesita</h2>
         <div className="lp-section-sub">Una app pensada para no perder nunca el control de su salud</div>
         <div className="lp-features-grid">
           {FEATURES.map((f) => (
@@ -146,7 +186,7 @@ export default async function Home() {
       </section>
 
       <section id="pricing" className="lp-section">
-        <div className="lp-section-title">Planes simples, sin sorpresas</div>
+        <h2 className="lp-section-title">Planes simples, sin sorpresas</h2>
         <div className="lp-section-sub">Empieza gratis y sube de plan cuando lo necesites</div>
         <div className="lp-pricing-grid">
           <div className="lp-plan">

@@ -3,6 +3,10 @@ import { formatFecha } from "@/lib/fechas";
 import { formatChipDisplay } from "@/lib/chip";
 import DrugClassLabel from "@/components/DrugClassLabel";
 
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
   const [by, bm] = birthDate.split("-").map(Number);

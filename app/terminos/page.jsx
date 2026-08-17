@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Términos y Condiciones · Firus&Michis",
+  title: "Términos y Condiciones",
   description:
     "Condiciones de uso del servicio Firus&Michis, plataforma de gestión de salud para mascotas.",
 };

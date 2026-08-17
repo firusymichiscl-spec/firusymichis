@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Política de Privacidad · Firus&Michis",
+  title: "Política de Privacidad",
   description:
     "Cómo Firus&Michis recopila, usa y protege los datos personales de sus usuarios en Chile.",
 };
