@@ -7,19 +7,36 @@ import { ANTI_INJECTION_REINFORCEMENT } from "@/lib/ai/prompts";
 const BASE64_MAX_LENGTH = 7_000_000;
 
 // URGENTE (post Lote M) — parseo tolerante: Claude a veces antepone o
-// agrega texto/explicación alrededor del array pese a que el prompt pide
-// "SOLO JSON" (más probable cuanto más compleja es la instrucción — ver
-// la simplificación de "phases" más abajo). Se limpian los fences de
-// markdown y se recorta todo lo que quede antes del primer "[" y después
-// del último "]" antes de intentarParsear. Esto NO arregla una respuesta
-// genuinamente truncada a la mitad (no hay "]" de cierre real que
-// encontrar) — para eso ver el aumento de max_tokens.
-function extractJsonArray(text) {
+// agrega texto/explicación alrededor de la respuesta pese a que el prompt
+// pide "SOLO JSON" (más probable cuanto más compleja es la instrucción —
+// ver la simplificación de "phases" más abajo). Se limpian los fences de
+// markdown y se recorta todo lo que quede antes/después de la estructura
+// real antes de intentar parsear. Esto NO arregla una respuesta
+// genuinamente truncada a la mitad (no hay cierre real que encontrar) —
+// para eso ver el razonamiento de max_tokens más abajo.
+//
+// Lote Q — el formato pasó de un array pelado de medicamentos a un objeto
+// {"medicamentos":[...],"veterinario":...} para poder devolver también los
+// datos del veterinario/clínica sin romper la forma de "result" que ya
+// consume AITab.jsx. Se detecta cuál delimitador ({ o [) aparece primero
+// en el texto para soportar AMBOS formatos: el nuevo objeto, y — por si
+// Claude alguna vez ignora la instrucción y vuelve a devolver el array
+// pelado de antes — ese formato viejo también sigue aceptándose (ver el
+// fallback en el catch de abajo). Nunca vale la pena romper la extracción
+// de medicamentos por un cambio de formato en los datos secundarios.
+function extractJson(text) {
   const stripped = text.replace(/```json|```/g, "").trim();
-  const start = stripped.indexOf("[");
-  const end = stripped.lastIndexOf("]");
-  if (start === -1 || end === -1 || end < start) return stripped;
-  return stripped.slice(start, end + 1);
+  const firstBrace = stripped.indexOf("{");
+  const firstBracket = stripped.indexOf("[");
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    const end = stripped.lastIndexOf("}");
+    if (end !== -1 && end > firstBrace) return stripped.slice(firstBrace, end + 1);
+  }
+  if (firstBracket !== -1) {
+    const end = stripped.lastIndexOf("]");
+    if (end !== -1 && end > firstBracket) return stripped.slice(firstBracket, end + 1);
+  }
+  return stripped;
 }
 
 export async function POST(req) {
@@ -74,11 +91,22 @@ export async function POST(req) {
   // extracción de medicamentos funcione — "phases" es secundario y se le
   // dedica una sola frase para no competirle presupuesto de tokens ni
   // complejidad a lo esencial.
-  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria adjunta como imagen. Analízala y devuelve SOLO un array JSON válido sin backticks ni markdown ni texto antes o después. Cada elemento del array representa un medicamento con estos campos exactos: [{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":"","phases":null}]. Si hay múltiples medicamentos en la receta, incluye todos en el array — esto es lo más importante, prioriza extraerlos todos bien.
+  //
+  // Lote Q — se agregan veterinario/clínica/dirección, con el mismo
+  // cuidado: UN párrafo corto, y explícitamente subordinado a "si dudas,
+  // null y sigue" para no repetir el incidente de Lote M. A diferencia de
+  // "phases" (que se repite por CADA medicamento y fue lo que realmente
+  // infló la respuesta la vez pasada), estos 3 campos son top-level y
+  // aparecen UNA sola vez sin importar cuántos medicamentos traiga la
+  // receta — el costo marginal en tokens es mínimo, no hace falta subir
+  // max_tokens por esto (ver el comentario junto a max_tokens más abajo).
+  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria adjunta como imagen. Analízala y devuelve SOLO un objeto JSON válido sin backticks ni markdown ni texto antes o después, con esta forma exacta: {"medicamentos":[{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":"","phases":null}],"veterinario":null,"clinica":null,"direccion":null}. Si hay múltiples medicamentos en la receta, incluye todos en "medicamentos" — esto es lo más importante, prioriza extraerlos todos bien.
 
 "frecuencia" es siempre texto libre legible (ej. "Cada 12 horas por 1 día, luego cada 24 horas por 3 días, luego día por medio").
 
 "phases" es opcional y secundario — solo complétalo si es sencillo y estás seguro: un array [{"interval_hours":N,"duration_days":M}], un elemento por cada fase de la receta en orden (48 = día por medio; duration_days:null solo en la última fase si no tiene fin). Si dudas de los intervalos o la frecuencia no es un número fijo de horas, deja "phases":null y sigue — nunca sacrifiques la extracción del medicamento por completar esto.
+
+"veterinario" (nombre del médico con su título si aparece, ej. "Dra. Francisca Gutiérrez"), "clinica" (nombre de la veterinaria) y "direccion" (dirección o comuna de la clínica, si aparece) son opcionales y secundarios igual que "phases" — si alguno no aparece claramente en la receta usa null, nunca lo inventes, y nunca sacrifiques la extracción de medicamentos por completarlos.
 
 ${ANTI_INJECTION_REINFORCEMENT}`;
 
@@ -98,6 +126,13 @@ ${ANTI_INJECTION_REINFORCEMENT}`;
       // costo real: Anthropic cobra por tokens efectivamente generados, no
       // por este techo — antes, una respuesta cortada ya gastaba esos
       // tokens y encima fallaba.
+      // Lote Q — se evaluó subir esto de nuevo al agregar veterinario/
+      // clínica/dirección, pero a diferencia de "phases" (que se repite por
+      // cada medicamento y fue la causa real del incidente de Lote M),
+      // estos 3 campos son top-level: aparecen UNA vez en la respuesta sin
+      // importar cuántos medicamentos traiga la receta. El costo marginal
+      // es de unos pocos tokens fijos, no crece con el tamaño de la receta
+      // — 2048 sigue siendo suficiente margen, no hace falta tocarlo.
       max_tokens: 2048,
       system: systemPrompt,
       messages: [{
@@ -110,7 +145,21 @@ ${ANTI_INJECTION_REINFORCEMENT}`;
 
     const txt = message.content[0].text;
     try {
-      const arr = JSON.parse(extractJsonArray(txt));
+      const parsed = JSON.parse(extractJson(txt));
+
+      // Compat con el formato viejo (array pelado de medicamentos, sin
+      // veterinario/clínica) por si Claude no sigue el formato nuevo — ver
+      // comentario de extractJson más arriba. Nunca vale la pena romper la
+      // extracción de medicamentos por esto.
+      const isLegacyArray = Array.isArray(parsed);
+      const hasNewFormat = !isLegacyArray && Array.isArray(parsed?.medicamentos);
+      // Si ni siquiera es un objeto con "medicamentos" ni un array, se
+      // envuelve como antes (Claude devolvió un único objeto suelto) —
+      // misma red de seguridad que ya existía, ahora con un formato más.
+      const meds = isLegacyArray ? parsed : hasNewFormat ? parsed.medicamentos : (parsed ? [parsed] : []);
+      const veterinario = hasNewFormat ? (parsed.veterinario || null) : null;
+      const clinica = hasNewFormat ? (parsed.clinica || null) : null;
+      const direccion = hasNewFormat ? (parsed.direccion || null) : null;
 
       // Recién acá se consumió una consulta real y útil — antes se
       // descontaba apenas Claude respondía, aunque el parseo fallara
@@ -120,7 +169,7 @@ ${ANTI_INJECTION_REINFORCEMENT}`;
       await recordAiUsage(user.id, "recipe");
 
       return Response.json(
-        { result: Array.isArray(arr) ? arr : [arr] },
+        { result: meds, veterinario, clinica, direccion },
         { headers: { "X-AI-Remaining": String(Math.max(0, quota.remaining - 1)) } }
       );
     } catch (parseErr) {

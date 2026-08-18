@@ -77,7 +77,9 @@ export async function GET(req, { params }) {
 
   const { data: pet } = await supabaseAdmin.from("pets").select("*").eq("id", share.pet_id).single();
   const { data: meds } = await supabaseAdmin.from("medications").select("*").eq("pet_id", share.pet_id).eq("active", true);
-  const { data: history } = await supabaseAdmin.from("medical_history").select("*").eq("pet_id", share.pet_id).order("event_date", { ascending: false }).limit(15);
+  // Lote Q Fix 1 — mismo filtro que app/ficha/[token]/page.jsx: is_public
+  // gobierna de verdad qué eventos/vacunas salen en el PDF público.
+  const { data: history } = await supabaseAdmin.from("medical_history").select("*").eq("pet_id", share.pet_id).eq("is_public", true).order("event_date", { ascending: false }).limit(15);
   const { data: weights } = await supabaseAdmin.from("weight_logs").select("*").eq("pet_id", share.pet_id).order("logged_date", { ascending: true });
 
   const vaccines = history?.filter(h => h.type === "vaccine") || [];

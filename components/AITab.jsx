@@ -66,6 +66,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [treatmentMeta, setTreatmentMeta] = useState({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
+  // Lote Q — dirección/comuna de la clínica extraída de la receta. Solo
+  // referencial (no hay columna en treatments para guardarla), se muestra
+  // junto al campo de veterinaria para que el tutor la cruce con la receta
+  // física a simple vista.
+  const [recipeAddress, setRecipeAddress] = useState(null);
   const [savedTreatments, setSavedTreatments] = useState([]);
   const [loadingTreatments, setLoadingTreatments] = useState(false);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
@@ -234,11 +239,32 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     // no incluye una fecha) — "hoy" es el mejor default disponible hasta
     // que eso exista; el selector de abajo deja corregirlo a mano.
     setGlobalStartDate(today);
+    // Lote Q — se resetean acá (no solo al guardar): cada escaneo es una
+    // receta nueva, y si esta no trae veterinario/clínica es mejor dejarlo
+    // en blanco y editable que arrastrar el de un escaneo anterior sin que
+    // el usuario se dé cuenta. diagnostico NO se toca — nunca lo extrae la
+    // IA, es siempre texto que el usuario escribe a mano.
+    setTreatmentMeta(f => ({ ...f, doctor: "", vet_clinic: "" }));
+    setClinicQuery("");
+    setRecipeAddress(null);
     try {
       const res = await fetch("/api/ai-recipe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageBase64: b64, mediaType }) });
       const data = await res.json();
       if (data.error || !res.ok) { setRecipeError(data.error || "Error al procesar la receta"); }
       else {
+        // Lote Q — prefill de veterinario/clínica/dirección extraídos de la
+        // receta. Sigue 100% editable, igual que si el usuario lo hubiera
+        // tecleado — nunca se guarda nada sin que pase primero por acá.
+        // clinicQuery es el estado que controla lo que se VE en el input de
+        // veterinaria (separado de treatmentMeta.vet_clinic, ver
+        // searchClinics) — hay que setear ambos o el campo se ve vacío
+        // aunque el dato ya esté guardado.
+        if (data.veterinario) setTreatmentMeta(f => ({ ...f, doctor: data.veterinario }));
+        if (data.clinica) { setTreatmentMeta(f => ({ ...f, vet_clinic: data.clinica })); setClinicQuery(data.clinica); }
+        // direccion no tiene columna propia en treatments — se muestra solo
+        // como referencia visual junto al campo de veterinaria (para cruzar
+        // contra la receta física), no se persiste en ningún lado.
+        if (data.direccion) setRecipeAddress(data.direccion);
         setRecipeItems(data.result.map((item, i) => ({
           id: i,
           name: item.medicamento || "",
@@ -427,6 +453,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
       setTreatmentMeta({ diagnostico: "", doctor: "", vet_clinic: "", emission_date: "" });
       setClinicQuery("");
       setClinicSuggestions([]);
+      setRecipeAddress(null);
       onTreatmentSaved?.({ treatmentId: treatment.id, hasPastStartDate });
     }, 1500);
   };
@@ -712,6 +739,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                         </div>
                       ))}
                     </div>
+                  )}
+                  {/* Lote Q — dirección extraída de la receta, solo referencial
+                      (no hay dónde guardarla en treatments todavía). */}
+                  {recipeAddress && (
+                    <div style={{ fontSize: 10, color: "#8B5CF6", marginTop: 4 }}>📍 {recipeAddress} (de la receta, no se guarda)</div>
                   )}
                 </div>
                 <div>

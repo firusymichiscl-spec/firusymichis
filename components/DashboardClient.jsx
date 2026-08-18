@@ -17,6 +17,7 @@ import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
+import EventDeleteModal from "@/components/EventDeleteModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DoseTracker from "@/components/DoseTracker";
 import { getScheduledDoses, getTreatmentStart, getTreatmentProgress, validatePhases, filterValidDoseLogs, countOrphanedDoseLogs } from "@/lib/doseSchedule";
@@ -187,6 +188,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [editingHistId, setEditingHistId] = useState(null);
   const [histExpanded, setHistExpanded] = useState(false);
   const [histFilter, setHistFilter] = useState("all");
+  // Lote Q Fix 2 — evento/vacuna en proceso de eliminación (fila completa,
+  // no solo el id: EventDeleteModal necesita photo_path/photo_url/event_date
+  // para poder limpiar Storage y mostrar el detalle en la confirmación).
+  const [deletingHistItem, setDeletingHistItem] = useState(null);
 
   const activeMeds = meds.filter(m => m.active);
   const historyMeds = meds.filter(m => !m.active);
@@ -650,6 +655,27 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setHistoryData(data || []);
   };
 
+  // Lote Q Fix 2 — callback de EventDeleteModal tras borrar con éxito.
+  // Saca la fila del estado local en vez de recargar todo (evita un
+  // round-trip innecesario), limpia su signed URL cacheada, y si el modal
+  // de edición seguía abierto para este mismo evento (se puede borrar
+  // desde ahí también), lo cierra.
+  const handleHistDeleted = (deletedId) => {
+    setHistoryData(list => list.filter(h => h.id !== deletedId));
+    setEventPhotoUrls(prev => {
+      if (!(deletedId in prev)) return prev;
+      const next = { ...prev };
+      delete next[deletedId];
+      return next;
+    });
+    setDeletingHistItem(null);
+    if (editingHistId === deletedId) {
+      setShowHistModal(false);
+      setEditingHistId(null);
+      setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "", event_time: "", intensity: "", duration_minutes: "", photo: null, photoPreview: null, is_public: false });
+    }
+  };
+
   // Firma en batch (una sola llamada) todas las fotos de eventos que todavía
   // no tienen signed URL resuelta cuando cambia la lista de historial.
   useEffect(() => {
@@ -845,7 +871,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div className="timeline-type" style={{ color: s.text }}>{s.label} · {formatDate(item.event_date)}</div>
             {!isArchived && (
-              <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A", padding: "0 0 0 8px" }}>✏️</button>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0, paddingLeft: 8 }}>
+                <button onClick={() => openHistModal(item)} style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A" }}>✏️</button>
+                <button onClick={() => setDeletingHistItem(item)} title={item.type === "vaccine" ? "Eliminar vacuna" : "Eliminar evento"}
+                  style={{ background: "transparent", border: "none", cursor: "pointer", fontSize: 12, color: "#C4845A" }}>🗑️</button>
+              </div>
             )}
           </div>
           <div className="timeline-event">{item.event}</div>
@@ -855,7 +885,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               {item.intensity === "grave" ? "🔴" : item.intensity === "moderada" ? "🟡" : "🟢"} {item.intensity}
             </span>}
             {item.duration_minutes && <span style={{ fontSize: 10, color: "#7A4522", background: "#FFF0EB", borderRadius: 6, padding: "2px 6px" }}>⏱ {item.duration_minutes} min</span>}
-            {item.is_public && <span style={{ fontSize: 10, color: "#0F6E56", background: "#E8FAF9", borderRadius: 6, padding: "2px 6px" }}>🌐 Público</span>}
+            {item.is_public
+              ? <span style={{ fontSize: 10, color: "#0F6E56", background: "#E8FAF9", borderRadius: 6, padding: "2px 6px" }}>🌐 Público</span>
+              : <span style={{ fontSize: 10, color: "#7A4522", background: "#FFF0EB", borderRadius: 6, padding: "2px 6px" }}>🔒 Privado</span>}
           </div>
           {evtPhotoSrc && (
             <img src={evtPhotoSrc} alt="evento" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 120, borderRadius: 8, objectFit: "cover", cursor: "pointer" }}
@@ -2157,6 +2189,15 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: histSaved ? "var(--color-secondary)" : "var(--color-primary)", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s" }}>
                 {histSaved ? "✓ Guardado" : histSaving ? "Guardando..." : editingHistId ? "✓ Actualizar evento" : "✓ Guardar evento"}
               </button>
+
+              {/* Eliminar — separado visualmente de Guardar, solo al editar
+                  un evento existente (no tiene sentido al crear uno nuevo). */}
+              {editingHistId && (
+                <button onClick={() => { const item = historyData.find(h => h.id === editingHistId); if (item) setDeletingHistItem(item); }}
+                  style={{ width: "100%", padding: 11, borderRadius: 13, background: "#fef2f2", color: "#dc2626", border: "1.5px solid #fecaca", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 10 }}>
+                  🗑️ Eliminar evento
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2317,7 +2358,17 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
         </div>
       )}
 
-      {showQRModal && <QRShareModal pet={petData} onClose={() => setShowQRModal(false)} />}
+      {showQRModal && <QRShareModal pet={petData} history={historyData} onClose={() => setShowQRModal(false)} />}
+
+      {deletingHistItem && (
+        <EventDeleteModal
+          event={deletingHistItem}
+          petId={petData.id}
+          petName={petData.name}
+          onClose={() => setDeletingHistItem(null)}
+          onDeleted={handleHistDeleted}
+        />
+      )}
 
       {showNotifSettings && <NotificationSettings pet={petData} user={user} onClose={() => setShowNotifSettings(false)} />}
 

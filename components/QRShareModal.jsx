@@ -10,7 +10,7 @@ const EXPIRY_OPTIONS = [
   { label: "30 días", value: 30 },
 ];
 
-export default function QRShareModal({ pet, onClose }) {
+export default function QRShareModal({ pet, history, onClose }) {
   const supabase = createClient();
   const [share, setShare] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -83,13 +83,30 @@ export default function QRShareModal({ pet, onClose }) {
     ? Math.ceil((new Date(share.expires_at) - new Date()) / 86400000)
     : null;
 
+  // Lote Q Fix 1.4/1.5 — is_public ahora filtra de verdad lo que sale en
+  // /ficha y el PDF (ver app/ficha/[token]/page.jsx). Sin este conteo, un
+  // tutor activa "Historial médico"/"Vacunas" en el QR sin saber que la
+  // mayoría (o todo) puede quedar oculto porque nunca marcó los eventos
+  // como públicos — el conteo hace visible esa realidad ANTES de compartir
+  // el enlace, no después de que alguien lo abra y vea "vacío".
+  const nonVaccineHistory = (history || []).filter(h => h.type !== "vaccine");
+  const vaccineHistory = (history || []).filter(h => h.type === "vaccine");
+  const publicHistoryCount = nonVaccineHistory.filter(h => h.is_public).length;
+  const publicVaccineCount = vaccineHistory.filter(h => h.is_public).length;
+
   const FIELDS = [
     { key: "show_basics", label: "Datos básicos", icon: "🐶" },
     { key: "show_conditions", label: "Condiciones de salud", icon: "🏥" },
     { key: "show_allergies", label: "Alergias", icon: "⚠️" },
     { key: "show_medications", label: "Medicamentos activos", icon: "💊" },
-    { key: "show_vaccines", label: "Vacunas", icon: "💉" },
-    { key: "show_history", label: "Historial médico", icon: "📅" },
+    {
+      key: "show_vaccines", label: "Vacunas", icon: "💉",
+      count: vaccineHistory.length > 0 ? { n: publicVaccineCount, m: vaccineHistory.length, noun: "vacunas" } : null,
+    },
+    {
+      key: "show_history", label: "Historial médico", icon: "📅",
+      count: nonVaccineHistory.length > 0 ? { n: publicHistoryCount, m: nonVaccineHistory.length, noun: "eventos del historial" } : null,
+    },
   ];
 
   return (
@@ -150,12 +167,28 @@ export default function QRShareModal({ pet, onClose }) {
               <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Información a mostrar</div>
               <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #FFD9C8", padding: "4px 14px", marginBottom: 14 }}>
                 {FIELDS.map((f, i) => (
-                  <label key={f.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < FIELDS.length - 1 ? "1px solid #FFF0EB" : "none", cursor: "pointer" }}>
-                    <input type="checkbox" checked={config[f.key]}
-                      onChange={e => setConfig(p => ({ ...p, [f.key]: e.target.checked }))}
-                      style={{ width: 16, height: 16, accentColor: "#2EC4B6" }} />
-                    <span style={{ fontSize: 13, color: "#3D1F0A" }}>{f.icon} {f.label}</span>
-                  </label>
+                  <div key={f.key} style={{ padding: "10px 0", borderBottom: i < FIELDS.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                      <input type="checkbox" checked={config[f.key]}
+                        onChange={e => setConfig(p => ({ ...p, [f.key]: e.target.checked }))}
+                        style={{ width: 16, height: 16, accentColor: "#2EC4B6" }} />
+                      <span style={{ fontSize: 13, color: "#3D1F0A" }}>{f.icon} {f.label}</span>
+                    </label>
+                    {/* Solo se muestra si el toggle está activo (Fix 1.5) — con
+                        el toggle apagado el conteo no aporta nada, esa sección
+                        ni siquiera se manda al ficha/PDF. */}
+                    {config[f.key] && f.count && (
+                      f.count.n === 0 ? (
+                        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4, marginLeft: 26 }}>
+                          ⚠️ Ninguno de tus {f.count.noun} está marcado como público — {f.key === "show_vaccines" ? "las vacunas no se verán" : "el historial se verá vacío"}.
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4, marginLeft: 26 }}>
+                          Se compartirán {f.count.n} de {f.count.m} {f.count.noun}.
+                        </div>
+                      )
+                    )}
+                  </div>
                 ))}
               </div>
 

@@ -59,8 +59,14 @@ export default async function FichaPublica({ params }) {
   const { data: meds } = share.show_medications
     ? await supabaseAdmin.from("medications").select("*").eq("pet_id", share.pet_id).eq("active", true)
     : { data: [] };
+  // Lote Q Fix 1 — is_public ahora filtra de verdad. Antes se traían TODAS
+  // las filas y el badge "🌐 Público" del dashboard era decorativo — un
+  // tutor que marcaba un evento como privado creía que lo ocultaba del QR
+  // y no era cierto. Aplica igual a eventos y vacunas (mismo campo, el
+  // schema no distingue tipo). Sin backfill: los eventos históricos con
+  // is_public=false quedan privados, que es justo lo que el badge prometía.
   const { data: history } = share.show_history || share.show_vaccines
-    ? await supabaseAdmin.from("medical_history").select("*").eq("pet_id", share.pet_id).order("event_date", { ascending: false }).limit(20)
+    ? await supabaseAdmin.from("medical_history").select("*").eq("pet_id", share.pet_id).eq("is_public", true).order("event_date", { ascending: false }).limit(20)
     : { data: [] };
 
   const vaccines = history?.filter(h => h.type === "vaccine") || [];
