@@ -103,10 +103,23 @@ export default function MarketplacePage() {
     setPriceChecking(false);
   };
 
+  // Fotos de producto ("photos") siguen en el bucket público "marketplace",
+  // igual que siempre — se devuelve el URL público. Boletas de compra
+  // ("receipts") van al bucket privado nuevo "marketplace-receipts" (Lote
+  // P): nadie las muestra en la UI hoy, y son datos personales (RUT,
+  // dirección, medicamento comprado) que no deberían ser listables por
+  // cualquiera con la anon key. Se devuelve la RUTA, no un URL, porque el
+  // bucket es privado y un URL público no serviría de nada.
   const uploadFile = async (file, folder, ext = null) => {
     const fileExt = ext || (file.name ? file.name.split(".").pop() : "jpg");
-    const path = `${folder}/${user.id}/${Date.now()}.${fileExt}`;
     const opts = ext === "jpg" ? { contentType: "image/jpeg" } : {};
+    if (folder === "receipts") {
+      const path = `${user.id}/${Date.now()}.${fileExt}`;
+      const { error } = await supabase.storage.from("marketplace-receipts").upload(path, file, opts);
+      if (error) return null;
+      return path;
+    }
+    const path = `${folder}/${user.id}/${Date.now()}.${fileExt}`;
     const { error } = await supabase.storage.from("marketplace").upload(path, file, opts);
     if (error) return null;
     const { data } = supabase.storage.from("marketplace").getPublicUrl(path);
@@ -139,17 +152,17 @@ export default function MarketplacePage() {
       return;
     }
     const photoUrl = await uploadFile(photoBlob, "photos", "jpg");
-    let receiptUrl = null;
+    let receiptPath = null;
     if (listingForm.receipt) {
       if (listingForm.receipt.type?.startsWith("image/")) {
         try {
           const { blob: rb } = await compressImage(listingForm.receipt);
-          receiptUrl = await uploadFile(rb, "receipts", "jpg");
+          receiptPath = await uploadFile(rb, "receipts", "jpg");
         } catch {
-          receiptUrl = await uploadFile(listingForm.receipt, "receipts");
+          receiptPath = await uploadFile(listingForm.receipt, "receipts");
         }
       } else {
-        receiptUrl = await uploadFile(listingForm.receipt, "receipts");
+        receiptPath = await uploadFile(listingForm.receipt, "receipts");
       }
     }
 
@@ -165,7 +178,7 @@ export default function MarketplacePage() {
       ai_suggested_price: priceAnalysis?.precio_sugerido_venta || null,
       ai_price_analysis: priceAnalysis?.analisis || null,
       photo_url: photoUrl,
-      receipt_url: receiptUrl,
+      receipt_path: receiptPath,
       expires_at: listingForm.expires_at || null,
       status: "active",
     }).select().single();

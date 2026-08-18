@@ -45,6 +45,13 @@ function getUserInitials(user) {
   return local.slice(0, 2).toUpperCase() || "?";
 }
 
+// Bucket privado (Lote P) para fotos de eventos médicos. TTL de las signed
+// URLs: 1h — cubre una sesión normal de consulta del dashboard sin refirmar;
+// si la pestaña queda abierta más tiempo, el onError de cada <img> refirma
+// esa foto puntual (ver renderTimelineItem / resignEventPhoto).
+const EVENT_PHOTOS_BUCKET = "pet-photos-medical";
+const EVENT_PHOTO_SIGN_TTL = 3600;
+
 const TYPE_STYLES = {
   surgery:   { bg: "#fef2f2", text: "#dc2626", dot: "#ef4444", icon: "🔪", label: "Cirugía" },
   illness:   { bg: "#fffbeb", text: "#d97706", dot: "#f59e0b", icon: "🤒", label: "Enfermedad" },
@@ -168,6 +175,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   };
   const [histSaved, setHistSaved] = useState(false);
   const [historyData, setHistoryData] = useState(history);
+  // Signed URLs de fotos de eventos médicos (bucket privado), por id de fila
+  // de medical_history. Se resuelven en batch cuando cambia historyData y,
+  // puntualmente, cuando una imagen ya cargada vence a mitad de sesión
+  // (onError en <img>, ver renderTimelineItem).
+  const [eventPhotoUrls, setEventPhotoUrls] = useState({});
   const [clinicQuery, setClinicQuery] = useState("");
   const [clinicSuggestions, setClinicSuggestions] = useState([]);
   const [clinicSearching, setClinicSearching] = useState(false);
@@ -638,6 +650,36 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setHistoryData(data || []);
   };
 
+  // Firma en batch (una sola llamada) todas las fotos de eventos que todavía
+  // no tienen signed URL resuelta cuando cambia la lista de historial.
+  useEffect(() => {
+    const pending = historyData.filter(h => h.photo_path && !eventPhotoUrls[h.id]);
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.storage
+        .from(EVENT_PHOTOS_BUCKET)
+        .createSignedUrls(pending.map(h => h.photo_path), EVENT_PHOTO_SIGN_TTL);
+      if (cancelled || !data) return;
+      setEventPhotoUrls(prev => {
+        const next = { ...prev };
+        pending.forEach((h, i) => {
+          if (data[i]?.signedUrl) next[h.id] = data[i].signedUrl;
+        });
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [historyData]);
+
+  // Refirma una foto puntual cuando su signed URL venció a mitad de sesión
+  // (la pestaña quedó abierta más de EVENT_PHOTO_SIGN_TTL) — se dispara
+  // desde el onError del <img>, no hay polling en segundo plano.
+  const resignEventPhoto = async (id, path) => {
+    const { data } = await supabase.storage.from(EVENT_PHOTOS_BUCKET).createSignedUrl(path, EVENT_PHOTO_SIGN_TTL);
+    if (data?.signedUrl) setEventPhotoUrls(prev => ({ ...prev, [id]: data.signedUrl }));
+  };
+
   useEffect(() => {
     if (histForm.type === "vaccine" && histForm.event_date) {
       const d = new Date(histForm.event_date);
@@ -646,12 +688,24 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     }
   }, [histForm.event_date, histForm.type]);
 
-  const openHistModal = (item = null) => {
+  const openHistModal = async (item = null) => {
     if (item) {
       const isVaccine = item.type === "vaccine";
-      setHistForm({ type: item.type || "exam", event: isVaccine ? "" : (item.event || ""), event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "", vaccine_name: isVaccine ? (item.event || "") : "", vaccine_next_date: isVaccine ? (item.next_date || "") : "", event_time: item.event_time || "", intensity: item.intensity || "", duration_minutes: item.duration_minutes || "", photo: null, photoPreview: item.photo_url || null, is_public: item.is_public || false });
+      // Si la foto ya vive en el bucket privado, el preview inicial usa la
+      // signed URL cacheada en eventPhotoUrls (ya resuelta por el useEffect
+      // del timeline) si está disponible; si no, se firma acá y se
+      // actualiza el form apenas llega. Filas legado (sin photo_path)
+      // siguen usando photo_url directo, sin firmar nada.
+      setHistForm({ type: item.type || "exam", event: isVaccine ? "" : (item.event || ""), event_date: item.event_date || "", vet_name: item.vet_name || "", vet_clinic: item.vet_clinic || "", notes: item.notes || "", vaccine_name: isVaccine ? (item.event || "") : "", vaccine_next_date: isVaccine ? (item.next_date || "") : "", event_time: item.event_time || "", intensity: item.intensity || "", duration_minutes: item.duration_minutes || "", photo: null, photoPreview: item.photo_path ? (eventPhotoUrls[item.id] || null) : (item.photo_url || null), is_public: item.is_public || false });
       setClinicQuery(item.vet_clinic || "");
       setEditingHistId(item.id);
+      if (item.photo_path && !eventPhotoUrls[item.id]) {
+        const { data } = await supabase.storage.from(EVENT_PHOTOS_BUCKET).createSignedUrl(item.photo_path, EVENT_PHOTO_SIGN_TTL);
+        if (data?.signedUrl) {
+          setEventPhotoUrls(prev => ({ ...prev, [item.id]: data.signedUrl }));
+          setHistForm(f => (f.photo ? f : { ...f, photoPreview: data.signedUrl }));
+        }
+      }
     } else {
       setHistForm({ type: "exam", event: "", event_date: "", vet_name: "", vet_clinic: "", notes: "", vaccine_name: "", vaccine_next_date: "" });
       setClinicQuery("");
@@ -677,16 +731,26 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     }
     setHistErrors({});
     setHistSaving(true);
-    let photoUrl = histForm.photoPreview && !histForm.photo ? histForm.photoPreview : null;
+    // Fotos de eventos van al bucket privado (Lote P) — se guarda la RUTA
+    // en photo_path, nunca un URL (los signed URLs vencen). photo_url queda
+    // en null para fotos nuevas: ya no se usa, y así no se guarda un URL
+    // público que además no apunta a ningún archivo real (el objeto vive en
+    // pet-photos-medical, no en pet-photos).
+    let photoFields;
     if (histForm.photo) {
-      const path = `events/${petData.id}/${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from("pet-photos").upload(path, histForm.photo, { contentType: "image/jpeg" });
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage.from("pet-photos").getPublicUrl(path);
-        photoUrl = urlData.publicUrl;
-      }
+      const path = `${petData.id}/${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from(EVENT_PHOTOS_BUCKET)
+        .upload(path, histForm.photo, { contentType: "image/jpeg" });
+      photoFields = uploadError ? {} : { photo_path: path, photo_url: null };
+    } else if (!editingHistId) {
+      photoFields = { photo_path: null, photo_url: null };
+    } else {
+      // Edición sin cambiar la foto: no tocar photo_path/photo_url, quedan
+      // como estaban (ya migrados a photo_path o todavía en photo_url legado).
+      photoFields = {};
     }
-    const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null, event_time: histForm.event_time || null, intensity: histForm.intensity || null, duration_minutes: histForm.duration_minutes ? parseInt(histForm.duration_minutes) : null, photo_url: photoUrl, is_public: histForm.is_public };
+    const payload = { type: histForm.type, event: histForm.type === "vaccine" ? histForm.vaccine_name : histForm.event, event_date: histForm.event_date, vet_name: histForm.vet_name || null, vet_clinic: histForm.vet_clinic || null, notes: histForm.notes || null, next_date: histForm.type === "vaccine" ? (histForm.vaccine_next_date || null) : null, event_time: histForm.event_time || null, intensity: histForm.intensity || null, duration_minutes: histForm.duration_minutes ? parseInt(histForm.duration_minutes) : null, is_public: histForm.is_public, ...photoFields };
     if (editingHistId) {
       await supabase.from("medical_history").update(payload).eq("id", editingHistId);
       await logActivity(supabase, petData.id, "Editó evento", payload.event || TYPE_STYLES[histForm.type]?.label);
@@ -770,6 +834,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const renderTimelineItem = (item) => {
     const s = TYPE_STYLES[item.type] || TYPE_STYLES.other;
+    // Filas migradas al bucket privado usan la signed URL cacheada (puede
+    // no estar lista todavía, primer render tras cargar la lista); filas
+    // legado siguen usando photo_url directo.
+    const evtPhotoSrc = item.photo_path ? eventPhotoUrls[item.id] : item.photo_url;
     return (
       <div className="timeline-item" key={item.id}>
         <div className="timeline-dot" style={{ background: s.dot }}>{s.icon}</div>
@@ -789,9 +857,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             {item.duration_minutes && <span style={{ fontSize: 10, color: "#7A4522", background: "#FFF0EB", borderRadius: 6, padding: "2px 6px" }}>⏱ {item.duration_minutes} min</span>}
             {item.is_public && <span style={{ fontSize: 10, color: "#0F6E56", background: "#E8FAF9", borderRadius: 6, padding: "2px 6px" }}>🌐 Público</span>}
           </div>
-          {item.photo_url && (
-            <img src={item.photo_url} alt="evento" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 120, borderRadius: 8, objectFit: "cover", cursor: "pointer" }}
-              onClick={() => window.open(item.photo_url, "_blank")} />
+          {evtPhotoSrc && (
+            <img src={evtPhotoSrc} alt="evento" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 120, borderRadius: 8, objectFit: "cover", cursor: "pointer" }}
+              onClick={() => window.open(evtPhotoSrc, "_blank")}
+              onError={() => item.photo_path && resignEventPhoto(item.id, item.photo_path)} />
           )}
           {(item.vet_clinic || item.vet_name) && (
             <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4 }}>

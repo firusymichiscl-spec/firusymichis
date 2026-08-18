@@ -126,6 +126,37 @@ export async function POST(req) {
     }
   }
 
+  // c.5) Borrar las fotos de Storage (avatar + eventos médicos, Lote P).
+  // DEBE ir antes de borrar la fila de pets: las policies de storage.objects
+  // verifican ownership con un exists(...pets... pets.user_id = auth.uid()) —
+  // si pets.id ya no existe, esa misma policy le negaría el borrado a su
+  // dueño legítimo. Se usa el cliente de sesión (no el admin) a propósito:
+  // el ownership ya se verificó arriba, y así esto también ejercita en vivo
+  // las policies de escritura nuevas en vez de saltárselas con service_role.
+  // No es fatal si falla — el peor caso es un archivo huérfano (el mismo
+  // estado que existía antes de este lote, no una regresión de seguridad),
+  // no vale la pena bloquear el borrado de la mascota por un error transitorio
+  // de Storage. marketplace-receipts NO se toca acá a propósito: las boletas
+  // se guardan por userId, no por petId, y borrar una mascota no implica que
+  // haya que borrar boletas de otros listings del mismo usuario.
+  const { data: eventPhotos, error: eventsListError } = await supabase.storage
+    .from("pet-photos-medical")
+    .list(petId);
+  if (eventsListError) {
+    console.error(`[eliminar-mascota] no se pudo listar fotos de eventos en Storage:`, eventsListError.message);
+  } else if (eventPhotos?.length > 0) {
+    const { error: eventsRemoveError } = await supabase.storage
+      .from("pet-photos-medical")
+      .remove(eventPhotos.map(f => `${petId}/${f.name}`));
+    if (eventsRemoveError) {
+      console.error(`[eliminar-mascota] no se pudieron borrar fotos de eventos en Storage:`, eventsRemoveError.message);
+    }
+  }
+  const { error: avatarRemoveError } = await supabase.storage.from("pet-photos").remove([`${petId}/avatar.jpg`]);
+  if (avatarRemoveError) {
+    console.error(`[eliminar-mascota] no se pudo borrar el avatar en Storage:`, avatarRemoveError.message);
+  }
+
   // d) Borrar la mascota (activity_log y ai_usage caen con ella por ON DELETE CASCADE).
   const { error: petError } = await supabase.from("pets").delete().eq("id", petId);
   if (petError) {
