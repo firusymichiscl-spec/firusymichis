@@ -191,42 +191,61 @@ async function migratePrefix({ label, sourceBucket, destBucket, table, legacyUrl
 // plan). Solo reporta, no borra nada nunca, ni siquiera en modo --run: un
 // huérfano puede ser evidencia de un bug distinto y no vale la pena
 // arriesgarse a destruir algo por error.
+// Cada .select() de esta función se chequea por error explícito antes de
+// usar su `data` — un "permission denied" (ej. falta un GRANT a
+// service_role en una tabla creada vía Dashboard, visto en producción con
+// marketplace_listings el 2026-08-18) NO debe reportarse como "0
+// huérfanos": son cosas muy distintas y confundirlas hace que el reporte
+// mienta. Si una consulta falla, esa sección se aborta con un mensaje de
+// ERROR explícito en vez de seguir con `data` en null tratado como [].
 async function scanOrphans() {
   log(`\n=== Huérfanos en pet-photos/events/ (sin fila de medical_history que los referencie) ===`);
 
-  const { data: petsRows } = await supabase.from("pets").select("id");
-  const validPetIds = new Set((petsRows || []).map(p => p.id));
+  const { data: petsRows, error: petsErr } = await supabase.from("pets").select("id");
+  if (petsErr) {
+    log(`ERROR leyendo pets: ${petsErr.message} — se aborta esta sección, NO se puede confiar en un conteo de huérfanos sin esto.`);
+  } else {
+    const validPetIds = new Set((petsRows || []).map(p => p.id));
 
-  const { data: referencedRows } = await supabase
-    .from("medical_history")
-    .select("photo_url")
-    .not("photo_url", "is", null);
-  const referencedPaths = new Set(
-    (referencedRows || []).map(r => extractStoragePath(r.photo_url, "pet-photos")).filter(Boolean)
-  );
+    const { data: referencedRows, error: histErr } = await supabase
+      .from("medical_history")
+      .select("photo_url")
+      .not("photo_url", "is", null);
+    if (histErr) {
+      log(`ERROR leyendo medical_history: ${histErr.message} — se aborta esta sección, NO se puede confiar en un conteo de huérfanos sin esto.`);
+    } else {
+      const referencedPaths = new Set(
+        (referencedRows || []).map(r => extractStoragePath(r.photo_url, "pet-photos")).filter(Boolean)
+      );
 
-  const { data: eventFolders } = await supabase.storage.from("pet-photos").list("events", { limit: 1000 });
-  let orphanCount = 0, totalBytes = 0;
-  for (const folder of eventFolders || []) {
-    const petId = folder.name;
-    const isDeletedPet = !validPetIds.has(petId);
-    const { data: files } = await supabase.storage.from("pet-photos").list(`events/${petId}`);
-    for (const f of files || []) {
-      const objPath = `events/${petId}/${f.name}`;
-      if (!referencedPaths.has(objPath)) {
-        orphanCount++;
-        totalBytes += f.metadata?.size || 0;
-        log(`  HUÉRFANO: ${objPath} (${((f.metadata?.size || 0) / 1024).toFixed(1)} KB) — mascota ${isDeletedPet ? "ELIMINADA (petId no existe en pets)" : "existe pero ningún medical_history.photo_url lo referencia"}`);
+      const { data: eventFolders } = await supabase.storage.from("pet-photos").list("events", { limit: 1000 });
+      let orphanCount = 0, totalBytes = 0;
+      for (const folder of eventFolders || []) {
+        const petId = folder.name;
+        const isDeletedPet = !validPetIds.has(petId);
+        const { data: files } = await supabase.storage.from("pet-photos").list(`events/${petId}`);
+        for (const f of files || []) {
+          const objPath = `events/${petId}/${f.name}`;
+          if (!referencedPaths.has(objPath)) {
+            orphanCount++;
+            totalBytes += f.metadata?.size || 0;
+            log(`  HUÉRFANO: ${objPath} (${((f.metadata?.size || 0) / 1024).toFixed(1)} KB) — mascota ${isDeletedPet ? "ELIMINADA (petId no existe en pets)" : "existe pero ningún medical_history.photo_url lo referencia"}`);
+          }
+        }
       }
+      log(`Total huérfanos en pet-photos/events/: ${orphanCount} (${(totalBytes / 1024 / 1024).toFixed(2)} MB). No se borra nada automáticamente.`);
     }
   }
-  log(`Total huérfanos en pet-photos/events/: ${orphanCount} (${(totalBytes / 1024 / 1024).toFixed(2)} MB). No se borra nada automáticamente.`);
 
   log(`\n=== Huérfanos en marketplace/receipts/ (sin fila de marketplace_listings que los referencie) ===`);
-  const { data: referencedReceiptRows } = await supabase
+  const { data: referencedReceiptRows, error: listingsErr } = await supabase
     .from("marketplace_listings")
     .select("receipt_url")
     .not("receipt_url", "is", null);
+  if (listingsErr) {
+    log(`ERROR leyendo marketplace_listings: ${listingsErr.message} — se aborta esta sección, NO se puede confiar en un conteo de huérfanos sin esto.`);
+    return;
+  }
   const referencedReceiptPaths = new Set(
     (referencedReceiptRows || []).map(r => extractStoragePath(r.receipt_url, "marketplace")).filter(Boolean)
   );
