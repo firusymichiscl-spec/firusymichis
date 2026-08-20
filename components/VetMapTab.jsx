@@ -488,7 +488,7 @@ export default function VetMapTab({ pet, history }) {
                 <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{vet}</div>
                 <button onClick={() => copyText(vet, key)}
                   style={{ padding: "4px 10px", borderRadius: 8, background: status?.ok ? "#e8faf4" : status && !status.ok ? "#fef2f2" : "#E8FAF9", color: status?.ok ? "#059669" : status && !status.ok ? "#dc2626" : "#2EC4B6", border: `1px solid ${status?.ok ? "#a7f3d0" : status && !status.ok ? "#fecaca" : "#9FE1CB"}`, fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                  {status?.ok ? "✓ Copiado" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
+                  {status?.ok ? "✓ Copiado al portapapeles" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
                 </button>
               </div>
             );
@@ -530,7 +530,7 @@ export default function VetMapTab({ pet, history }) {
               </div>
               <button onClick={e => { e.stopPropagation(); copyText(vet.name, key); }}
                 style={{ padding: "5px 10px", borderRadius: 8, background: status?.ok ? "#e8faf4" : status && !status.ok ? "#fef2f2" : "#FFF0EB", color: status?.ok ? "#059669" : status && !status.ok ? "#dc2626" : "#FF6B35", border: `1px solid ${status?.ok ? "#a7f3d0" : status && !status.ok ? "#fecaca" : "#FFD0BC"}`, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap" }}>
-                {status?.ok ? "✓ Copiado" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
+                {status?.ok ? "✓ Copiado al portapapeles" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
               </button>
             </div>
           </div>
