@@ -97,6 +97,13 @@ export default function VetMapTab({ pet, history }) {
   // detección falló (3.3).
   const [showLocationHelp, setShowLocationHelp] = useState(false);
   const [helpPlatform, setHelpPlatform] = useState(detectLocationHelpPlatform);
+  // Lote R4 — búsqueda manual por comuna/ciudad cuando no hay (o no se
+  // quiere dar) ubicación. manualMode true = se está mostrando el
+  // resultado de una búsqueda por texto, no la búsqueda cercana normal.
+  const [manualQuery, setManualQuery] = useState("");
+  const [manualMode, setManualMode] = useState(false);
+  const [manualLabel, setManualLabel] = useState(""); // texto efectivamente buscado, para el aviso y el "sin resultados"
+  const [manualError, setManualError] = useState(null);
 
   // Veterinarias del historial de la mascota
   const historyVets = [...new Set(
@@ -131,8 +138,13 @@ export default function VetMapTab({ pet, history }) {
 
   useEffect(() => { getLocation(); }, []);
 
-  // Inicializar mapa cuando hay ubicación y Google cargado
+  // Inicializar mapa cuando hay ubicación y Google cargado — Lote R4:
+  // NUNCA en modo manual (el mapa se oculta por completo, ver JSX). Al
+  // volver de modo manual a modo ubicación, exitManualMode() limpia
+  // mapInstanceRef a null y este efecto (ahora depende también de
+  // manualMode) lo reconstruye contra el div nuevo.
   useEffect(() => {
+    if (manualMode) return;
     if (!googleLoaded || !location || !mapRef.current) return;
     if (mapInstanceRef.current) return;
     mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
@@ -145,29 +157,64 @@ export default function VetMapTab({ pet, history }) {
       ],
     });
     searchVets();
-  }, [googleLoaded, location]);
+  }, [googleLoaded, location, manualMode]);
 
-  // Buscar veterinarias. open_now NO se envía a la API: se trae siempre el
-  // set completo (abiertas y cerradas) y el filtro/orden se aplica en el
-  // cliente, para no gastar cuota de Places con cada toggle.
-  const searchVets = async () => {
-    if (!location) return;
+  // Lote R4 — fetch de bajo nivel compartido entre la búsqueda cercana y la
+  // búsqueda manual por comuna: mismo endpoint, misma cuota/sesión (ver
+  // app/api/places/route.js), solo cambian los params. Nada de lógica de
+  // Places se duplica entre los dos modos.
+  const fetchVets = async (params) => {
     setLoading(true);
     setSelectedVet(null);
     try {
-      const params = new URLSearchParams({
-        q: "veterinaria clínica veterinaria",
-        lat: location.lat,
-        lng: location.lng,
-        radius,
-      });
-      const res = await fetch(`/api/places?${params}`);
+      const res = await fetch(`/api/places?${new URLSearchParams(params)}`);
       const data = await res.json();
       setVets(data.results || []);
     } catch {
       setVets([]);
     }
     setLoading(false);
+  };
+
+  // Buscar veterinarias cercanas. open_now NO se envía a la API: se trae
+  // siempre el set completo (abiertas y cerradas) y el filtro/orden se
+  // aplica en el cliente, para no gastar cuota de Places con cada toggle.
+  const searchVets = () => {
+    if (!location) return;
+    fetchVets({ q: "veterinaria clínica veterinaria", lat: location.lat, lng: location.lng, radius });
+  };
+
+  // Lote R4 Fix 3.4 — búsqueda manual por comuna/ciudad, sin lat/lng: pasa
+  // por la MISMA rama textsearch de app/api/places/route.js que ya existía
+  // (region=cl&language=es), solo se le manda "q" — la ruta arma
+  // "veterinaria+{q}" sola, no hace falta construir esa parte acá.
+  const searchVetsByComuna = (text) => {
+    const trimmed = text.trim();
+    if (trimmed.length < 3) { setManualError("Escribe al menos 3 caracteres."); return; }
+    if (trimmed.length > 100) { setManualError("Máximo 100 caracteres."); return; }
+    setManualError(null);
+    // "Cercanía" no tiene sentido sin ubicación de referencia.
+    if (sortBy === "distance") setSortBy("rating");
+    // El mapa se desmonta (ver JSX) — limpiar la referencia para que, si se
+    // vuelve a modo ubicación, el useEffect de arriba lo reconstruya bien.
+    mapInstanceRef.current = null;
+    markersRef.current = [];
+    setManualMode(true);
+    setManualLabel(trimmed);
+    fetchVets({ q: trimmed });
+  };
+
+  // Vuelve al modo ubicación. Si ya teníamos `location` (el usuario solo
+  // quería espiar otra comuna sin perder su ubicación real), no hace falta
+  // pedir permiso de nuevo: el useEffect [googleLoaded, location,
+  // manualMode] reconstruye el mapa y relanza searchVets() solo apenas
+  // manualMode pasa a false. Si nunca hubo location (se llegó acá desde el
+  // error de permisos), sí hay que reintentar la geolocalización real.
+  const exitManualMode = () => {
+    setManualMode(false);
+    setManualQuery("");
+    setManualError(null);
+    if (!location) getLocation();
   };
 
   // Actualizar marcadores en el mapa
@@ -223,8 +270,10 @@ export default function VetMapTab({ pet, history }) {
 
   // Solo el radio dispara una nueva búsqueda a la API — es un set de
   // resultados distinto. openNow y sortBy se resuelven abajo en el cliente.
+  // El control de radio está oculto en modo manual (ver JSX) así que esto
+  // no debería poder dispararse ahí, pero se guarda igual por las dudas.
   useEffect(() => {
-    if (location && googleLoaded) searchVets();
+    if (!manualMode && location && googleLoaded) searchVets();
   }, [radius]);
 
   // Copia solo el nombre (para pegar en el campo "Veterinaria" de un evento
@@ -251,7 +300,13 @@ export default function VetMapTab({ pet, history }) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
 
+  // Lote R4 — en modo manual nunca se muestra distancia, aunque `location`
+  // siga existiendo de fondo (el usuario puede estar espiando otra comuna
+  // sin haber perdido su ubicación real) — mostrar una distancia calculada
+  // contra ESA ubicación real para resultados de OTRA comuna sería
+  // inventada, exactamente lo que se decidió evitar.
   const getDistance = (vetLocation) => {
+    if (manualMode) return null;
     const dist = getDistanceMeters(vetLocation);
     if (!isFinite(dist)) return null;
     return dist < 1000 ? `${Math.round(dist)} m` : `${(dist/1000).toFixed(1)} km`;
@@ -272,6 +327,11 @@ export default function VetMapTab({ pet, history }) {
       const bOpen = b.opening_hours?.open_now ? 1 : 0;
       if (aOpen !== bOpen) return bOpen - aOpen;
     }
+    // Sin este guard, un empate en "open" (o sortBy=="distance", que ya no
+    // debería poder pasar) caería igual al comparador de distancia de
+    // abajo, colando un orden por la ubicación REAL del usuario aunque no
+    // se esté mostrando ninguna distancia — mismo motivo que getDistance.
+    if (manualMode) return 0;
     return getDistanceMeters(a.geometry?.location) - getDistanceMeters(b.geometry?.location);
   });
 
@@ -294,22 +354,28 @@ export default function VetMapTab({ pet, history }) {
 
       {/* Filtros */}
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Radio de búsqueda</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-          {RADII.map(r => (
-            <div key={r.value} onClick={() => setRadius(r.value)}
-              style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${radius === r.value ? "#FF6B35" : "#FFD9C8"}`, background: radius === r.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: radius === r.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
-              {r.label}
+        {/* Lote R4 — radio de búsqueda no aplica sin punto de referencia. */}
+        {!manualMode && (
+          <>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Radio de búsqueda</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {RADII.map(r => (
+                <div key={r.value} onClick={() => setRadius(r.value)}
+                  style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${radius === r.value ? "#FF6B35" : "#FFD9C8"}`, background: radius === r.value ? "#FFF0EB" : "#fff", fontSize: 11, fontWeight: 700, color: radius === r.value ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                  {r.label}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
         {hasOpenNowData && (
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#7A4522", fontWeight: 600, cursor: "pointer", marginBottom: 10 }}>
             <input type="checkbox" checked={openNow} onChange={e => {
               const checked = e.target.checked;
               setOpenNow(checked);
-              // "Ordenar por abiertas" no tiene sentido si ya se filtra solo por abiertas.
-              if (checked && sortBy === "open") setSortBy("distance");
+              // "Ordenar por abiertas" no tiene sentido si ya se filtra solo
+              // por abiertas — vuelve a "Cercanía" solo si existe ese modo.
+              if (checked && sortBy === "open") setSortBy(manualMode ? "rating" : "distance");
             }} style={{ width: 14, height: 14, accentColor: "#FF6B35" }} />
             Solo abiertas ahora
           </label>
@@ -317,7 +383,8 @@ export default function VetMapTab({ pet, history }) {
         <div style={{ fontSize: 10, fontWeight: 700, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Ordenar por</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
-            { id: "distance", label: "Cercanía" },
+            // Lote R4 — "Cercanía" no tiene sentido sin punto de referencia.
+            ...(!manualMode ? [{ id: "distance", label: "Cercanía" }] : []),
             { id: "rating", label: "Mejor evaluadas" },
             ...(hasOpenNowData && !openNow ? [{ id: "open", label: "Abiertas ahora" }] : []),
           ].map(o => (
@@ -363,8 +430,46 @@ export default function VetMapTab({ pet, history }) {
         </div>
       )}
 
-      {/* Mapa */}
-      {location && (
+      {/* Lote R4 Fix 3.4 — búsqueda manual por comuna/ciudad. Siempre
+          visible, funcione o no la ubicación (por si alguien con ubicación
+          activa igual quiere mirar otra comuna). */}
+      <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14, border: "1.5px solid #FFD9C8" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 8 }}>🔎 Buscar en otra comuna o ciudad</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={manualQuery}
+            onChange={e => { setManualQuery(e.target.value); setManualError(null); }}
+            onKeyDown={e => e.key === "Enter" && searchVetsByComuna(manualQuery)}
+            placeholder="ej: Providencia, Viña del Mar..."
+            maxLength={100}
+            style={{ flex: 1, padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${manualError ? "#dc2626" : "#FFD9C8"}`, background: "#FFFAF7", fontFamily: "'Nunito', sans-serif", fontSize: 13, color: "#3D1F0A", outline: "none", boxSizing: "border-box" }}
+          />
+          <button onClick={() => searchVetsByComuna(manualQuery)}
+            style={{ padding: "9px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+            Buscar
+          </button>
+        </div>
+        {manualError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>⚠️ {manualError}</div>}
+        {manualMode && (
+          <button onClick={exitManualMode}
+            style={{ marginTop: 10, background: "transparent", border: "none", color: "#2EC4B6", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+            📍 Usar mi ubicación
+          </button>
+        )}
+      </div>
+
+      {/* Aviso de modo manual — Fix 3.4: deja claro que no hay distancias
+          porque no se está usando la ubicación real. */}
+      {manualMode && (
+        <div style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 10, padding: "8px 12px", marginBottom: 14, fontSize: 11, color: "#7A4522" }}>
+          Resultados en <strong>{manualLabel}</strong> · sin distancias porque no estamos usando tu ubicación.
+        </div>
+      )}
+
+      {/* Mapa — oculto por completo en modo manual (Fix 2): sin punto de
+          referencia, centrarlo en cualquier parte daría una falsa sensación
+          de "estás aquí". */}
+      {!manualMode && location && (
         <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 14, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" }}>
           <div ref={mapRef} style={{ width: "100%", height: 240 }} />
         </div>
@@ -432,7 +537,19 @@ export default function VetMapTab({ pet, history }) {
         );
       })}
 
-      {!loading && vets.length === 0 && location && (
+      {/* Lote R4 Fix 3.6 — mensaje específico del modo manual (no hay radio
+          que aumentar sin punto de referencia). */}
+      {!loading && manualMode && vets.length === 0 && (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-icon">🏥</div>
+            <p>No encontramos veterinarias en {manualLabel}.</p>
+            <p style={{ fontSize: 11, marginTop: 4 }}>Prueba con el nombre de la comuna o ciudad.</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && !manualMode && vets.length === 0 && location && (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon">🏥</div>
