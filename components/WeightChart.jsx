@@ -56,39 +56,31 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
-    const { data: current } = await supabase
+    // Lote R3 — un solo fetch de TODO el historial del pet en vez de 3
+    // queries recortadas por mes/sporadic. Antes, un peso SEMANAL cargado
+    // este mismo mes no entraba nunca al cálculo de "Promedio anual" (solo
+    // entraban los sporádicos del mes actual + todo lo anterior a este
+    // mes) — con un único fetch se derivan weekData y yearlyAvgs del mismo
+    // set completo, sin ese hueco.
+    const { data } = await supabase
       .from("weight_logs")
       .select("*")
       .eq("pet_id", pet.id)
-      .gte("logged_date", firstDay)
-      .lte("logged_date", lastDay)
-      .order("week_of_month", { ascending: true });
-
-    const { data: hist } = await supabase
-      .from("weight_logs")
-      .select("*")
-      .eq("pet_id", pet.id)
-      .lt("logged_date", firstDay)
       .order("logged_date", { ascending: true });
 
-    const { data: sporadic } = await supabase
-      .from("weight_logs")
-      .select("*")
-      .eq("pet_id", pet.id)
-      .eq("granularity", "sporadic")
-      .gte("logged_date", firstDay)
-      .lte("logged_date", lastDay);
+    const logs = data || [];
 
-    const allHist = [...(hist || []), ...(sporadic || [])];
-
+    const currentMonthWeekly = logs.filter(w =>
+      w.granularity === "weekly" && w.logged_date >= firstDay && w.logged_date <= lastDay
+    );
     const weeks = Array.from({ length: Math.min(totalWeeks, 4) }, (_, i) => {
       const wk = i + 1;
-      const found = current?.find(w => w.week_of_month === wk);
+      const found = currentMonthWeekly.find(w => w.week_of_month === wk);
       return { week: wk, kg: found ? parseFloat(found.weight_kg) : null, id: found?.id || null };
     });
 
     if (totalWeeks === 5) {
-      const wk5 = current?.find(w => w.week_of_month === 5);
+      const wk5 = currentMonthWeekly.find(w => w.week_of_month === 5);
       if (wk5 && weeks[3]) {
         const avg = ((weeks[3].kg || 0) + parseFloat(wk5.weight_kg)) / 2;
         weeks[3] = { ...weeks[3], kg: parseFloat(avg.toFixed(1)) };
@@ -97,17 +89,40 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
 
     setWeekData(weeks);
 
+    // Lote R3 — rediseño del promedio anual: el año EN CURSO es siempre
+    // calculado desde pesos reales (weekly/sporadic) — nunca desde una fila
+    // 'annual' u 'semester' vieja, para que no quede un número fijo de
+    // agosto sin reflejar lo que pase en septiembre. Los años ANTERIORES
+    // prefieren la fila 'annual' explícita (lo que el tutor afirmó a mano)
+    // por sobre el promedio de otras filas — "el ingresado manda".
     const byYear = {};
-    allHist.forEach(w => {
-      const y = w.logged_date.slice(0, 4);
-      if (!byYear[y]) byYear[y] = [];
-      byYear[y].push(parseFloat(w.weight_kg));
+    logs.forEach(w => {
+      const y = parseInt(w.logged_date.slice(0, 4));
+      if (!byYear[y]) byYear[y] = { annual: null, others: [] };
+      if (w.granularity === "annual") byYear[y].annual = w;
+      else byYear[y].others.push(w);
     });
 
-    const avgs = Object.entries(byYear).map(([y, vals]) => ({
-      year: y,
-      kg: parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)),
-    }));
+    const avgs = [];
+    Object.entries(byYear).forEach(([yStr, bucket]) => {
+      const y = parseInt(yStr);
+      if (y === year) {
+        const real = bucket.others.filter(w => w.granularity === "weekly" || w.granularity === "sporadic");
+        if (real.length > 0) {
+          const kg = real.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / real.length;
+          avgs.push({ year: y, kg: parseFloat(kg.toFixed(1)), isCurrent: true });
+        }
+        // Sin registros reales este año: no se agrega nada — nunca 0 ni vacío.
+        return;
+      }
+      if (bucket.annual) {
+        avgs.push({ year: y, kg: parseFloat(parseFloat(bucket.annual.weight_kg).toFixed(1)), isCurrent: false });
+      } else if (bucket.others.length > 0) {
+        const kg = bucket.others.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / bucket.others.length;
+        avgs.push({ year: y, kg: parseFloat(kg.toFixed(1)), isCurrent: false });
+      }
+    });
+    avgs.sort((a, b) => a.year - b.year);
 
     setYearlyAvgs(avgs);
   };
@@ -473,15 +488,17 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {yearlyAvgs.map((a, i) => (
                 <div key={i} style={{ ...css.histChip, cursor: isArchived ? "default" : "pointer" }}
-                  title={isArchived ? undefined : "Editar en el historial de peso"}
+                  title={isArchived ? undefined : (a.isCurrent ? "Se calcula solo con los pesos que registres — ver detalle" : "Editar en el historial de peso")}
                   onClick={() => !isArchived && setShowHistoryModal(true)}>
-                  {!isArchived && (
+                  {/* Lote R3 — el año en curso es siempre calculado: sin ✕
+                      de eliminar, no hay una fila manual que borrar. */}
+                  {!isArchived && !a.isCurrent && (
                     <button onClick={e => { e.stopPropagation(); deleteYearAvg(a.year, a.kg); }} title={`Eliminar registro de ${a.year}`}
                       style={{ position: "absolute", top: -5, right: -5, width: 15, height: 15, borderRadius: "50%", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 9, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
                       ×
                     </button>
                   )}
-                  <span style={{ fontSize: 9, color: "#C4845A" }}>{a.year}</span>
+                  <span style={{ fontSize: 9, color: "#C4845A" }}>{a.year}{a.isCurrent ? " 🔄" : ""}</span>
                   <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#7A4522" }}>{a.kg.toFixed(1)} kg</span>
                 </div>
               ))}

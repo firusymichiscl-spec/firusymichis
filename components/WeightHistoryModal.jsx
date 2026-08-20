@@ -7,6 +7,18 @@ import { formatFecha } from "@/lib/fechas";
 import { validateWeightRange } from "@/lib/nutrition";
 import { validateRequired } from "@/lib/formValidation";
 
+// Lote R3 — "años anteriores" editables: desde startYear hasta
+// currentYear-1 (el año en curso NUNCA entra acá, es siempre calculado).
+// Si startYear > currentYear-1 (ej. mascota nacida este mismo año), no hay
+// años anteriores todavía — lista vacía, no un año negativo ni inventado.
+function buildPastYears(startYear, currentYear) {
+  const end = currentYear - 1;
+  if (startYear > end) return [];
+  const list = [];
+  for (let y = end; y >= startYear; y--) list.push(y);
+  return list;
+}
+
 export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const supabase = createClient();
   const [mode, setMode] = useState("annual");
@@ -17,21 +29,44 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   // modos (nunca hay más de uno visible a la vez, solo uno está montado).
   const [rangeError, setRangeError] = useState("");
 
-  const birthYear = pet.birth_date
-    ? parseInt(pet.birth_date.split("-")[0], 10)
-    : new Date().getFullYear() - 5;
   const currentYear = new Date().getFullYear();
-  const yearsCount = Math.max(currentYear - birthYear, 1);
-const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const explicitBirthYear = pet.birth_date ? parseInt(pet.birth_date.split("-")[0], 10) : null;
 
-  const [annualData, setAnnualData] = useState(Object.fromEntries(years.map(y => [y, ""])));
-  const [semYear, setSemYear] = useState(years[0] || currentYear - 1);
+  // Lote R3 — rediseño del promedio anual (ver diseño acordado):
+  // - pastYears: años ANTERIORES, siempre editables a mano. Prioridad para
+  //   decidir desde dónde arrancan: birth_date > año del registro de peso
+  //   más antiguo (si no hay birth_date) > últimos 10 años (si no hay
+  //   ni birth_date ni ningún registro). Se resuelve de verdad recién en
+  //   loadExisting (necesita los datos cargados); acá es solo el valor
+  //   inicial antes de esa carga, para no arrancar con una lista vacía.
+  // - currentYearAvg: el año EN CURSO, SIEMPRE calculado desde pesos
+  //   reales (weekly/sporadic) — nunca editable, nunca eliminable, nunca
+  //   desde una fila 'annual'/'semester' vieja. Resuelve el bug de que un
+  //   valor tipeado en agosto quedara fijo sin reflejar septiembre.
+  const [pastYears, setPastYears] = useState(() =>
+    buildPastYears(explicitBirthYear ?? currentYear - 10, currentYear)
+  );
+  const [annualData, setAnnualData] = useState({});
+  const [currentYearAvg, setCurrentYearAvg] = useState(null);
+  // Filas crudas de weight_logs de este pet — se guardan para poder
+  // recalcular semestres al vuelo cuando cambia semYear, sin refetch.
+  const [allLogs, setAllLogs] = useState([]);
+
+  // Para el header ("desde {birthYear}") y el min= del date picker de
+  // esporádicos — mismo criterio de prioridad que pastYears.
+  const birthYear = explicitBirthYear ?? (pastYears.length > 0 ? pastYears[pastYears.length - 1] : currentYear);
+
+  const allSelectableYears = [currentYear, ...pastYears];
+
+  const [semYear, setSemYear] = useState(currentYear);
   const [sem1, setSem1] = useState("");
   const [sem2, setSem2] = useState("");
-  const [semAutoCalc, setSemAutoCalc] = useState(false);
+  const [sem1Source, setSem1Source] = useState("none"); // "manual" | "calculated" | "suggested" | "none"
+  const [sem2Source, setSem2Source] = useState("none");
   const [sporadic, setSporadic] = useState([{ date: "", kg: "" }]);
   const [existingSporadic, setExistingSporadic] = useState([]);
-  const [weekYear, setWeekYear] = useState(years[0] || currentYear - 1);
+  const [weekYear, setWeekYear] = useState(currentYear);
   const [weekMonth, setWeekMonth] = useState(0);
   const [weekData, setWeekData] = useState({ 1: "", 2: "", 3: "", 4: "" });
 
@@ -41,57 +76,121 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
 
   const loadExisting = async () => {
     setLoadingData(true);
-    const firstDay = `${birthYear}-01-01`;
-    const lastDay = `${currentYear}-12-31`;
-
+    // Sin cota inferior: si no hay birth_date, necesitamos poder encontrar
+    // el registro real más antiguo sea de cuando sea, para resolver
+    // pastYears bien (prioridad 2: "año del registro más antiguo").
     const { data } = await supabase
       .from("weight_logs")
       .select("*")
       .eq("pet_id", pet.id)
-      .gte("logged_date", firstDay)
-      .lte("logged_date", lastDay)
+      .lte("logged_date", `${currentYear}-12-31`)
       .order("logged_date", { ascending: true });
 
-    if (!data?.length) { setLoadingData(false); return; }
+    const logs = data || [];
+    setAllLogs(logs);
 
-    // Cargar anuales
+    const resolvedStart = explicitBirthYear
+      ?? (logs.length > 0 ? parseInt(logs[0].logged_date.slice(0, 4), 10) : currentYear - 10);
+    const resolvedPastYears = buildPastYears(resolvedStart, currentYear);
+    setPastYears(resolvedPastYears);
+
+    // Bucket por año: fila 'annual' explícita aparte del resto — un año
+    // anterior con valor ingresado a mano SIEMPRE usa ese valor ("el
+    // ingresado manda"), no un promedio mezclado con datos reales.
     const byYear = {};
-    data.forEach(w => {
-      const y = parseInt(w.logged_date.slice(0, 4));
-      if (!byYear[y]) byYear[y] = [];
-      byYear[y].push(parseFloat(w.weight_kg));
+    logs.forEach(w => {
+      const y = parseInt(w.logged_date.slice(0, 4), 10);
+      if (!byYear[y]) byYear[y] = { annual: null, others: [] };
+      if (w.granularity === "annual") byYear[y].annual = w;
+      else byYear[y].others.push(w);
     });
 
-    const newAnnual = { ...Object.fromEntries(years.map(y => [y, ""])) };
-    Object.entries(byYear).forEach(([y, vals]) => {
-      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-      newAnnual[parseInt(y)] = avg.toFixed(1);
+    const newAnnual = Object.fromEntries(resolvedPastYears.map(y => [y, ""]));
+    resolvedPastYears.forEach(y => {
+      const bucket = byYear[y];
+      if (!bucket) return;
+      if (bucket.annual) { newAnnual[y] = parseFloat(bucket.annual.weight_kg).toFixed(1); return; }
+      if (bucket.others.length > 0) {
+        const avg = bucket.others.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / bucket.others.length;
+        newAnnual[y] = avg.toFixed(1);
+      }
     });
     setAnnualData(newAnnual);
 
+    // Año en curso: promedio de SOLO weekly/sporadic (pesos reales) — una
+    // fila 'annual' o 'semester' vieja del año en curso queda ignorada a
+    // propósito (ver punto 5 del diseño: no se migran automáticamente).
+    const curBucket = byYear[currentYear];
+    const curReal = (curBucket?.others || []).filter(w => w.granularity === "weekly" || w.granularity === "sporadic");
+    setCurrentYearAvg(curReal.length > 0
+      ? curReal.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / curReal.length
+      : null);
+
     // Cargar esporádicos existentes
-    const spor = data.filter(w => w.granularity === "sporadic");
-    if (spor.length) {
-      setExistingSporadic(spor.map(w => ({
-        id: w.id,
-        date: w.logged_date,
-        kg: parseFloat(w.weight_kg).toFixed(1),
-      })));
-    }
+    const spor = logs.filter(w => w.granularity === "sporadic");
+    setExistingSporadic(spor.map(w => ({
+      id: w.id,
+      date: w.logged_date,
+      kg: parseFloat(w.weight_kg).toFixed(1),
+    })));
 
     setLoadingData(false);
   };
 
-  // Cuando cambia semYear, calcular promedios semestrales desde anuales
-  useEffect(() => {
-    const y = semYear;
-    const sem1Avg = annualData[y];
-    if (sem1Avg && !sem1) {
-      setSem1(sem1Avg);
-      setSem2(sem1Avg);
-      setSemAutoCalc(true);
+  // Lote R3 — un semestre está "cerrado" (editable a mano) si ya terminó:
+  // cualquier semestre de un año anterior, o Ene-Jun del año en curso una
+  // vez que ya estamos en julio o después. El que sigue en curso (o el que
+  // todavía no empieza) es SIEMPRE calculado — mismo criterio que el año.
+  const isSemesterClosed = (y, semester) => {
+    if (y < currentYear) return true;
+    if (y > currentYear) return false;
+    const endMonth = semester === 1 ? 6 : 12;
+    return currentMonth > endMonth;
+  };
+
+  const computeSemester = (y, semester) => {
+    const startMonth = semester === 1 ? 1 : 7;
+    const endMonth = semester === 1 ? 6 : 12;
+    const rows = allLogs.filter(w => {
+      const wy = parseInt(w.logged_date.slice(0, 4), 10);
+      const wm = parseInt(w.logged_date.slice(5, 7), 10);
+      return wy === y && wm >= startMonth && wm <= endMonth;
+    });
+    const real = rows.filter(w => w.granularity === "weekly" || w.granularity === "sporadic");
+
+    if (!isSemesterClosed(y, semester)) {
+      // En curso (o todavía no empieza): SIEMPRE calculado desde pesos
+      // reales, igual que el año en curso — nunca desde una fila
+      // 'semester' vieja.
+      if (real.length === 0) return { value: "", source: "calculated" };
+      const avg = real.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / real.length;
+      return { value: avg.toFixed(1), source: "calculated" };
     }
-  }, [semYear, annualData]);
+
+    // Cerrado: la fila 'semester' explícita manda.
+    const explicit = rows.find(w => w.granularity === "semester" && w.semester === semester);
+    if (explicit) return { value: parseFloat(explicit.weight_kg).toFixed(1), source: "manual" };
+    if (real.length > 0) {
+      const avg = real.reduce((a, w) => a + parseFloat(w.weight_kg), 0) / real.length;
+      return { value: avg.toFixed(1), source: "calculated" };
+    }
+    // Sin nada propio: sugerir el promedio anual de ese año como punto de
+    // partida editable (mismo comportamiento que ya existía antes de este
+    // rediseño, ahora por semestre en vez de un solo banner global).
+    if (annualData[y]) return { value: annualData[y], source: "suggested" };
+    return { value: "", source: "none" };
+  };
+
+  // Recalcula sem1/sem2 cada vez que cambia el año elegido o llegan datos
+  // nuevos (después de loadExisting). No pisa lo que el usuario esté
+  // tipeando en otro momento porque allLogs/annualData solo cambian al
+  // cargar o justo antes de cerrarse el modal tras guardar.
+  useEffect(() => {
+    const s1 = computeSemester(semYear, 1);
+    const s2 = computeSemester(semYear, 2);
+    setSem1(s1.value); setSem1Source(s1.source);
+    setSem2(s2.value); setSem2Source(s2.source);
+  }, [semYear, allLogs, annualData]);
 
   const saveAnnual = async () => {
     const entries = Object.entries(annualData).filter(([, v]) => v && parseFloat(v) > 0);
@@ -123,9 +222,14 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
   };
 
   const saveSemester = async () => {
+    // Lote R3 — solo se guarda un semestre CERRADO. El que sigue en curso
+    // no tiene input editable en la UI (es de solo lectura), así que en
+    // teoría nunca llegaría acá con datos — este guard es la garantía real
+    // de que no se pueda escribir una fila 'semester' para el que está en
+    // curso, sin depender de que el render nunca cambie.
     const semEntries = [];
-    if (sem1 && parseFloat(sem1) > 0) semEntries.push({ kg: sem1, id: "sem1-input" });
-    if (sem2 && parseFloat(sem2) > 0) semEntries.push({ kg: sem2, id: "sem2-input" });
+    if (isSemesterClosed(semYear, 1) && sem1 && parseFloat(sem1) > 0) semEntries.push({ kg: sem1, id: "sem1-input", semester: 1, date: `${semYear}-03-01` });
+    if (isSemesterClosed(semYear, 2) && sem2 && parseFloat(sem2) > 0) semEntries.push({ kg: sem2, id: "sem2-input", semester: 2, date: `${semYear}-09-01` });
     const ok = validateRequired(semEntries.map(e => {
       const check = validateWeightRange(e.kg, pet.species);
       return { valid: check.valid, id: e.id, message: check.message, onInvalid: setRangeError };
@@ -133,29 +237,19 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     if (!ok) return;
     setRangeError("");
     setLoading(true);
-    if (sem1 && parseFloat(sem1) > 0) {
+    for (const e of semEntries) {
       await supabase.from("weight_logs").upsert({
         pet_id: pet.id,
-        weight_kg: parseFloat(sem1),
-        logged_date: `${semYear}-03-01`,
+        weight_kg: parseFloat(e.kg),
+        logged_date: e.date,
         granularity: "semester",
-        semester: 1,
-        week_of_month: null,
-      }, { onConflict: "pet_id,logged_date,granularity" });
-    }
-    if (sem2 && parseFloat(sem2) > 0) {
-      await supabase.from("weight_logs").upsert({
-        pet_id: pet.id,
-        weight_kg: parseFloat(sem2),
-        logged_date: `${semYear}-09-01`,
-        granularity: "semester",
-        semester: 2,
+        semester: e.semester,
         week_of_month: null,
       }, { onConflict: "pet_id,logged_date,granularity" });
     }
     setLoading(false);
     setSaved(true);
-    await logActivity(supabase, pet.id, "Registró peso", `histórico semestral ${semYear}`);
+    if (semEntries.length > 0) await logActivity(supabase, pet.id, "Registró peso", `histórico semestral ${semYear}`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
   };
 
@@ -212,6 +306,9 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
   // logged_date es determinístico (marzo/septiembre del año elegido), el
   // mismo que usa el upsert de saveSemester — no hace falta rastrear un id.
   const deleteSemester = async (semester) => {
+    // El semestre en curso no tiene botón de eliminar en la UI — esto es
+    // la garantía de respaldo, igual que en saveSemester.
+    if (!isSemesterClosed(semYear, semester)) return;
     const kg = semester === 1 ? sem1 : sem2;
     const label = semester === 1 ? "Enero–Junio" : "Julio–Diciembre";
     if (!confirm(`¿Eliminar el registro de ${label} ${semYear}: ${kg} kg?`)) return;
@@ -224,8 +321,14 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
       .eq("granularity", "semester")
       .eq("semester", semester);
     await logActivity(supabase, pet.id, "Eliminó registro de peso", `semestre ${label} ${semYear} (${kg} kg)`);
-    if (semester === 1) setSem1(""); else setSem2("");
-    setSemAutoCalc(false);
+    // Se saca del estado local en vez de limpiar sem1/sem2 a mano — así el
+    // useEffect de arriba recalcula solo, y si había datos reales o una
+    // sugerencia del anual debajo de la fila 'semester' borrada, vuelven a
+    // aparecer (mismo comportamiento que deleteYear con annualData).
+    setAllLogs(list => list.filter(w => !(
+      w.granularity === "semester" && w.semester === semester &&
+      w.logged_date === `${semYear}-${semester === 1 ? "03" : "09"}-01`
+    )));
     setLoading(false);
   };
 
@@ -252,8 +355,10 @@ const resetAll = async () => {
     .gte("logged_date", firstDay)
     .lte("logged_date", lastDay);
   await logActivity(supabase, pet.id, "Eliminó registro de peso", "historial completo");
-  setAnnualData(Object.fromEntries(years.map(y => [y, ""])));
-  setSem1(""); setSem2(""); setSemAutoCalc(false);
+  setAnnualData(Object.fromEntries(pastYears.map(y => [y, ""])));
+  setCurrentYearAvg(null);
+  setAllLogs([]);
+  setSem1(""); setSem2(""); setSem1Source("none"); setSem2Source("none");
   setSporadic([{ date: "", kg: "" }]);
   setExistingSporadic([]);
   setWeekData({ 1: "", 2: "", 3: "", 4: "" });
@@ -374,31 +479,52 @@ const resetAll = async () => {
                 {mode === "annual" && (
                   <div>
                     <div style={css.sectionLabel}>Peso promedio por año</div>
-                    <div style={{ maxHeight: 340, overflowY: "auto", paddingRight: 4 }}>
-                      {years.map(y => {
-                        const val = parseFloat(annualData[y]);
-                        // Lote R Fix 2.5 — aviso no bloqueante, mismo umbral
-                        // que WeightChart.jsx: >50% de diferencia contra el
-                        // peso actual conocido de la mascota.
-                        const deviates = pet.weight_kg && val && !isNaN(val) && Math.abs(val - pet.weight_kg) / pet.weight_kg > 0.5;
-                        return (
-                          <div key={y} style={css.row}>
-                            <span style={css.yearLabel}>{y}</span>
-                            <input id={`annual-weight-${y}`} style={{ ...css.input, flex: 1 }} type="number" placeholder="kg promedio" step="0.1"
-                              value={annualData[y] || ""}
-                              onChange={e => { setAnnualData(p => ({ ...p, [y]: e.target.value })); setRangeError(""); }} />
-                            {deviates && (
-                              <span title={`¿Seguro? El último peso registrado fue ${pet.weight_kg} kg`} style={{ fontSize: 14, flexShrink: 0, cursor: "help" }}>⚠️</span>
-                            )}
-                            {annualData[y] && (
-                              <button onClick={() => deleteYear(y)} disabled={loading} title={`Eliminar registro de ${y}`}
-                                style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", padding: "0 10px", height: 34, cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
-                            )}
-                          </div>
-                        );
-                      })}
+
+                    {/* Lote R3 — año en curso: SIEMPRE calculado, sin campo
+                        editable ni botón de eliminar. */}
+                    <div style={{ background: "#E8FAF9", border: "1.5px solid #2EC4B6", borderRadius: 12, padding: "10px 14px", marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "#0F6E56" }}>{currentYear} (en curso)</span>
+                        <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#0F6E56" }}>
+                          {currentYearAvg !== null ? `${currentYearAvg.toFixed(1)} kg` : "Sin registros aún"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#0F6E56", marginTop: 4 }}>
+                        Se calcula automáticamente con los pesos que registres este año.
+                      </div>
                     </div>
-                    <button style={css.saveBtn} onClick={saveAnnual} disabled={loading}>
+
+                    {pastYears.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#C4845A", textAlign: "center", padding: "12px 0 16px" }}>
+                        Todavía no hay años anteriores que cargar.
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 300, overflowY: "auto", paddingRight: 4 }}>
+                        {pastYears.map(y => {
+                          const val = parseFloat(annualData[y]);
+                          // Lote R Fix 2.5 — aviso no bloqueante, mismo umbral
+                          // que WeightChart.jsx: >50% de diferencia contra el
+                          // peso actual conocido de la mascota.
+                          const deviates = pet.weight_kg && val && !isNaN(val) && Math.abs(val - pet.weight_kg) / pet.weight_kg > 0.5;
+                          return (
+                            <div key={y} style={css.row}>
+                              <span style={css.yearLabel}>{y}</span>
+                              <input id={`annual-weight-${y}`} style={{ ...css.input, flex: 1 }} type="number" placeholder="kg promedio" step="0.1"
+                                value={annualData[y] || ""}
+                                onChange={e => { setAnnualData(p => ({ ...p, [y]: e.target.value })); setRangeError(""); }} />
+                              {deviates && (
+                                <span title={`¿Seguro? El último peso registrado fue ${pet.weight_kg} kg`} style={{ fontSize: 14, flexShrink: 0, cursor: "help" }}>⚠️</span>
+                              )}
+                              {annualData[y] && (
+                                <button onClick={() => deleteYear(y)} disabled={loading} title={`Eliminar registro de ${y}`}
+                                  style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", padding: "0 10px", height: 34, cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <button style={css.saveBtn} onClick={saveAnnual} disabled={loading || pastYears.length === 0}>
                       {saved ? "✓ Guardado" : loading ? "Guardando..." : "✓ Guardar historial anual"}
                     </button>
                   </div>
@@ -409,45 +535,51 @@ const resetAll = async () => {
                   <div>
                     <div style={css.sectionLabel}>Selecciona año y completa semestres</div>
                     <select style={{ ...css.select, marginBottom: 14 }} value={semYear}
-                      onChange={e => {
-                        const y = parseInt(e.target.value);
-                        setSemYear(y);
-                        const avg = annualData[y];
-                        if (avg) { setSem1(avg); setSem2(avg); setSemAutoCalc(true); }
-                        else { setSem1(""); setSem2(""); setSemAutoCalc(false); }
-                      }}>
-                      {years.map(y => <option key={y} value={y}>{y}</option>)}
+                      onChange={e => setSemYear(parseInt(e.target.value))}>
+                      {allSelectableYears.map(y => <option key={y} value={y}>{y}{y === currentYear ? " (en curso)" : ""}</option>)}
                     </select>
-                    {semAutoCalc && (
-                      <div style={{ background: "#E8FAF9", borderRadius: 10, padding: "8px 12px", marginBottom: 12, fontSize: 12, color: "#0F6E56", fontWeight: 600 }}>
-                        ✓ Valores calculados desde el promedio anual de {semYear} — puedes modificarlos
-                      </div>
-                    )}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Enero – Junio</div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <input id="sem1-input" style={{ ...css.input, flex: 1 }} type="number" placeholder="ej: 14.2" step="0.1"
-                            value={sem1} onChange={e => { setSem1(e.target.value); setSemAutoCalc(false); setRangeError(""); }} />
-                          {sem1 && (
-                            <button onClick={() => deleteSemester(1)} disabled={loading} title="Eliminar Enero–Junio"
-                              style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Julio – Diciembre</div>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <input id="sem2-input" style={{ ...css.input, flex: 1 }} type="number" placeholder="ej: 15.0" step="0.1"
-                            value={sem2} onChange={e => { setSem2(e.target.value); setSemAutoCalc(false); setRangeError(""); }} />
-                          {sem2 && (
-                            <button onClick={() => deleteSemester(2)} disabled={loading} title="Eliminar Julio–Diciembre"
-                              style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
-                          )}
-                        </div>
-                      </div>
+                      {[1, 2].map(semester => {
+                        const closed = isSemesterClosed(semYear, semester);
+                        const value = semester === 1 ? sem1 : sem2;
+                        const source = semester === 1 ? sem1Source : sem2Source;
+                        const label = semester === 1 ? "Enero – Junio" : "Julio – Diciembre";
+                        const inputId = semester === 1 ? "sem1-input" : "sem2-input";
+                        return (
+                          <div key={semester}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>{label}</div>
+                            {closed ? (
+                              <>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <input id={inputId} style={{ ...css.input, flex: 1 }} type="number" placeholder="ej: 14.2" step="0.1"
+                                    value={value}
+                                    onChange={e => {
+                                      if (semester === 1) { setSem1(e.target.value); setSem1Source("manual"); }
+                                      else { setSem2(e.target.value); setSem2Source("manual"); }
+                                      setRangeError("");
+                                    }} />
+                                  {value && (
+                                    <button onClick={() => deleteSemester(semester)} disabled={loading} title={`Eliminar ${label}`}
+                                      style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
+                                  )}
+                                </div>
+                                {source === "suggested" && (
+                                  <div style={{ fontSize: 10, color: "#0F6E56", marginTop: 4 }}>Sugerido desde el promedio anual — puedes modificarlo</div>
+                                )}
+                              </>
+                            ) : (
+                              <div style={{ background: "#E8FAF9", border: "1.5px solid #2EC4B6", borderRadius: 10, padding: "9px 12px" }}>
+                                <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#0F6E56" }}>
+                                  {value ? `${value} kg` : "Sin registros aún"}
+                                </div>
+                                <div style={{ fontSize: 9, color: "#0F6E56", marginTop: 2 }}>Se calcula con los pesos que registres</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <button style={css.saveBtn} onClick={saveSemester} disabled={loading}>
+                    <button style={css.saveBtn} onClick={saveSemester} disabled={loading || (!isSemesterClosed(semYear, 1) && !isSemesterClosed(semYear, 2))}>
                       {saved ? "✓ Guardado" : loading ? "Guardando..." : "✓ Guardar semestres"}
                     </button>
                   </div>
@@ -509,7 +641,7 @@ const resetAll = async () => {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
                       <select style={css.select} value={weekYear}
                         onChange={e => { setWeekYear(parseInt(e.target.value)); setWeekData({ 1: "", 2: "", 3: "", 4: "" }); }}>
-                        {years.map(y => <option key={y} value={y}>{y}</option>)}
+                        {allSelectableYears.map(y => <option key={y} value={y}>{y}</option>)}
                       </select>
                       <select style={css.select} value={weekMonth}
                         onChange={e => { setWeekMonth(parseInt(e.target.value)); setWeekData({ 1: "", 2: "", 3: "", 4: "" }); }}>
