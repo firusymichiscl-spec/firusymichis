@@ -9,6 +9,75 @@ const RADII = [
   { label: "20 km", value: 20000 },
 ];
 
+// Lote R Fix 3 — instrucciones para activar la ubicación cuando el
+// navegador la bloqueó. Texto en español chileno, sin jerga técnica, pasos
+// numerados y accionables. "generic" es el fallback si la detección de
+// navegador/SO falla o no reconoce el caso — siempre debe existir y cubrir
+// el flujo genérico de "candado → permisos → ubicación → permitir".
+const LOCATION_INSTRUCTIONS = {
+  "ios-safari": {
+    label: "Safari en iPhone",
+    steps: [
+      "Abre la app Ajustes de tu iPhone.",
+      "Baja y toca Safari.",
+      "Toca Ubicación y elige Preguntar o Permitir.",
+      "Si con eso no basta: Ajustes → Privacidad y seguridad → Localización → activa el interruptor general y busca Safari en la lista.",
+      'Vuelve a esta página y toca "Reintentar".',
+    ],
+  },
+  "android-chrome": {
+    label: "Chrome en Android",
+    steps: [
+      "Toca el candado 🔒 (o los tres puntos ⋮) junto a la dirección del sitio, arriba de la pantalla.",
+      "Toca Permisos.",
+      "Busca Ubicación y elige Permitir.",
+      'Vuelve a esta página y toca "Reintentar".',
+    ],
+  },
+  "desktop-chrome": {
+    label: "Chrome / Edge en computador",
+    steps: [
+      "Haz clic en el ícono de candado 🔒 a la izquierda de la dirección del sitio.",
+      "Busca Ubicación en la lista de permisos.",
+      "Cámbiala a Permitir.",
+      'Recarga la página y toca "Reintentar".',
+    ],
+  },
+  firefox: {
+    label: "Firefox",
+    steps: [
+      "Haz clic en el candado 🔒 a la izquierda de la dirección del sitio.",
+      "Toca Conexión segura y luego Más información.",
+      "Ve a la pestaña Permisos.",
+      'Busca "Acceder a tu ubicación" y quita el bloqueo (o elige Permitir).',
+      'Recarga la página y toca "Reintentar".',
+    ],
+  },
+  generic: {
+    label: "Otro navegador",
+    steps: [
+      "Busca el ícono de candado 🔒 o de información junto a la dirección del sitio.",
+      "Entra a los permisos o la configuración del sitio.",
+      "Busca Ubicación y cámbiala a Permitir.",
+      'Recarga la página y toca "Reintentar".',
+    ],
+  },
+};
+
+// Detección best-effort por user agent — nunca puede fallar duro: cualquier
+// caso no reconocido cae a "generic", que siempre existe y sirve como guía
+// universal. El selector de pestañas (3.3) cubre el resto de los casos.
+function detectLocationHelpPlatform() {
+  if (typeof navigator === "undefined") return "generic";
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS && /Safari/.test(ua) && !/CriOS|FxiOS/.test(ua)) return "ios-safari";
+  if (/Android/.test(ua) && /Chrome/.test(ua)) return "android-chrome";
+  if (/Firefox/.test(ua)) return "firefox";
+  if (/Chrome|Edg\//.test(ua)) return "desktop-chrome";
+  return "generic";
+}
+
 export default function VetMapTab({ pet, history }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -23,6 +92,11 @@ export default function VetMapTab({ pet, history }) {
   const [sortBy, setSortBy] = useState("distance");
   const [selectedVet, setSelectedVet] = useState(null);
   const [copyStatus, setCopyStatus] = useState(null); // { key, ok }
+  // Lote R Fix 3 — tutorial de permiso de ubicación. helpPlatform arranca
+  // en la detección automática; el usuario puede cambiarla a mano si la
+  // detección falló (3.3).
+  const [showLocationHelp, setShowLocationHelp] = useState(false);
+  const [helpPlatform, setHelpPlatform] = useState(detectLocationHelpPlatform);
 
   // Veterinarias del historial de la mascota
   const historyVets = [...new Set(
@@ -258,10 +332,34 @@ export default function VetMapTab({ pet, history }) {
       {/* Error de ubicación */}
       {locationError && (
         <div style={{ background: "#fef2f2", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #fecaca" }}>
-          <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 700, marginBottom: 6 }}>⚠️ {locationError}</div>
-          <button onClick={getLocation} style={{ padding: "6px 14px", borderRadius: 8, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-            Reintentar
-          </button>
+          <div style={{ fontSize: 12, color: "#dc2626", fontWeight: 700, marginBottom: 10 }}>⚠️ {locationError}</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={getLocation} style={{ padding: "6px 14px", borderRadius: 8, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              Reintentar
+            </button>
+            <button onClick={() => setShowLocationHelp(v => !v)}
+              style={{ background: "transparent", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+              {showLocationHelp ? "Ocultar instrucciones" : "¿Cómo activar la ubicación?"}
+            </button>
+          </div>
+
+          {showLocationHelp && (
+            <div style={{ marginTop: 12, background: "#fff", borderRadius: 10, border: "1px solid #fecaca", padding: 12 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {Object.entries(LOCATION_INSTRUCTIONS).map(([id, info]) => (
+                  <div key={id} onClick={() => setHelpPlatform(id)}
+                    style={{ padding: "4px 10px", borderRadius: 16, border: `1.5px solid ${helpPlatform === id ? "#FF6B35" : "#FFD9C8"}`, background: helpPlatform === id ? "#FFF0EB" : "#fff", fontSize: 10, fontWeight: 700, color: helpPlatform === id ? "#CC4A1A" : "#7A4522", cursor: "pointer" }}>
+                    {info.label}
+                  </div>
+                ))}
+              </div>
+              <ol style={{ margin: 0, paddingLeft: 18 }}>
+                {LOCATION_INSTRUCTIONS[helpPlatform].steps.map((step, i) => (
+                  <li key={i} style={{ fontSize: 12.5, color: "#3D1F0A", lineHeight: 1.6, marginBottom: 4 }}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
 

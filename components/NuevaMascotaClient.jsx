@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
+import { validateWeightRange } from "@/lib/nutrition";
 import DeletedPetToast from "@/components/DeletedPetToast";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
@@ -23,6 +24,29 @@ const SPECIES_OPTIONS = [
   { value: 'cat', icon: '🐱', label: 'Gato' },
   { value: 'other', icon: '🐰', label: 'Otro' },
 ];
+
+// Lote R Fix 1 — el layout de 2 columnas (formulario + resumen) es inline
+// style puro, y un inline style SIEMPRE gana sobre una regla de @media en
+// una hoja de estilos externa/<style>, sin importar el viewport. Por eso
+// las propiedades que necesitan cambiar según el ancho (grid-template-
+// columns del layout y de la fila fecha/peso, visibilidad del resumen
+// completo vs. compacto) viven ÚNICAMENTE acá, nunca también como inline
+// style en el mismo elemento — si se repitiera en los dos lados, el
+// inline ganaría siempre y el media query quedaría muerto.
+const RESPONSIVE_CSS = `
+  .nm-layout { display: grid; grid-template-columns: 1fr 220px; }
+  .nm-basic-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .nm-summary-compact { display: none; }
+  .nm-signout-icon { display: none; }
+  @media (max-width: 899px) {
+    .nm-layout { grid-template-columns: 1fr; }
+    .nm-summary-full { display: none; }
+    .nm-summary-compact { display: block; }
+    .nm-basic-grid { grid-template-columns: 1fr; }
+    .nm-signout-text { display: none; }
+    .nm-signout-icon { display: inline; }
+  }
+`;
 
 // useSearchParams() exige un límite Suspense — el gate de sesión ahora vive
 // en app/nueva-mascota/page.jsx (Server Component), pero ese Suspense sigue
@@ -51,6 +75,7 @@ function NuevaMascotaInner() {
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
   const [nameError, setNameError] = useState('');
+  const [weightError, setWeightError] = useState('');
 
   // FIX 1.2: solo mostrar "Volver al dashboard" si ya tiene alguna mascota.
   const [hasExistingPets, setHasExistingPets] = useState(false);
@@ -59,6 +84,9 @@ function NuevaMascotaInner() {
   const [tutorError, setTutorError] = useState('');
   const [existingTutor, setExistingTutor] = useState(null); // { full_name, phone, relationship, petName }
   const [useExistingTutor, setUseExistingTutor] = useState(false);
+  // Lote R Fix 1.1 — resumen compacto en móvil, colapsado por defecto para
+  // no robar espacio vertical del formulario.
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -144,11 +172,17 @@ function NuevaMascotaInner() {
   };
 
   const goToStep3 = () => {
+    // Peso es opcional en este paso — solo se valida el rango si el
+    // usuario escribió algo (Lote R2 Fix, capa dura además de la
+    // advertencia de desviación >50% que ya existía).
+    const weightCheck = form.weight_kg ? validateWeightRange(form.weight_kg, form.species) : { valid: true };
     const ok = validateRequired([
       { valid: !!form.name.trim(), id: "pet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
+      { valid: weightCheck.valid, id: "pet-weight", message: weightCheck.message, onInvalid: setWeightError },
     ]);
     if (!ok) return;
     setNameError('');
+    setWeightError('');
     setStep(3);
   };
 
@@ -209,10 +243,15 @@ function NuevaMascotaInner() {
     wrap: { background: '#FFF8F3', minHeight: '100vh', padding: '24px 16px', fontFamily: "'Nunito', sans-serif" },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 680, margin: '0 auto 16px' },
     brandName: { fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 800, color: '#3D1F0A' },
-    signOutBtn: { background: 'transparent', border: '1.5px solid #FFD0BC', borderRadius: 10, padding: '6px 14px', color: '#C4845A', fontFamily: "'Nunito', sans-serif", fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+    // flexShrink:0 en el wrap del header — a 320px de ancho, el nombre de
+    // marca + este botón compiten por el mismo espacio; sin esto el botón
+    // se aplastaba en vez de forzar que el nombre se acomode primero.
+    signOutBtn: { display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1.5px solid #FFD0BC', borderRadius: 10, padding: '6px 14px', color: '#C4845A', fontFamily: "'Nunito', sans-serif", fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 },
     progress: { display: 'flex', gap: 6, maxWidth: 680, margin: '0 auto 20px' },
     dot: (s) => ({ flex: 1, height: 6, borderRadius: 3, background: s === 'done' ? '#2EC4B6' : s === 'active' ? '#FF6B35' : '#FFD9C8', transition: 'background 0.3s' }),
-    layout: { display: 'grid', gridTemplateColumns: '1fr 220px', gap: 14, maxWidth: 680, margin: '0 auto' },
+    // gridTemplateColumns NO va acá — vive solo en RESPONSIVE_CSS (.nm-layout)
+    // para que el media query pueda pisarlo. Ver comentario junto a RESPONSIVE_CSS.
+    layout: { gap: 14, maxWidth: 680, margin: '0 auto' },
     card: { background: '#fff', borderRadius: 20, padding: '24px 20px', border: '1.5px solid #FFD9C8' },
     sumCard: { background: '#fff', borderRadius: 20, padding: '18px 16px', border: '1.5px solid #2EC4B6' },
     title: { fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: '#3D1F0A', marginBottom: 3 },
@@ -227,9 +266,36 @@ function NuevaMascotaInner() {
 
   const dotState = (i) => i < step ? 'done' : i === step ? 'active' : 'idle';
 
+  // Compartido entre el resumen de escritorio (columna derecha) y el panel
+  // expandido del resumen compacto de móvil — mismo contenido, dos lugares.
+  const renderSummaryRows = () => (
+    <>
+      {[
+        ['Especie', form.speciesLabel],
+        ['Raza', form.breed],
+        ['Nacimiento', form.birth_date ? formatFecha(form.birth_date) : ''],
+        ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
+        ['Tutor titular', tutorForm.full_name],
+      ].filter(([, v]) => v).map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
+          <span style={{ color: '#C4845A', flexShrink: 0 }}>{k}</span>
+          <span style={{ fontWeight: 700, color: '#3D1F0A', textAlign: 'right', wordBreak: 'break-word' }}>{v}</span>
+        </div>
+      ))}
+      {form.conditions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+          {form.conditions.map(c => (
+            <span key={c} style={{ background: '#FFF0EB', color: '#FF6B35', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{c}</span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div style={css.wrap}>
       <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&family=Nunito:wght@400;700&display=swap" rel="stylesheet" />
+      <style>{RESPONSIVE_CSS}</style>
 
       {deletedPetInfo && (
         <DeletedPetToast name={deletedPetInfo.name} sex={deletedPetInfo.sex} onClose={() => setDeletedPetInfo(null)} />
@@ -237,8 +303,11 @@ function NuevaMascotaInner() {
 
       {/* HEADER */}
       <div style={css.header}>
-        <div style={css.brandName}>🐾 Firus<span style={{ color: '#FFD166' }}>&</span>Michis</div>
-        <button style={css.signOutBtn} onClick={handleSignOut}>Cerrar sesión</button>
+        <div style={{ ...css.brandName, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🐾 Firus<span style={{ color: '#FFD166' }}>&</span>Michis</div>
+        <button style={css.signOutBtn} onClick={handleSignOut} title="Cerrar sesión">
+          <span className="nm-signout-icon">🚪</span>
+          <span className="nm-signout-text">Cerrar sesión</span>
+        </button>
       </div>
 
       {/* PROGRESS */}
@@ -246,7 +315,27 @@ function NuevaMascotaInner() {
         {[1,2,3,4,5].map(i => <div key={i} style={css.dot(dotState(i))} />)}
       </div>
 
-      <div style={css.layout}>
+      {/* RESUMEN COMPACTO — Fix 1.1: solo visible en móvil (RESPONSIVE_CSS),
+          bajo la barra de progreso y arriba del formulario. Colapsado por
+          defecto para no robar espacio vertical. */}
+      <div className="nm-summary-compact" style={{ maxWidth: 680, margin: '0 auto 14px' }}>
+        <div onClick={() => setSummaryExpanded(e => !e)}
+          style={{ background: '#fff', borderRadius: summaryExpanded ? '16px 16px 0 0' : 16, border: '1.5px solid #2EC4B6', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#FFD166,#FF8C5A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{form.speciesIcon}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: '#3D1F0A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.name || 'Nombre de mascota'}</div>
+            <div style={{ fontSize: 11, color: '#C4845A' }}>{form.speciesLabel}</div>
+          </div>
+          <div style={{ fontSize: 12, color: '#2EC4B6', flexShrink: 0 }}>{summaryExpanded ? '▲' : '▼'}</div>
+        </div>
+        {summaryExpanded && (
+          <div style={{ background: '#fff', borderRadius: '0 0 16px 16px', border: '1.5px solid #2EC4B6', borderTop: 'none', padding: '10px 14px' }}>
+            {renderSummaryRows()}
+          </div>
+        )}
+      </div>
+
+      <div className="nm-layout" style={css.layout}>
         <div>
           {/* PASO 1 */}
           {step === 1 && (
@@ -308,14 +397,16 @@ function NuevaMascotaInner() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="nm-basic-grid" style={{ gap: 10 }}>
                 <div>
                   <label style={css.label}>Fecha de nacimiento</label>
                   <input style={css.input} type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
                 </div>
                 <div>
                   <label style={css.label}>Peso (kg)</label>
-                  <input style={css.input} type="number" placeholder="38" step="0.1" value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} />
+                  <input id="pet-weight" style={{ ...css.input, borderColor: weightError ? "#dc2626" : "#FFD9C8" }} type="number" placeholder="38" step="0.1" value={form.weight_kg}
+                    onChange={e => { setForm(f => ({ ...f, weight_kg: e.target.value })); setWeightError(''); }} />
+                  {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {weightError}</div>}
                 </div>
               </div>
               <button style={css.btn} onClick={goToStep3}>Continuar →</button>
@@ -332,7 +423,7 @@ function NuevaMascotaInner() {
                 {CONDITIONS.map(cond => {
                   const sel = form.conditions.includes(cond);
                   return (
-                    <div key={cond} onClick={() => toggleCondition(cond)} style={{ padding: '7px 13px', borderRadius: 20, border: `1.5px solid ${sel ? '#FF6B35' : '#E8D5C8'}`, background: sel ? '#FFF0EB' : '#FFFAF7', fontSize: 12, fontWeight: 700, color: sel ? '#CC4A1A' : '#7A4522', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div key={cond} onClick={() => toggleCondition(cond)} style={{ padding: '7px 13px', borderRadius: 20, border: `1.5px solid ${sel ? '#FF6B35' : '#E8D5C8'}`, background: sel ? '#FFF0EB' : '#FFFAF7', fontSize: 12, fontWeight: 700, color: sel ? '#CC4A1A' : '#7A4522', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
                       <span style={{ width: 14, height: 14, borderRadius: '50%', border: `1.5px solid ${sel ? '#FF6B35' : '#C4845A'}`, background: sel ? '#FF6B35' : 'transparent', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#fff' }}>{sel ? '✓' : ''}</span>
                       {cond}
                     </div>
@@ -411,30 +502,13 @@ function NuevaMascotaInner() {
           )}
         </div>
 
-        {/* RESUMEN */}
-        <div style={css.sumCard}>
+        {/* RESUMEN — className nm-summary-full: oculto en móvil vía
+            RESPONSIVE_CSS, el resumen compacto de arriba lo reemplaza ahí. */}
+        <div className="nm-summary-full" style={css.sumCard}>
           <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: '#2EC4B6', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>📋 Resumen</div>
           <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg,#FFD166,#FF8C5A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, margin: '0 auto 10px' }}>{form.speciesIcon}</div>
           <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: form.name ? 16 : 13, fontWeight: form.name ? 800 : 400, color: form.name ? '#3D1F0A' : '#C4845A', textAlign: 'center', marginBottom: 8 }}>{form.name || 'Nombre de mascota'}</div>
-          {[
-            ['Especie', form.speciesLabel],
-            ['Raza', form.breed],
-            ['Nacimiento', form.birth_date ? formatFecha(form.birth_date) : ''],
-            ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
-            ['Tutor titular', tutorForm.full_name],
-          ].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
-              <span style={{ color: '#C4845A' }}>{k}</span>
-              <span style={{ fontWeight: 700, color: '#3D1F0A', textAlign: 'right', maxWidth: 120, wordBreak: 'break-word' }}>{v}</span>
-            </div>
-          ))}
-          {form.conditions.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-              {form.conditions.map(c => (
-                <span key={c} style={{ background: '#FFF0EB', color: '#FF6B35', borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 700 }}>{c}</span>
-              ))}
-            </div>
-          )}
+          {renderSummaryRows()}
         </div>
       </div>
     </div>

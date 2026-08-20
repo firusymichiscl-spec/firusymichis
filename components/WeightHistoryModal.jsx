@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha } from "@/lib/fechas";
+import { validateWeightRange } from "@/lib/nutrition";
+import { validateRequired } from "@/lib/formValidation";
 
 export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const supabase = createClient();
@@ -11,6 +13,9 @@ export default function WeightHistoryModal({ pet, onClose, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  // Lote R2 — un solo mensaje de error de rango, compartido entre los 4
+  // modos (nunca hay más de uno visible a la vez, solo uno está montado).
+  const [rangeError, setRangeError] = useState("");
 
   const birthYear = pet.birth_date
     ? parseInt(pet.birth_date.split("-")[0], 10)
@@ -89,8 +94,18 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
   }, [semYear, annualData]);
 
   const saveAnnual = async () => {
-    setLoading(true);
     const entries = Object.entries(annualData).filter(([, v]) => v && parseFloat(v) > 0);
+    // Lote R2 — rango duro por especie, bloquea el guardado completo si
+    // CUALQUIER entrada está fuera de rango (en vez de guardar unas y
+    // saltarse otras en silencio — "NO permitir guardar" es sobre el lote
+    // completo, no por fila).
+    const ok = validateRequired(entries.map(([year, kg]) => {
+      const check = validateWeightRange(kg, pet.species);
+      return { valid: check.valid, id: `annual-weight-${year}`, message: check.message, onInvalid: setRangeError };
+    }));
+    if (!ok) return;
+    setRangeError("");
+    setLoading(true);
     for (const [year, kg] of entries) {
       const date = `${year}-07-01`;
       await supabase.from("weight_logs").upsert({
@@ -108,6 +123,15 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
   };
 
   const saveSemester = async () => {
+    const semEntries = [];
+    if (sem1 && parseFloat(sem1) > 0) semEntries.push({ kg: sem1, id: "sem1-input" });
+    if (sem2 && parseFloat(sem2) > 0) semEntries.push({ kg: sem2, id: "sem2-input" });
+    const ok = validateRequired(semEntries.map(e => {
+      const check = validateWeightRange(e.kg, pet.species);
+      return { valid: check.valid, id: e.id, message: check.message, onInvalid: setRangeError };
+    }));
+    if (!ok) return;
+    setRangeError("");
     setLoading(true);
     if (sem1 && parseFloat(sem1) > 0) {
       await supabase.from("weight_logs").upsert({
@@ -136,8 +160,17 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
   };
 
   const saveSporadic = async () => {
+    // Se guarda el índice original (i) antes de filtrar — es el mismo que
+    // usa el render para el id del input, necesario para poder hacer
+    // flash/scroll a la fila exacta que falló.
+    const valid = sporadic.map((s, i) => ({ ...s, i })).filter(s => s.date && s.kg && parseFloat(s.kg) > 0);
+    const ok = validateRequired(valid.map(s => {
+      const check = validateWeightRange(s.kg, pet.species);
+      return { valid: check.valid, id: `sporadic-kg-${s.i}`, message: check.message, onInvalid: setRangeError };
+    }));
+    if (!ok) return;
+    setRangeError("");
     setLoading(true);
-    const valid = sporadic.filter(s => s.date && s.kg && parseFloat(s.kg) > 0);
     for (const s of valid) {
       await supabase.from("weight_logs").upsert({
         pet_id: pet.id,
@@ -151,6 +184,49 @@ const years = Array.from({ length: yearsCount }, (_, i) => currentYear - 1 - i);
     setSaved(true);
     if (valid.length > 0) await logActivity(supabase, pet.id, "Registró peso", `esporádico (${valid.length} registro${valid.length !== 1 ? "s" : ""})`);
     setTimeout(() => { onSaved?.(); onClose(); }, 1000);
+  };
+
+  // Lote R Fix 2 — "annualData[y]" es un promedio calculado sobre TODAS las
+  // filas de weight_logs de ese año (cualquier granularidad, ver
+  // loadExisting más arriba), igual que yearlyAvgs en WeightChart.jsx. No
+  // hay una sola fila "dueña" del valor mostrado, así que eliminar =
+  // borrar todas las filas de ese año — mismo criterio y misma acción que
+  // el chip de "Promedio anual" del gráfico.
+  const deleteYear = async (year) => {
+    const kg = annualData[year];
+    if (!confirm(`¿Eliminar el registro de ${year}: ${kg} kg?`)) return;
+    setLoading(true);
+    await supabase
+      .from("weight_logs")
+      .delete()
+      .eq("pet_id", pet.id)
+      .gte("logged_date", `${year}-01-01`)
+      .lte("logged_date", `${year}-12-31`);
+    await logActivity(supabase, pet.id, "Eliminó registro de peso", `promedio anual ${year} (${kg} kg)`);
+    setAnnualData(p => ({ ...p, [year]: "" }));
+    setLoading(false);
+  };
+
+  // A diferencia del anual, un semestre SÍ es una fila exacta y sin
+  // ambigüedad: (pet_id, logged_date, granularity='semester', semester=N).
+  // logged_date es determinístico (marzo/septiembre del año elegido), el
+  // mismo que usa el upsert de saveSemester — no hace falta rastrear un id.
+  const deleteSemester = async (semester) => {
+    const kg = semester === 1 ? sem1 : sem2;
+    const label = semester === 1 ? "Enero–Junio" : "Julio–Diciembre";
+    if (!confirm(`¿Eliminar el registro de ${label} ${semYear}: ${kg} kg?`)) return;
+    setLoading(true);
+    await supabase
+      .from("weight_logs")
+      .delete()
+      .eq("pet_id", pet.id)
+      .eq("logged_date", `${semYear}-${semester === 1 ? "03" : "09"}-01`)
+      .eq("granularity", "semester")
+      .eq("semester", semester);
+    await logActivity(supabase, pet.id, "Eliminó registro de peso", `semestre ${label} ${semYear} (${kg} kg)`);
+    if (semester === 1) setSem1(""); else setSem2("");
+    setSemAutoCalc(false);
+    setLoading(false);
   };
 
   const deleteExistingSporadic = async () => {
@@ -186,8 +262,14 @@ const resetAll = async () => {
 };
 
   const saveWeekly = async () => {
-    setLoading(true);
     const entries = Object.entries(weekData).filter(([, v]) => v && parseFloat(v) > 0);
+    const ok = validateRequired(entries.map(([wk, kg]) => {
+      const check = validateWeightRange(kg, pet.species);
+      return { valid: check.valid, id: `week-kg-${wk}`, message: check.message, onInvalid: setRangeError };
+    }));
+    if (!ok) return;
+    setRangeError("");
+    setLoading(true);
     for (const [wk, kg] of entries) {
       const day = parseInt(wk) * 7 - 6;
       const date = new Date(weekYear, weekMonth, Math.min(day, 28)).toISOString().split("T")[0];
@@ -270,13 +352,21 @@ const resetAll = async () => {
               <div style={css.sectionLabel}>¿Cómo quieres ingresar los datos?</div>
               <div style={css.modeGrid}>
                 {MODES.map(m => (
-                  <div key={m.id} style={css.modeBtn(mode === m.id)} onClick={() => setMode(m.id)}>
+                  <div key={m.id} style={css.modeBtn(mode === m.id)} onClick={() => { setMode(m.id); setRangeError(""); }}>
                     <div style={css.modeIcon}>{m.icon}</div>
                     <div style={css.modeLabel(mode === m.id)}>{m.label}</div>
                     <div style={css.modeSub}>{m.sub}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Lote R2 — un solo lugar para el error de rango, compartido
+                  por los 4 modos (nunca hay más de uno montado a la vez). */}
+              {rangeError && (
+                <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", color: "#dc2626", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 700, marginBottom: 12 }}>
+                  ⚠️ {rangeError}
+                </div>
+              )}
 
               <div style={{ borderTop: "1px solid #FFD9C8", paddingTop: 16 }}>
 
@@ -285,14 +375,28 @@ const resetAll = async () => {
                   <div>
                     <div style={css.sectionLabel}>Peso promedio por año</div>
                     <div style={{ maxHeight: 340, overflowY: "auto", paddingRight: 4 }}>
-                      {years.map(y => (
-                        <div key={y} style={css.row}>
-                          <span style={css.yearLabel}>{y}</span>
-                          <input style={{ ...css.input, flex: 1 }} type="number" placeholder="kg promedio" step="0.1"
-                            value={annualData[y] || ""}
-                            onChange={e => setAnnualData(p => ({ ...p, [y]: e.target.value }))} />
-                        </div>
-                      ))}
+                      {years.map(y => {
+                        const val = parseFloat(annualData[y]);
+                        // Lote R Fix 2.5 — aviso no bloqueante, mismo umbral
+                        // que WeightChart.jsx: >50% de diferencia contra el
+                        // peso actual conocido de la mascota.
+                        const deviates = pet.weight_kg && val && !isNaN(val) && Math.abs(val - pet.weight_kg) / pet.weight_kg > 0.5;
+                        return (
+                          <div key={y} style={css.row}>
+                            <span style={css.yearLabel}>{y}</span>
+                            <input id={`annual-weight-${y}`} style={{ ...css.input, flex: 1 }} type="number" placeholder="kg promedio" step="0.1"
+                              value={annualData[y] || ""}
+                              onChange={e => { setAnnualData(p => ({ ...p, [y]: e.target.value })); setRangeError(""); }} />
+                            {deviates && (
+                              <span title={`¿Seguro? El último peso registrado fue ${pet.weight_kg} kg`} style={{ fontSize: 14, flexShrink: 0, cursor: "help" }}>⚠️</span>
+                            )}
+                            {annualData[y] && (
+                              <button onClick={() => deleteYear(y)} disabled={loading} title={`Eliminar registro de ${y}`}
+                                style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", padding: "0 10px", height: 34, cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                     <button style={css.saveBtn} onClick={saveAnnual} disabled={loading}>
                       {saved ? "✓ Guardado" : loading ? "Guardando..." : "✓ Guardar historial anual"}
@@ -322,13 +426,25 @@ const resetAll = async () => {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Enero – Junio</div>
-                        <input style={css.input} type="number" placeholder="ej: 14.2" step="0.1"
-                          value={sem1} onChange={e => { setSem1(e.target.value); setSemAutoCalc(false); }} />
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input id="sem1-input" style={{ ...css.input, flex: 1 }} type="number" placeholder="ej: 14.2" step="0.1"
+                            value={sem1} onChange={e => { setSem1(e.target.value); setSemAutoCalc(false); setRangeError(""); }} />
+                          {sem1 && (
+                            <button onClick={() => deleteSemester(1)} disabled={loading} title="Eliminar Enero–Junio"
+                              style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Julio – Diciembre</div>
-                        <input style={css.input} type="number" placeholder="ej: 15.0" step="0.1"
-                          value={sem2} onChange={e => { setSem2(e.target.value); setSemAutoCalc(false); }} />
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input id="sem2-input" style={{ ...css.input, flex: 1 }} type="number" placeholder="ej: 15.0" step="0.1"
+                            value={sem2} onChange={e => { setSem2(e.target.value); setSemAutoCalc(false); setRangeError(""); }} />
+                          {sem2 && (
+                            <button onClick={() => deleteSemester(2)} disabled={loading} title="Eliminar Julio–Diciembre"
+                              style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14, flexShrink: 0 }}>🗑️</button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <button style={css.saveBtn} onClick={saveSemester} disabled={loading}>
@@ -368,8 +484,8 @@ const resetAll = async () => {
                           max={new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split("T")[0]}
                           value={s.date}
                           onChange={e => setSporadic(p => p.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} />
-                        <input style={css.input} type="number" placeholder="kg" step="0.1" value={s.kg}
-                          onChange={e => setSporadic(p => p.map((x, j) => j === i ? { ...x, kg: e.target.value } : x))} />
+                        <input id={`sporadic-kg-${i}`} style={css.input} type="number" placeholder="kg" step="0.1" value={s.kg}
+                          onChange={e => { setSporadic(p => p.map((x, j) => j === i ? { ...x, kg: e.target.value } : x)); setRangeError(""); }} />
                         {sporadic.length > 1 && (
                           <button onClick={() => setSporadic(p => p.filter((_, j) => j !== i))}
                             style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#dc2626", padding: "0 10px", cursor: "pointer", fontSize: 14 }}>✕</button>
@@ -404,9 +520,9 @@ const resetAll = async () => {
                       {[1, 2, 3, 4].map(wk => (
                         <div key={wk} style={css.weekSlot}>
                           <div style={css.weekLabel}>semana {wk}</div>
-                          <input style={css.weekInput} type="number" placeholder="kg" step="0.1"
+                          <input id={`week-kg-${wk}`} style={css.weekInput} type="number" placeholder="kg" step="0.1"
                             value={weekData[wk] || ""}
-                            onChange={e => setWeekData(p => ({ ...p, [wk]: e.target.value }))} />
+                            onChange={e => { setWeekData(p => ({ ...p, [wk]: e.target.value })); setRangeError(""); }} />
                         </div>
                       ))}
                     </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { validateRequired } from "@/lib/formValidation";
+import { validateWeightRange } from "@/lib/nutrition";
 import { filterChipInput, chipValidationMessage } from "@/lib/chip";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
@@ -49,6 +50,7 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
   const [conditionInput, setConditionInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [weightError, setWeightError] = useState("");
 
   const breeds = form.species === "cat" ? BREEDS_CAT : form.species === "other" ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
@@ -71,11 +73,17 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
   };
 
   const save = async () => {
+    // Peso opcional acá (se puede dejar en blanco) — solo se valida el
+    // rango si hay un valor. Usa form.species, no pet.species: la especie
+    // se puede cambiar en este mismo modal antes de guardar.
+    const weightCheck = form.weight_kg ? validateWeightRange(form.weight_kg, form.species) : { valid: true };
     const ok = validateRequired([
       { valid: !!form.name.trim(), id: "editpet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
+      { valid: weightCheck.valid, id: "editpet-weight", message: weightCheck.message, onInvalid: setWeightError },
     ]);
     if (!ok) return;
     setNameError("");
+    setWeightError("");
     setLoading(true);
     const changedFields = Object.keys(CHANGED_FIELD_LABELS).filter(key => {
       const before = pet[key];
@@ -187,8 +195,9 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
 
         {/* PESO */}
         <label style={css.label}>Peso actual (kg)</label>
-        <input style={css.input} type="number" step="0.1" placeholder="ej: 12.5"
-          value={form.weight_kg} onChange={e => setForm(f => ({ ...f, weight_kg: e.target.value }))} />
+        <input id="editpet-weight" style={{ ...css.input, borderColor: weightError ? "#dc2626" : "#FFD9C8" }} type="number" step="0.1" placeholder="ej: 12.5"
+          value={form.weight_kg} onChange={e => { setForm(f => ({ ...f, weight_kg: e.target.value })); setWeightError(""); }} />
+        {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {weightError}</div>}
 
         {/* CHIP */}
         <label style={css.label}>Número de chip</label>

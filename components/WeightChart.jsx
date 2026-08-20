@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activityLog";
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, LineController, Filler, Tooltip } from "chart.js";
 import { formatMesAno } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
+import { validateWeightRange } from "@/lib/nutrition";
 
 const weeksInMonth = (year, month) => {
   const firstDay = new Date(year, month, 1).getDay();
@@ -267,6 +268,18 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
   const prevKg = weekData.filter(w => w.kg !== null).slice(-2)[0]?.kg;
   const diff = currentKg && prevKg ? (currentKg - prevKg).toFixed(1) : null;
 
+  // Lote R Fix 2.5 — aviso no bloqueante si el valor que se está por
+  // guardar difiere >50% del último peso conocido (currentKg si ya hay
+  // algo esta semana, si no pet.weight_kg). Evita que se repita el error
+  // de tipeo que originó el bug de 2026=62kg (2.1) — nunca deshabilita
+  // Guardar, solo avisa.
+  const lastKnownWeight = currentKg || pet.weight_kg;
+  const newWeightVal = parseFloat(newWeight.replace(",", "."));
+  const weightDeviationWarning = (lastKnownWeight && newWeightVal && !isNaN(newWeightVal) &&
+    Math.abs(newWeightVal - lastKnownWeight) / lastKnownWeight > 0.5)
+    ? `¿Seguro? El último peso registrado fue ${lastKnownWeight} kg`
+    : null;
+
   const openEdit = (week, kg, id) => {
     setEditingWeek(week);
     setEditingId(id);
@@ -285,8 +298,12 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
 
   const saveWeight = async () => {
     const val = parseFloat(newWeight.replace(",", "."));
+    // Lote R2 — rango duro por especie en vez del genérico 0.1–200 de
+    // antes; se mantiene la advertencia de desviación >50% (arriba,
+    // weightDeviationWarning) sin bloquear, esto es la capa que sí bloquea.
+    const weightCheck = validateWeightRange(val, pet.species);
     const ok = validateRequired([
-      { valid: !!val && val >= 0.1 && val <= 200, id: "weight-value", message: "Ingresa un peso válido (0.1 – 200 kg)", onInvalid: setWeightError },
+      { valid: weightCheck.valid, id: "weight-value", message: weightCheck.message, onInvalid: setWeightError },
     ]);
     if (!ok) return;
     setWeightError(null);
@@ -316,6 +333,28 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
     await loadAll();
   };
 
+  // Lote R Fix 2 — "Promedio anual" es un PROMEDIO calculado en el cliente
+  // sobre TODAS las filas de weight_logs de ese año (cualquier granularidad
+  // — semanal, esporádica, semestral, anual — ver el agrupamiento por año
+  // más arriba en loadAll). No hay una sola fila que "sea" el promedio, así
+  // que no se puede editar el chip in-place: eliminar significa borrar
+  // TODAS las filas de ese año, que es exactamente lo que hace falta para
+  // sacar un valor atípico como el del bug reportado (2026 = 62 kg). Al
+  // recargar, yearlyAvgs se recalcula sin ese año y el gráfico (que depende
+  // de yearlyAvgs en su useEffect) ajusta la escala del eje Y solo, sin
+  // código adicional.
+  const deleteYearAvg = async (year, kg) => {
+    if (!confirm(`¿Eliminar el registro de ${year}: ${kg.toFixed(1)} kg?`)) return;
+    await supabase
+      .from("weight_logs")
+      .delete()
+      .eq("pet_id", pet.id)
+      .gte("logged_date", `${year}-01-01`)
+      .lte("logged_date", `${year}-12-31`);
+    await logActivity(supabase, pet.id, "Eliminó registro de peso", `promedio anual ${year} (${kg.toFixed(1)} kg)`);
+    await loadAll();
+  };
+
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 18, marginBottom: 16, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
     title: { fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, color: "#FF6B35", textTransform: "uppercase", letterSpacing: 1 },
@@ -336,7 +375,7 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
     slotVal: (type) => ({ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: type === "filled" ? "#0F6E56" : type === "active" ? "#CC4A1A" : "#C4845A" }),
     input: { width: "100%", padding: "9px 12px", borderRadius: 10, border: "1.5px solid #FFD9C8", background: "#FFFAF7", fontFamily: "'Nunito', sans-serif", fontSize: 14, color: "#3D1F0A", outline: "none", boxSizing: "border-box" },
     saveBtn: { padding: "9px 16px", borderRadius: 10, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-    histChip: { display: "inline-flex", flexDirection: "column", alignItems: "center", background: "#F5E6DA", borderRadius: 8, padding: "4px 10px" },
+    histChip: { display: "inline-flex", flexDirection: "column", alignItems: "center", background: "#F5E6DA", borderRadius: 8, padding: "4px 10px", position: "relative" },
   };
 
   return (
@@ -422,6 +461,7 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
               </button>
             </div>
             {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>⚠️ {weightError}</div>}
+            {!weightError && weightDeviationWarning && <div style={{ fontSize: 11, color: "#d97706", marginTop: 6 }}>⚠️ {weightDeviationWarning}</div>}
           </div>
         )}
 
@@ -432,7 +472,15 @@ export default function WeightChart({ pet, onWeightUpdate, isArchived }) {
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {yearlyAvgs.map((a, i) => (
-                <div key={i} style={css.histChip}>
+                <div key={i} style={{ ...css.histChip, cursor: isArchived ? "default" : "pointer" }}
+                  title={isArchived ? undefined : "Editar en el historial de peso"}
+                  onClick={() => !isArchived && setShowHistoryModal(true)}>
+                  {!isArchived && (
+                    <button onClick={e => { e.stopPropagation(); deleteYearAvg(a.year, a.kg); }} title={`Eliminar registro de ${a.year}`}
+                      style={{ position: "absolute", top: -5, right: -5, width: 15, height: 15, borderRadius: "50%", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: 9, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+                      ×
+                    </button>
+                  )}
                   <span style={{ fontSize: 9, color: "#C4845A" }}>{a.year}</span>
                   <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#7A4522" }}>{a.kg.toFixed(1)} kg</span>
                 </div>
