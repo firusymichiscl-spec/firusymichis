@@ -210,9 +210,18 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                     {med.dose && <div style={css.medDetail}>💊 {med.dose}</div>}
                     {med.frequency && <div style={css.medDetail}>🕐 {med.frequency}</div>}
                     {med.stock != null && (
-                      <div style={css.stockRow}>
-                        <span style={{ fontSize: 12, color: '#C4845A' }}>📦 Stock:</span>
-                        <span style={css.stockVal}>{med.stock} {med.unit}</span>
+                      <div>
+                        <div style={css.stockRow}>
+                          <span style={{ fontSize: 12, color: '#C4845A' }}>📦 Stock:</span>
+                          <span style={css.stockVal}>{med.stock} {med.unit}</span>
+                        </div>
+                        {/* Lote S — este campo quedó obsoleto: ya no alimenta
+                            ninguna alerta ni cálculo (eso ahora vive en el
+                            inventario). Se deja editable por compatibilidad,
+                            pero avisamos para que no se confíe en él para eso. */}
+                        <div style={{ fontSize: 10, color: '#C4845A', fontStyle: 'italic', marginTop: 2 }}>
+                          ⚠️ Ya no genera alertas de stock bajo — usa 📦 Stock para eso.
+                        </div>
                       </div>
                     )}
                     <div style={css.cardBtns}>
@@ -321,9 +330,11 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                 )}
               </div>
 
-              {/* STOCK */}
+              {/* STOCK — Lote S: campo obsoleto, se mantiene solo por
+                  compatibilidad con datos ya cargados. Ya no genera alertas
+                  ni cálculo de consumo; eso vive en el módulo 📦 Stock. */}
               <div style={{ marginBottom: 12 }}>
-                {fieldLabel('Stock')}
+                {fieldLabel('Stock (obsoleto)')}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
                   <input style={inputStyle} type="number" min="0" placeholder="Cantidad"
                     value={form.stock} onChange={e => setForm(f => ({ ...f, stock: e.target.value }))} />
@@ -331,6 +342,9 @@ export default function MedicamentosPage({ pet, medications: initialMeds }) {
                     value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}>
                     {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
+                </div>
+                <div style={{ fontSize: 10, color: '#C4845A', marginTop: 3 }}>
+                  ⚠️ Ya no genera alertas de stock bajo ni cálculo de consumo — para eso, crea un ítem en 📦 Stock y vincúlalo a este medicamento.
                 </div>
               </div>
 

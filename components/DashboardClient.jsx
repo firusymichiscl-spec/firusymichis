@@ -226,6 +226,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   // consume una sola vez (DoseTracker lo resetea con onAutoOpenHandled) para
   // no reabrirse en cada re-render mientras siga en true.
   const [autoOpenBackfill, setAutoOpenBackfill] = useState(false);
+  // Lote S, Feature 4 — "¿Ya compraste estos medicamentos?" tras guardar una
+  // receta desde IA. Guarda el treatmentId recién creado; null = sin banner
+  // pendiente (nunca hubo uno, o el usuario ya lo descartó/usó).
+  const [stockPromptTreatmentId, setStockPromptTreatmentId] = useState(null);
 
   const loadTreatmentItems = async () => {
     const { data } = await supabase
@@ -242,7 +246,34 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     setDoseLogs(data || []);
   };
 
-  useEffect(() => { loadTreatmentItems(); loadDoseLogs(); }, []);
+  // Inventario del hogar (Lote S) — a diferencia de meds/treatmentItems, NO
+  // es por mascota: se carga una sola vez al montar y no se vuelve a pedir
+  // al cambiar de mascota (inventory_treatment_links ya apunta al
+  // treatment_item_id específico, sin importar cuál mascota esté activa).
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [inventoryTreatmentLinks, setInventoryTreatmentLinks] = useState([]);
+
+  const loadInventory = async () => {
+    const [itemsRes, linksRes] = await Promise.all([
+      supabase.from("inventory_items").select("*"),
+      supabase.from("inventory_treatment_links").select("*"),
+    ]);
+    setInventoryItems(itemsRes.data || []);
+    setInventoryTreatmentLinks(linksRes.data || []);
+  };
+
+  // Mapa treatment_item_id -> inventory_item vinculado, para el descuento
+  // automático al marcar dosis en DoseTracker (Feature 3). Solo el lado
+  // treatment_item_id del vínculo aplica acá — los vinculados a
+  // medication_id no tienen marcado por dosis en ningún lado de la app.
+  const inventoryLinksByTreatmentItem = {};
+  inventoryTreatmentLinks.forEach(l => {
+    if (!l.treatment_item_id) return;
+    const item = inventoryItems.find(i => i.id === l.inventory_item_id);
+    if (item) inventoryLinksByTreatmentItem[l.treatment_item_id] = item;
+  });
+
+  useEffect(() => { loadTreatmentItems(); loadDoseLogs(); loadInventory(); }, []);
 
   const deleteTreatmentGroup = async (treatmentId) => {
     if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
@@ -1037,6 +1068,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ⊞ General
                 </button>
               )}
+              {/* Lote S — el inventario es del hogar, no de una mascota:
+                  siempre visible, a diferencia de "General" que solo tiene
+                  sentido con más de una mascota. */}
+              <button onClick={() => router.push("/dashboard/stock")}
+                style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 10, padding: "5px 10px", color: "#fff", fontFamily: "'Baloo 2', cursive", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                📦 Stock
+              </button>
             </div>
             {/* Botón de cuenta — reemplaza el bloque de email/badge/trial/
                 mascotas/cerrar-sesión que antes vivía acá (Lote K): ahora
@@ -1375,6 +1413,25 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             </div>
           ) : (
             <div className="fade-up">
+              {/* Lote S, Feature 4 — puerta de entrada opcional al inventario
+                  tras guardar una receta desde IA (5.2: descartable, nunca
+                  bloquea el flujo). */}
+              {stockPromptTreatmentId && (
+                <div style={{ background: "#FFF0EB", border: "1.5px solid #FFD0BC", borderRadius: 14, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12, color: "#7A4522", fontWeight: 700 }}>
+                    📦 ¿Ya compraste estos medicamentos? Registra lo que tienes
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => router.push(`/dashboard/stock?fromTreatment=${stockPromptTreatmentId}`)}
+                      style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 10, padding: "7px 14px", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      Registrar
+                    </button>
+                    <button onClick={() => setStockPromptTreatmentId(null)}
+                      style={{ background: "none", border: "none", color: "#C4845A", fontSize: 13, cursor: "pointer" }}>✕</button>
+                  </div>
+                </div>
+              )}
+
               {/* Selector de vista */}
               <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
                 {[{ id: "todos", label: "🔀 Todos" }, { id: "tratamiento", label: "💊 Tratamiento" }, { id: "habituales", label: "📋 Habituales" }].map(v => (
@@ -1645,10 +1702,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                           supabase={supabase}
                           petData={petData}
                           items={filteredTreatmentItems}
-                          meds={meds}
                           doseLogs={doseLogs}
-                          reloadMeds={reloadMeds}
                           reloadDoseLogs={loadDoseLogs}
+                          inventoryLinks={inventoryLinksByTreatmentItem}
+                          reloadInventory={loadInventory}
                           view={doseView}
                           setView={setDoseView}
                           autoOpenBackfill={autoOpenBackfill}
@@ -1792,7 +1849,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             // cuando no había ninguno elegido todavía, así que si ya había
             // otro tratamiento abierto, guardar uno nuevo no cambiaba la
             // vista sin esto.
-            if (info?.treatmentId) setSelectedTreatmentGroupId(info.treatmentId);
+            if (info?.treatmentId) { setSelectedTreatmentGroupId(info.treatmentId); setStockPromptTreatmentId(info.treatmentId); }
             if (info?.hasPastStartDate) setAutoOpenBackfill(true);
             loadTreatmentItems();
             loadDoseLogs();

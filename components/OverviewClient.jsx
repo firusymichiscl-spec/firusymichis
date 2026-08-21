@@ -5,6 +5,7 @@ import { formatFecha } from "@/lib/fechas";
 import { getHeaderBackgroundStyle } from "@/lib/fondos";
 import DrugClassLabel from "@/components/DrugClassLabel";
 import { filterValidDoseLogs } from "@/lib/doseSchedule";
+import { computeItemNeeds } from "@/lib/inventoryCalc";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
@@ -31,6 +32,20 @@ function calcAge(birth) {
 function daysUntil(dateStr) {
   if (!dateStr) return null;
   return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+}
+
+// Lote S — si el medicamento tiene un ítem de inventario vinculado, ese
+// valor manda (es la fuente de verdad nueva); si no, cae al campo manual
+// medications.stock de siempre. Evita mostrar dos cifras de stock distintas
+// para el mismo medicamento entre este panel y el módulo Stock.
+function medStockDisplay(med, medicationInventoryMap) {
+  const invItem = medicationInventoryMap[med.id];
+  if (invItem) {
+    const low = invItem.calc.daysRemaining != null && invItem.calc.daysRemaining < 7;
+    return { value: `${invItem.quantity} ${invItem.unit || ""}`.trim(), low, source: "inventory" };
+  }
+  if (med.stock != null) return { value: `${med.stock} ${med.unit || ""}`.trim(), low: med.stock < 10, source: "manual" };
+  return null;
 }
 
 // Compara día/mes en hora local sin construir un Date desde el string ISO
@@ -92,7 +107,7 @@ const css = `
   @media(min-width:1024px){.ov-mobile{display:none;}}
 `;
 
-export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history, doseLogs }) {
+export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history, doseLogs, inventoryItems, inventoryLinks }) {
   const router = useRouter();
   const [selectedPet, setSelectedPet] = useState(null);
 
@@ -104,11 +119,40 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
     .filter(v => v.days !== null && v.days >= 0 && v.days <= 90)
     .sort((a, b) => a.days - b.days);
 
+  // Lote S — la alerta de "stock bajo" ahora sale del inventario, no de
+  // medications.stock (ver auditoría del lote). El umbral pasa de un
+  // "<10 unidades" fijo (no comparable entre ítems con distinto tamaño de
+  // envase/dosis) a "<7 días de stock" — mismo umbral que ya usa el resumen
+  // diario del cron, y más correcto porque sí tiene en cuenta el consumo.
+  const activeTreatmentItems = treatments.flatMap(t => t.treatment_items || []).filter(ti => ti.active);
+  const inventoryWithCalc = (inventoryItems || []).map(item => {
+    const links = (inventoryLinks || [])
+      .filter(l => l.inventory_item_id === item.id)
+      .map(l => {
+        if (l.treatment_item_id) {
+          const ti = activeTreatmentItems.find(t => t.id === l.treatment_item_id);
+          return ti ? { kind: "treatment", petId: ti.pet_id, treatmentItem: ti } : null;
+        }
+        const m = activeMeds.find(x => x.id === l.medication_id);
+        return m ? { kind: "medication", petId: m.pet_id, medication: m } : null;
+      })
+      .filter(Boolean);
+    return { ...item, links, calc: computeItemNeeds(item, links) };
+  });
+
+  // medication.id -> ítem de inventario vinculado (a lo más uno en la
+  // práctica, ver StockItemModal). Usado por medStockDisplay para preferir
+  // el inventario sobre el campo manual en toda la tabla/badges de abajo.
+  const medicationInventoryMap = {};
+  inventoryWithCalc.forEach(item => {
+    item.links.forEach(l => { if (l.kind === "medication") medicationInventoryMap[l.medication.id] = item; });
+  });
+
   const alerts = [];
-  activeMeds.forEach(m => {
-    if (m.stock != null && m.stock < 10) {
-      const pet = pets.find(p => p.id === m.pet_id);
-      alerts.push({ type: "stock", text: `Stock bajo: ${m.name} (${pet?.name})`, detail: `${m.stock} ${m.unit || "unid."} restantes`, color: "#d97706" });
+  inventoryWithCalc.forEach(item => {
+    if (item.calc.daysRemaining != null && item.calc.daysRemaining < 7) {
+      const petNames = [...new Set(item.links.map(l => l.petId))].map(pid => pets.find(p => p.id === pid)?.name).filter(Boolean).join(", ");
+      alerts.push({ type: "stock", text: `Stock bajo: ${item.name}${petNames ? ` (${petNames})` : ""}`, detail: `${item.calc.daysRemaining} día${item.calc.daysRemaining !== 1 ? "s" : ""} restantes`, color: "#d97706" });
     }
   });
   vaccines.forEach(v => {
@@ -295,7 +339,8 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
             <tbody>
               {activeMeds.map(m => {
                 const pet = pets.find(p => p.id === m.pet_id);
-                const stockLow = m.stock != null && m.stock < 10;
+                const stock = medStockDisplay(m, medicationInventoryMap);
+                const stockLow = !!stock?.low;
                 const expired = m.end_date && new Date(m.end_date) < new Date();
                 const rowClass = stockLow || expired ? "danger" : "";
                 const color = PET_ACCENT_COLORS[pets.indexOf(pet) % PET_ACCENT_COLORS.length];
@@ -311,9 +356,9 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                     <td>{m.dose || "—"}</td>
                     <td>{m.frequency || "—"}</td>
                     <td>
-                      {m.stock != null
-                        ? <span className="ov-badge" style={{ background: stockLow ? "#FEE2E2" : "#D1FAE5", color: stockLow ? "#DC2626" : "#059669" }}>
-                            {m.stock} {m.unit || ""}
+                      {stock
+                        ? <span className="ov-badge" style={{ background: stockLow ? "#FEE2E2" : "#D1FAE5", color: stockLow ? "#DC2626" : "#059669" }} title={stock.source === "inventory" ? "Desde el inventario (📦 Stock)" : "Cantidad manual"}>
+                            {stock.value}
                           </span>
                         : "—"}
                     </td>
@@ -441,6 +486,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
               petTutors={tutors.filter(t => t.pet_id === selectedPet.id)}
               petHistory={history.filter(h => h.pet_id === selectedPet.id).slice(0, 3)}
               doseStats={petDoseStats(selectedPet.id)}
+              medicationInventoryMap={medicationInventoryMap}
               router={router}
               onBack={() => setSelectedPet(null)}
             />
@@ -455,8 +501,8 @@ const TUTOR_LABELS = { primary: "Principal", secondary: "Secundario", tertiary: 
 
 // ── Vista mascota individual (componente de nivel de módulo: no se
 // recrea en cada render de OverviewClient) ──────────────────────
-function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseStats, router, onBack }) {
-  const criticalStock = meds.filter(m => m.stock != null && m.stock < 10).length;
+function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseStats, router, onBack, medicationInventoryMap }) {
+  const criticalStock = meds.filter(m => medStockDisplay(m, medicationInventoryMap)?.low).length;
 
   return (
     <div className="ov-content">
@@ -534,11 +580,14 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
                     <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{m.name}<DrugClassLabel drugClass={m.drug_class} /></div>
                     <div style={{ fontSize: 13, color: "#64748B" }}>{m.dose} · {m.frequency}</div>
                   </div>
-                  {m.stock != null && (
-                    <span className="ov-badge" style={{ background: m.stock < 10 ? "#FEE2E2" : "#DBEAFE", color: m.stock < 10 ? "#DC2626" : "#1D4ED8", flexShrink: 0 }}>
-                      {m.stock} {m.unit}
-                    </span>
-                  )}
+                  {(() => {
+                    const stock = medStockDisplay(m, medicationInventoryMap);
+                    return stock && (
+                      <span className="ov-badge" style={{ background: stock.low ? "#FEE2E2" : "#DBEAFE", color: stock.low ? "#DC2626" : "#1D4ED8", flexShrink: 0 }} title={stock.source === "inventory" ? "Desde el inventario (📦 Stock)" : "Cantidad manual"}>
+                        {stock.value}
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
           </div>

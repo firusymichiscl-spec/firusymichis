@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { formatFecha } from "@/lib/fechas";
-import { getDosesPerDay, medDoseTimesToday, treatmentDoseTimesToday, nowInChile, daysUntil } from "@/lib/cronHelpers";
+import { medDoseTimesToday, treatmentDoseTimesToday, nowInChile, daysUntil } from "@/lib/cronHelpers";
+import { computeItemNeeds } from "@/lib/inventoryCalc";
 
 // Corre cada 10 minutos (config del cron en Vercel). Dos mecanismos,
 // independientes entre sí, ambos idempotentes vía `sent_notifications`:
@@ -124,12 +125,9 @@ async function sendDailySummaryIfDue(supabase, pref, pet, chile) {
 
   const stockItems = [];
   if (pref.notify_low_stock) {
-    const { data: meds } = await supabase.from("medications").select("*").eq("pet_id", pref.pet_id).eq("active", true);
-    for (const med of (meds || [])) {
-      if (med.stock == null || !med.frequency) continue;
-      const dpd = getDosesPerDay(med.frequency);
-      const daysLeft = dpd > 0 ? Math.floor(med.stock / dpd) : null;
-      if (daysLeft !== null && daysLeft < 7) stockItems.push({ name: med.name, daysLeft });
+    const statuses = await getPetInventoryStockStatus(supabase, pref.pet_id);
+    for (const { item, calc } of statuses) {
+      if (calc.daysRemaining !== null && calc.daysRemaining < 7) stockItems.push({ name: item.name, daysLeft: calc.daysRemaining });
     }
   }
 
@@ -149,20 +147,64 @@ async function sendDailySummaryIfDue(supabase, pref, pet, chile) {
 
 async function sendStockCriticalAlerts(supabase, pref, pet, chile) {
   const out = { sent: 0, idempotent: 0, errors: 0 };
-  const { data: meds } = await supabase.from("medications").select("*").eq("pet_id", pref.pet_id).eq("active", true);
-  for (const med of (meds || [])) {
-    if (med.stock == null || !med.frequency) continue;
-    const dpd = getDosesPerDay(med.frequency);
-    const daysLeft = dpd > 0 ? Math.floor(med.stock / dpd) : null;
-    if (daysLeft === null || daysLeft >= 3) continue;
+  const statuses = await getPetInventoryStockStatus(supabase, pref.pet_id);
+  for (const { item, calc } of statuses) {
+    if (calc.daysRemaining === null || calc.daysRemaining >= 3) continue;
 
-    const key = `stock:${med.id}:${chile.dateStr}`;
+    // Clave por ítem, no por mascota: si un mismo ítem abastece a dos
+    // mascotas del mismo usuario con notify_low_stock activo, evita mandar
+    // dos correos por el mismo evento de stock (Lote S, Feature 3.3).
+    const key = `stock:${item.id}:${chile.dateStr}`;
     const ok = await tryInsertKey(supabase, key);
     if (!ok) { out.idempotent++; continue; }
-    const r = await sendNotif(pref.email, "low_stock", { petName: pet.name, medicationName: med.name, stockRemaining: med.stock });
+    const r = await sendNotif(pref.email, "low_stock", { petName: pet.name, medicationName: item.name, stockRemaining: item.quantity });
     if (!r.error) out.sent++; else { out.errors++; await removeKey(supabase, key); }
   }
   return out;
+}
+
+// ── Inventario (Lote S) ────────────────────────────────────────────────
+// Ítems de inventory_items vinculados a algún treatment_item o medication
+// ACTIVO de esta mascota, con su cálculo de consumo (lib/inventoryCalc.js).
+// El cálculo de cada ítem usa TODOS sus vínculos (Feature 3.3: puede
+// abastecer a otra mascota también), no solo los de esta mascota — por eso
+// se recarga el set completo de vínculos por ítem en vez de derivarlo de
+// los treatment_items/medications ya consultados acá.
+async function getPetInventoryStockStatus(supabase, petId) {
+  const [tiRes, medRes] = await Promise.all([
+    supabase.from("treatment_items").select("id").eq("pet_id", petId).eq("active", true),
+    supabase.from("medications").select("id").eq("pet_id", petId).eq("active", true),
+  ]);
+  const tiIds = (tiRes.data || []).map(r => r.id);
+  const medIds = (medRes.data || []).map(r => r.id);
+  if (tiIds.length === 0 && medIds.length === 0) return [];
+
+  const [linksByTi, linksByMed] = await Promise.all([
+    tiIds.length ? supabase.from("inventory_treatment_links").select("inventory_item_id").in("treatment_item_id", tiIds) : Promise.resolve({ data: [] }),
+    medIds.length ? supabase.from("inventory_treatment_links").select("inventory_item_id").in("medication_id", medIds) : Promise.resolve({ data: [] }),
+  ]);
+  const itemIds = [...new Set([...(linksByTi.data || []), ...(linksByMed.data || [])].map(r => r.inventory_item_id))];
+  if (itemIds.length === 0) return [];
+
+  const results = [];
+  for (const itemId of itemIds) {
+    const { data: item } = await supabase.from("inventory_items").select("*").eq("id", itemId).single();
+    if (!item) continue;
+
+    const { data: allLinks } = await supabase.from("inventory_treatment_links").select("*").eq("inventory_item_id", itemId);
+    const allTiIds = (allLinks || []).filter(l => l.treatment_item_id).map(l => l.treatment_item_id);
+    const allMedIds = (allLinks || []).filter(l => l.medication_id).map(l => l.medication_id);
+    const [allTiRes, allMedRes] = await Promise.all([
+      allTiIds.length ? supabase.from("treatment_items").select("*").in("id", allTiIds) : Promise.resolve({ data: [] }),
+      allMedIds.length ? supabase.from("medications").select("*").in("id", allMedIds) : Promise.resolve({ data: [] }),
+    ]);
+    const links = [
+      ...(allTiRes.data || []).map(ti => ({ kind: "treatment", treatmentItem: ti })),
+      ...(allMedRes.data || []).map(m => ({ kind: "medication", medication: m })),
+    ];
+    results.push({ item, calc: computeItemNeeds(item, links) });
+  }
+  return results;
 }
 
 async function sendVaccineAlerts(supabase, pref, pet, chile) {

@@ -97,8 +97,9 @@ function dayLabelFor(date, now) {
 }
 
 export default function DoseTracker({
-  supabase, petData, items, meds, doseLogs,
-  reloadMeds, reloadDoseLogs, view, setView,
+  supabase, petData, items, doseLogs,
+  reloadDoseLogs, view, setView,
+  inventoryLinks, reloadInventory,
   autoOpenBackfill, onAutoOpenBackfillHandled,
 }) {
   const [busyKey, setBusyKey] = useState(null);
@@ -135,14 +136,21 @@ export default function DoseTracker({
     }
   };
 
+  // Lote S — el descuento de stock ya no toca medications.stock (emparejado
+  // por nombre, frágil) ni treatment_items.units_remaining: descuenta del
+  // ítem de inventario vinculado a ESTE treatment_item vía
+  // inventory_treatment_links (ver DashboardClient.jsx). Mismo cuidado que
+  // antes para no descontar/devolver dos veces (Feature 4.2): el efecto solo
+  // dispara en las transiciones prevStatus!=="dada"→nextStatus==="dada" y su
+  // inversa. Si no hay ítem vinculado, no hace nada (Feature 4.3).
   const applyDoseStatus = async (ti, date, prevStatus, nextStatus) => {
     const upd = ti.units_per_dose || 1;
-    const med = meds.find(m => m.name.toLowerCase() === ti.name.toLowerCase() && m.active);
-    if (med && med.stock != null) {
+    const invItem = inventoryLinks?.[ti.id];
+    if (invItem) {
       if (prevStatus !== "dada" && nextStatus === "dada") {
-        await supabase.from("medications").update({ stock: Math.max(0, parseFloat(med.stock) - upd) }).eq("id", med.id);
+        await supabase.from("inventory_items").update({ quantity: Math.max(0, parseFloat(invItem.quantity) - upd) }).eq("id", invItem.id);
       } else if (prevStatus === "dada" && nextStatus !== "dada") {
-        await supabase.from("medications").update({ stock: parseFloat(med.stock) + upd }).eq("id", med.id);
+        await supabase.from("inventory_items").update({ quantity: parseFloat(invItem.quantity) + upd }).eq("id", invItem.id);
       }
     }
 
@@ -157,7 +165,7 @@ export default function DoseTracker({
       });
     }
 
-    if (med) await reloadMeds();
+    if (invItem) await reloadInventory?.();
     await reloadDoseLogs();
     if (nextStatus) await logActivity(supabase, petData.id, nextStatus === "dada" ? "Marcó dosis dada" : "Marcó dosis omitida", `${ti.name} · ${formatFechaHora(date)}`);
   };
