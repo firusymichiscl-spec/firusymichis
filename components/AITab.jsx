@@ -27,6 +27,27 @@ const parseDosesPerDay = (freq) => {
   return null;
 };
 
+// Lote T, Falla 3 — el bug real estaba acá, no solo en el prompt: aunque el
+// lector de recetas devuelva "duracion":"1 mes" correctamente, un
+// parseInt() plano solo toma el "1" y lo guarda como 1 DÍA. Reconoce la
+// unidad (día/semana/mes/año) antes de convertir a días; sin unidad
+// reconocible, cae al número tal cual (mismo comportamiento de siempre).
+const parseDurationDays = (str) => {
+  if (!str) return null;
+  const s = str.toLowerCase();
+  const num = parseFloat((s.match(/(\d+(\.\d+)?)/) || [])[1]);
+  if (isNaN(num)) return null;
+  if (s.includes("año")) return Math.round(num * 365);
+  if (s.includes("mes")) return Math.round(num * 30);
+  if (s.includes("semana")) return Math.round(num * 7);
+  return Math.round(num);
+};
+
+// Lote T, Fix 2.4 — resalta en la UI de revisión cualquier campo donde el
+// lector de recetas dejó la marca "[no legible]" en vez de inventar texto.
+const hasIllegible = (v) => typeof v === "string" && v.includes("[no legible]");
+const illegibleStyle = (v) => hasIllegible(v) ? { border: "2px solid #F59E0B", background: "#FFFBEB" } : {};
+
 const calcNextDose = (startDate, startTime, freqStr) => {
   if (!startDate || !startTime) return null;
   const dosesPerDay = parseDosesPerDay(freqStr);
@@ -234,10 +255,9 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
     setRecipeLoading(true);
     setRecipeItems([]);
     setRecipeError(null);
-    // Lote M2 — nueva receta, nueva fecha por defecto. El lector de recetas
-    // no extrae hoy la fecha real de la receta (el JSON que pide ai-recipe
-    // no incluye una fecha) — "hoy" es el mejor default disponible hasta
-    // que eso exista; el selector de abajo deja corregirlo a mano.
+    // Lote M2 — nueva receta, nueva fecha por defecto ("hoy") hasta que la
+    // respuesta llegue; si trae fecha_receta válida (Lote T, Fix 5) se pisa
+    // más abajo. El selector de abajo siempre deja corregirlo a mano.
     setGlobalStartDate(today);
     // Lote Q — se resetean acá (no solo al guardar): cada escaneo es una
     // receta nueva, y si esta no trae veterinario/clínica es mejor dejarlo
@@ -265,6 +285,16 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         // como referencia visual junto al campo de veterinaria (para cruzar
         // contra la receta física), no se persiste en ningún lado.
         if (data.direccion) setRecipeAddress(data.direccion);
+        // Lote T, Fix 5 — la receta manuscrita trae su propia fecha (arriba
+        // a la derecha); se usa como fecha de inicio en vez de "hoy" si es
+        // una fecha ISO válida y cae dentro del rango que ya impone el
+        // selector (30 días atrás, nunca futura) — nunca se fuerza un valor
+        // fuera de ese rango en el <input type="date">, cae a "hoy" (5.3).
+        const isValidIsoDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(new Date(`${s}T00:00:00`).getTime());
+        const initialStartDate = isValidIsoDate(data.fecha_receta) && data.fecha_receta >= minStartDate && data.fecha_receta <= maxStartDate
+          ? data.fecha_receta
+          : today;
+        if (initialStartDate !== today) setGlobalStartDate(initialStartDate);
         setRecipeItems(data.result.map((item, i) => ({
           id: i,
           name: item.medicamento || "",
@@ -273,7 +303,14 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           drug_class: guessDrugClass(item.medicamento || ""),
           prescribed_dose: item.dosis_recetada || "",
           frequency: item.frecuencia || "",
-          duration_days: parseInt(item.duracion) || null,
+          duration_days: parseDurationDays(item.duracion),
+          // Lote T, Falla 3 — texto crudo de "duracion" tal como llegó,
+          // para mostrarlo de referencia junto al número ya calculado (el
+          // tutor puede comparar "por 1 mes" contra el 30 que se calculó).
+          duracion_raw: item.duracion || "",
+          // Lote T, Falla 5 — cuándo aplica el tratamiento si es condicional
+          // ("en caso de crisis", "S.O.S."); null/"" si es permanente.
+          condicion: item.condicion || "",
           // Lote M Feature 1: fases estructuradas que devuelve el lector de
           // recetas — se validan recién al guardar (ver saveRecipe más abajo);
           // acá se guardan tal cual para poder mostrarlas/editarlas mientras
@@ -281,7 +318,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
           phases: Array.isArray(item.phases) ? item.phases : null,
           indicaciones: item.indicaciones || "",
           notas: item.notas || "",
-          start_date: today,
+          start_date: initialStartDate,
           start_hour: 20,
           start_min: "00",
           mg_per_unit: "",
@@ -300,6 +337,21 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
 
   const updateItem = (id, field, value) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, [field]: value } : item));
   const toggleExpand = (id) => setRecipeItems(items => items.map(item => item.id === id ? { ...item, expanded: !item.expanded } : item));
+
+  // Lote T, Fix 1.3 — última línea de defensa contra la Falla 1 (medicamentos
+  // que desaparecen): si el tutor mira la receta física y nota que falta
+  // uno, esto lo agrega a mano con el mismo shape que uno extraído por la
+  // IA, en vez de no tener ninguna forma de completarlo.
+  const addManualItem = () => {
+    setRecipeItems(items => [...items, {
+      id: (items.length ? Math.max(...items.map(i => i.id)) : -1) + 1,
+      name: "", drug_class: "", prescribed_dose: "", frequency: "",
+      duration_days: null, duracion_raw: "", condicion: "", phases: null,
+      indicaciones: "", notas: "", start_date: globalStartDate, start_hour: 20, start_min: "00",
+      mg_per_unit: "", units_per_box: "", box_unit: "comp.", brand_name: "",
+      dose_unit: "mg", stock_at_home: "", lifelong: false, expanded: true,
+    }]);
+  };
 
   // Lote M2 Feature 1.5 — el selector global es el valor inicial, no una
   // imposición: si algún medicamento ya tiene una fecha distinta (porque el
@@ -415,8 +467,14 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         units_per_box: parseInt(item.units_per_box) || null,
         units_per_dose: upd, boxes_needed: calc?.boxesNeeded || null,
         units_remaining: calc?.remaining || null, add_to_meds: item.lifelong || false, active: true,
-        indicaciones: item.indicaciones || null,
+        // Lote T — treatment_items no tiene columna "notas" propia; se
+        // combina acá con indicaciones para que nada de lo que el lector de
+        // recetas puso en "notas" (Fix 1.1: instrucciones que no calzaron
+        // con certeza en otro campo) se pierda silenciosamente al guardar.
+        indicaciones: [item.indicaciones?.trim(), item.notas?.trim() ? `Notas: ${item.notas.trim()}` : null].filter(Boolean).join(" · ") || null,
         drug_class: item.drug_class?.trim() || null,
+        // Lote T, Fix 3.3 — cuándo aplica si es condicional; null = permanente.
+        condicion: item.condicion?.trim() || null,
         // Lote M Feature 1.6 — se valida acá, no se confía en lo que haya
         // devuelto el modelo: si no calza (array vacío, interval_hours no
         // numérico, duration_days null en una fase que no es la última...),
@@ -683,7 +741,18 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
 
           {recipeItems.length > 0 && !saved && (
             <>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Medicamentos extraídos ({recipeItems.length})</div>
+              {/* Lote T, Fix 1.3 — última línea de defensa contra la Falla 1:
+                  conteo prominente + forma explícita de agregar uno a mano
+                  si la IA se saltó alguno. */}
+              <div style={{ background: "#f5f3ff", border: "1.5px solid #C4B5FD", borderRadius: 14, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#7c3aed", marginBottom: 4 }}>
+                  ✅ Se detectaron {recipeItems.length} medicamento{recipeItems.length !== 1 ? "s" : ""} en la receta. Revisa que estén todos.
+                </div>
+                <div style={{ fontSize: 11, color: "#7A4522", marginBottom: 10 }}>Si falta alguno, agrégalo manualmente.</div>
+                <button onClick={addManualItem} style={{ background: "#fff", border: "1.5px solid #8B5CF6", borderRadius: 10, padding: "7px 14px", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, color: "#7c3aed", cursor: "pointer" }}>
+                  + Agregar medicamento
+                </button>
+              </div>
 
               {/* Lote M2 — fecha de inicio del tratamiento. Bien visible y
                   arriba de todo: las recetas suelen digitalizarse días
@@ -762,7 +831,11 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                   <div key={item.id} style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #C4B5FD", padding: 14, marginBottom: 10 }}>
                     <div onClick={() => toggleExpand(item.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
                       <div>
-                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, color: "#3D1F0A" }}>{item.name || "Sin nombre"}<DrugClassLabel drugClass={item.drug_class} style={{ fontSize: 12 }} /></div>
+                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, color: "#3D1F0A" }}>
+                          {item.name || "Sin nombre"}<DrugClassLabel drugClass={item.drug_class} style={{ fontSize: 12 }} />
+                          {/* Lote T, Fix 3.3 — ícono distintivo, visible sin expandir. */}
+                          {item.condicion && <span style={{ marginLeft: 6, background: "#FFF7ED", color: "#C2410C", fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8 }}>🔶 Condicional</span>}
+                        </div>
                         <div style={{ fontSize: 11, color: "#C4845A" }}>{item.prescribed_dose}{item.frequency ? ` · ${item.frequency}` : ""}{item.duration_days ? ` · ${item.duration_days} días` : ""}</div>
                       </div>
                       <div style={{ fontSize: 11, color: "#8B5CF6", fontWeight: 700 }}>{item.expanded ? "▲" : "▼"}</div>
@@ -774,7 +847,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                           {[["Medicamento","name"],["Dosis recetada","prescribed_dose"]].map(([label, field]) => (
                             <div key={field}>
                               <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>{label}</div>
-                              <input style={inputS} value={item[field]} onChange={e => {
+                              <input style={{ ...inputS, ...illegibleStyle(item[field]) }} value={item[field]} onChange={e => {
                                 const value = e.target.value;
                                 if (field === "name") {
                                   // Lote L2 Feature 5: solo pre-llena si el usuario no escribió ya
@@ -805,11 +878,18 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                                 </div>
                               ))}
                             </div>
-                            <input style={inputS} placeholder="O escribe frecuencia libre..." value={item.frequency} onChange={e => updateItem(item.id, "frequency", e.target.value)} />
+                            <input style={{ ...inputS, ...illegibleStyle(item.frequency) }} placeholder="O escribe frecuencia libre..." value={item.frequency} onChange={e => updateItem(item.id, "frequency", e.target.value)} />
                           </div>
                           <div>
                             <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Días de tratamiento</div>
                             <input style={inputS} type="number" min="1" placeholder="ej: 30" value={item.duration_days || ""} onChange={e => { const v = parseInt(e.target.value); if (v > 0) updateItem(item.id, "duration_days", v); else updateItem(item.id, "duration_days", ""); }} />
+                            {/* Lote T, Falla 3 — texto crudo extraído de la receta, para que el
+                                tutor pueda comparar contra el número ya calculado arriba. */}
+                            {item.duracion_raw && (
+                              <div style={{ fontSize: 10, color: hasIllegible(item.duracion_raw) ? "#B45309" : "#C4845A", marginTop: 3, fontWeight: hasIllegible(item.duracion_raw) ? 700 : 400 }}>
+                                Extraído de la receta: &quot;{item.duracion_raw}&quot;
+                              </div>
+                            )}
                             <div style={{ marginTop: 6 }}>
                               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7A4522", cursor: "pointer" }}>
                                 <input type="checkbox" checked={item.lifelong || false}
@@ -818,6 +898,20 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                                 Agregar también a meds de por vida
                               </label>
                             </div>
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            {/* Lote T, Falla 5 — campo NUEVO, separado de frecuencia/duración. */}
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>🔶 Condición (opcional)</div>
+                            <input style={{ ...inputS, ...illegibleStyle(item.condicion) }} placeholder="ej: en caso de crisis, S.O.S., el día que no se bañe..." value={item.condicion || ""} onChange={e => updateItem(item.id, "condicion", e.target.value)} />
+                            <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Si se llena, este tratamiento no genera recordatorios de dosis diarias — solo queda disponible para registrar cuándo se dio de verdad.</div>
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Indicaciones</div>
+                            <textarea style={{ ...inputS, resize: "vertical", minHeight: 50, ...illegibleStyle(item.indicaciones) }} placeholder="ej: con comida, en zona inguinal..." value={item.indicaciones || ""} onChange={e => updateItem(item.id, "indicaciones", e.target.value)} />
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Notas</div>
+                            <textarea style={{ ...inputS, resize: "vertical", minHeight: 50, ...illegibleStyle(item.notas) }} placeholder="Cualquier instrucción de la receta que no calzó en los campos de arriba" value={item.notas || ""} onChange={e => updateItem(item.id, "notas", e.target.value)} />
                           </div>
                         </div>
 

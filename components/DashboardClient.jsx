@@ -300,7 +300,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
 
   const openEditTreatmentItem = (ti) => {
     const [h, m] = (ti.start_time || "20:00").split(":").map(Number);
-    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "", drug_class: ti.drug_class || "", phases: Array.isArray(ti.phases) ? ti.phases : [] });
+    setTiForm({ name: ti.name || "", prescribed_dose: ti.prescribed_dose || "", frequency: ti.frequency || "", duration_days: ti.duration_days || "", start_date: ti.start_date || new Date().toISOString().split("T")[0], start_hour: h || 20, start_min: m === 30 ? "30" : "00", mg_per_unit: ti.mg_per_unit || "", units_per_box: ti.units_per_box || "", indicaciones: ti.indicaciones || "", condicion: ti.condicion || "", drug_class: ti.drug_class || "", phases: Array.isArray(ti.phases) ? ti.phases : [] });
     setEditingTreatmentItem(ti);
     setTiSaved(false);
   };
@@ -598,6 +598,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
       mg_per_unit: tiForm.mg_per_unit ? parseFloat(tiForm.mg_per_unit) : null,
       units_per_box: tiForm.units_per_box ? parseInt(tiForm.units_per_box) : null,
       indicaciones: tiForm.indicaciones || null,
+      condicion: tiForm.condicion?.trim() || null,
       drug_class: tiForm.drug_class?.trim() || null,
       phases: phasesForSave,
     }).eq("id", editingTreatmentItem.id);
@@ -1456,7 +1457,9 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>En tratamiento activo</div>
                           {treatmentItems.map(ti => {
-                            const daysLeft = ti.duration_days && ti.start_date
+                            // Lote T — un condicional no tiene una cuenta regresiva real (no
+                            // hay garantía de que se dé todos los días), así que no muestra "Nd".
+                            const daysLeft = !ti.condicion && ti.duration_days && ti.start_date
                               ? Math.ceil((new Date(ti.start_date).getTime() + ti.duration_days * 86400000 - Date.now()) / 86400000)
                               : null;
                             return (
@@ -1473,6 +1476,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                   </div>
                                   {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {ti.prescribed_dose}</div>}
                                   {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A" }}>🕐 {ti.frequency}</div>}
+                                  {ti.condicion && <div style={{ fontSize: 12, color: "#C2410C", fontWeight: 700 }}>🔶 {ti.condicion}</div>}
                                   {ti.start_time && <div style={{ fontSize: 12, color: "#C4845A" }}>⏰ Inicio: {ti.start_time}</div>}
                                   {ti.boxes_needed && <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>📦 <strong>{ti.boxes_needed} caja{ti.boxes_needed !== 1 ? "s" : ""}</strong> necesarias</div>}
                                 </div>
@@ -1595,6 +1599,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                         {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>💊 {ti.prescribed_dose}</div>}
                                         {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>🕐 {ti.frequency}</div>}
                                         {ti.duration_days && <div style={{ fontSize: 12, color: "#C4845A", marginTop: 2 }}>📅 {ti.duration_days} días</div>}
+                                        {ti.condicion && <div style={{ fontSize: 11, color: "#C2410C", marginTop: 2, fontWeight: 700 }}>🔶 {ti.condicion}</div>}
                                         {ti.indicaciones && <div style={{ fontSize: 11, color: "#7A4522", marginTop: 4, fontStyle: "italic" }}>📝 {ti.indicaciones}</div>}
                                       </div>
                                     ))}
@@ -1663,6 +1668,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                                 )}
                                 {ti.prescribed_dose && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>💊 {ti.prescribed_dose}</div>}
                                 {ti.frequency && <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 2 }}>🕐 {ti.frequency}</div>}
+                                {ti.condicion && <div style={{ fontSize: 12, color: "#C2410C", fontWeight: 700, marginBottom: 2 }}>🔶 Condicional: {ti.condicion}</div>}
                                 {prog && (
                                   <div style={{ background: prog.completed ? "#f0fdf4" : "#FFF0EB", borderRadius: 8, padding: "6px 10px", marginTop: 6, marginBottom: 8 }}>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: prog.completed ? "#059669" : "var(--color-primary)" }}>
@@ -2377,6 +2383,12 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               <div style={{ marginBottom: 16 }}>
                 {fLabel("Indicaciones")}
                 <textarea style={{ ...inputS, resize: "vertical", minHeight: 60 }} placeholder="ej: administrar con comida, no suspender antes de terminar..." value={tiForm.indicaciones || ""} onChange={e => setTiForm(f => ({ ...f, indicaciones: e.target.value }))} />
+              </div>
+              {/* Lote T, Fix 3.3 — campo nuevo, separado de frecuencia/duración. */}
+              <div style={{ marginBottom: 16 }}>
+                {fLabel("🔶 Condición (opcional)")}
+                <input style={inputS} placeholder="ej: en caso de crisis, S.O.S., el día que no se bañe..." value={tiForm.condicion || ""} onChange={e => setTiForm(f => ({ ...f, condicion: e.target.value }))} />
+                <div style={{ fontSize: 10, color: "#C4845A", marginTop: 3 }}>Si se llena, este tratamiento no genera recordatorios de dosis diarias — solo queda disponible para registrar cuándo se dio de verdad.</div>
               </div>
               <button onClick={saveTreatmentItem} disabled={tiSaving}
                 style={{ width: "100%", padding: 13, borderRadius: 13, background: tiSaved ? "var(--color-secondary)" : "#8B5CF6", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "background 0.3s", marginBottom: 8 }}>

@@ -87,26 +87,38 @@ export async function POST(req) {
   // URGENTE (post Lote M) — este prompt se simplificó a propósito: la
   // versión anterior explicaba "phases" en 4 párrafos, y las recetas con
   // varios medicamentos empezaron a devolver JSON inválido/cortado (ver
-  // nota de max_tokens más abajo). La prioridad absoluta es que la
-  // extracción de medicamentos funcione — "phases" es secundario y se le
-  // dedica una sola frase para no competirle presupuesto de tokens ni
-  // complejidad a lo esencial.
+  // nota de max_tokens más abajo).
   //
-  // Lote Q — se agregan veterinario/clínica/dirección, con el mismo
-  // cuidado: UN párrafo corto, y explícitamente subordinado a "si dudas,
-  // null y sigue" para no repetir el incidente de Lote M. A diferencia de
-  // "phases" (que se repite por CADA medicamento y fue lo que realmente
-  // infló la respuesta la vez pasada), estos 3 campos son top-level y
-  // aparecen UNA sola vez sin importar cuántos medicamentos traiga la
-  // receta — el costo marginal en tokens es mínimo, no hace falta subir
-  // max_tokens por esto (ver el comentario junto a max_tokens más abajo).
-  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria adjunta como imagen. Analízala y devuelve SOLO un objeto JSON válido sin backticks ni markdown ni texto antes o después, con esta forma exacta: {"medicamentos":[{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","indicaciones":"","notas":"","phases":null}],"veterinario":null,"clinica":null,"direccion":null}. Si hay múltiples medicamentos en la receta, incluye todos en "medicamentos" — esto es lo más importante, prioriza extraerlos todos bien.
+  // Lote Q — se agregaron veterinario/clínica/dirección, top-level (una
+  // sola vez por receta, no por medicamento) para no repetir ese costo.
+  //
+  // Lote T — evidencia real de 3 recetas manuscritas en producción: el
+  // prompt de arriba perdía medicamentos completos (2 de 3 recetas),
+  // inventaba texto que no estaba en el papel, y confundía dosis/
+  // frecuencia/duración con la condición de un tratamiento ("en caso de
+  // crisis" terminaba escrito como si fuera la dosis). Se agregan reglas
+  // duras para las tres cosas, más "condicion" (por medicamento) y
+  // "fecha_receta" (top-level, una vez) — DOS claves nuevas, la FORMA del
+  // objeto raíz no cambia, así que extractJson() y el fallback de formato
+  // legado siguen intactos.
+  const systemPrompt = `Eres un asistente veterinario. Vas a recibir una foto de una receta veterinaria manuscrita adjunta como imagen. Analízala y devuelve SOLO un objeto JSON válido sin backticks ni markdown ni texto antes o después, con esta forma exacta: {"medicamentos":[{"medicamento":"","dosis_recetada":"","frecuencia":"","duracion":"","condicion":"","indicaciones":"","notas":"","phases":null}],"veterinario":null,"clinica":null,"direccion":null,"fecha_receta":null}.
 
-"frecuencia" es siempre texto libre legible (ej. "Cada 12 horas por 1 día, luego cada 24 horas por 3 días, luego día por medio").
+REGLA MÁS IMPORTANTE — nunca pierdas un medicamento: antes de responder, enumera mentalmente cada medicamento/producto distinto de la receta (suelen venir subrayados o precedidos de "Rp."). El array "medicamentos" debe tener EXACTAMENTE esa cantidad de elementos, uno por cada uno. Nunca fusiones dos medicamentos en una sola entrada. Si una instrucción no calza con certeza en un medicamento, ponla en "notas" de ESE medicamento — pero el medicamento igual va en el array, nunca se omite. Es preferible devolver un medicamento con campos incompletos (en null) que omitirlo.
 
-"phases" es opcional y secundario — solo complétalo si es sencillo y estás seguro: un array [{"interval_hours":N,"duration_days":M}], un elemento por cada fase de la receta en orden (48 = día por medio; duration_days:null solo en la última fase si no tiene fin). Si dudas de los intervalos o la frecuencia no es un número fijo de horas, deja "phases":null y sigue — nunca sacrifiques la extracción del medicamento por completar esto.
+Nunca inventes texto que no puedas leer con certeza: si una palabra o frase del manuscrito no se entiende, escribe literalmente "[no legible]" en su lugar dentro del campo, conservando el resto del texto que sí entiendes (ej: "Aplicar en zona inguinal, [no legible], 2 veces al día"). Un campo con "[no legible]" es correcto; una palabra adivinada es un error grave que puede afectar la salud del animal.
 
-"veterinario" (nombre del médico con su título si aparece, ej. "Dra. Francisca Gutiérrez"), "clinica" (nombre de la veterinaria) y "direccion" (dirección o comuna de la clínica, si aparece) son opcionales y secundarios igual que "phases" — si alguno no aparece claramente en la receta usa null, nunca lo inventes, y nunca sacrifiques la extracción de medicamentos por completarlos.
+Define así cada campo, sin confundirlos entre sí:
+- "dosis_recetada": cantidad por toma (ej. "1 comprimido", "2 cápsulas"). Si no aparece, null.
+- "frecuencia": cada cuánto se da (ej. "cada 12 horas", "1 vez al día", "1 baño semanal").
+- "duracion": por cuánto tiempo TOTAL, con su unidad (ej. "14 días", "1 mes", "3 días"). Nunca confundas una frecuencia semanal/mensual con una duración de 1 día.
+- "condicion": cuándo aplica, SOLO si el tratamiento es condicional en vez de permanente (ej. "en momento de crisis", "S.O.S.", "el día que no se bañe"). Si es permanente/sin condición, null.
+Ejemplos: "Realizar 1 baño semanal por 1 mes" → frecuencia:"1 vez por semana", duracion:"1 mes". "El día que no se bañe, aplicar 2 veces al día por 14 días" → condicion:"los días que no se bañe", frecuencia:"2 veces al día", duracion:"14 días". "Usar en momento de crisis cada 12 horas por solo 3 días" → condicion:"en momento de crisis", frecuencia:"cada 12 horas", duracion:"3 días".
+
+"phases" es opcional — complétalo SOLO si la receta dice explícitamente algo como "y luego"/"después"/"posteriormente" seguido de otra frecuencia con duración clara (ej. "cada 12 horas por 5 días y luego cada 24 horas por 5 días más" → phases:[{"interval_hours":12,"duration_days":5},{"interval_hours":24,"duration_days":5}]; 48=día por medio, duration_days:null solo en la última fase si no tiene fin). Si dudas, "phases":null y sigue — nunca sacrifiques la extracción del medicamento por esto.
+
+"fecha_receta": la fecha escrita en la receta (suele estar arriba a la derecha, formato dd/mm/aa), devuelta como "YYYY-MM-DD" (asume 20 + los 2 dígitos del año). Si no aparece o no se lee con certeza, null.
+
+"veterinario" (nombre del médico con título, ej. "Dra. Francisca Gutiérrez"), "clinica" (nombre de la veterinaria) y "direccion" (dirección o comuna de la clínica) son opcionales — si no aparecen claramente, null, nunca los inventes.
 
 ${ANTI_INJECTION_REINFORCEMENT}`;
 
@@ -130,10 +142,17 @@ ${ANTI_INJECTION_REINFORCEMENT}`;
       // clínica/dirección, pero a diferencia de "phases" (que se repite por
       // cada medicamento y fue la causa real del incidente de Lote M),
       // estos 3 campos son top-level: aparecen UNA vez en la respuesta sin
-      // importar cuántos medicamentos traiga la receta. El costo marginal
-      // es de unos pocos tokens fijos, no crece con el tamaño de la receta
-      // — 2048 sigue siendo suficiente margen, no hace falta tocarlo.
-      max_tokens: 2048,
+      // importar cuántos medicamentos traiga la receta — 2048 seguía
+      // alcanzando.
+      // Lote T — subido a 3072: "condicion" se repite por CADA medicamento
+      // (como "phases", no como veterinario/clínica), y las marcas
+      // "[no legible]" pueden alargar el texto de varios campos a la vez.
+      // Con recetas de 3-4 medicamentos + fases, 2048 quedaba más justo que
+      // antes — mismo razonamiento del Lote M: esto limita la SALIDA
+      // generada, no el prompt de `system` (que no cuenta contra este
+      // límite), así que no tiene costo real salvo tokens efectivamente
+      // usados.
+      max_tokens: 3072,
       system: systemPrompt,
       messages: [{
         role: "user",

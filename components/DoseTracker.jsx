@@ -206,6 +206,29 @@ export default function DoseTracker({
     setShowBackfill(false);
   };
 
+  // ── Tratamientos condicionales (Lote T) ───────────────────────────
+  // "en caso de crisis", "S.O.S." — no tienen un horario real que calcular
+  // (getScheduledDoses ya devuelve [] para ellos, ver lib/doseSchedule.js),
+  // así que quedan fuera de Vista Hoy/Semana/Fases y del backlog de arriba.
+  // Se registran a mano, con la hora real del click, reutilizando
+  // applyDoseStatus tal cual (mismo descuento de inventario y logActivity
+  // que el ciclo de 3 estados — nada duplicado).
+  const conditionalItems = items.filter(ti => ti.condicion);
+
+  const registerConditionalDose = async (ti) => {
+    const key = `cond-${ti.id}`;
+    if (busyKey) return;
+    setBusyKey(key);
+    try { await applyDoseStatus(ti, new Date(), null, "dada"); } finally { setBusyKey(null); }
+  };
+
+  const undoConditionalDose = async (ti, log) => {
+    const key = `cond-${ti.id}`;
+    if (busyKey) return;
+    setBusyKey(key);
+    try { await applyDoseStatus(ti, new Date(log.scheduled_at), "dada", null); } finally { setBusyKey(null); }
+  };
+
   return (
     <div>
       {backlog.length > 0 && (
@@ -217,6 +240,43 @@ export default function DoseTracker({
             style={{ background: "#F59E0B", color: "#fff", border: "none", borderRadius: 10, padding: "7px 14px", fontFamily: "'Baloo 2', cursive", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
             Ponerse al día
           </button>
+        </div>
+      )}
+
+      {conditionalItems.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 6 }}>🔶 Tratamientos condicionales</div>
+          {conditionalItems.map(ti => {
+            const recentLogs = doseLogs
+              .filter(d => d.treatment_item_id === ti.id)
+              .sort((a, b) => new Date(b.scheduled_at) - new Date(a.scheduled_at))
+              .slice(0, 3);
+            const busy = busyKey === `cond-${ti.id}`;
+            return (
+              <div key={ti.id} style={{ background: "#fff", borderRadius: 14, padding: "10px 14px", marginBottom: 8, boxShadow: "var(--card-shadow)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#3D1F0A" }}>{ti.name}<DrugClassLabel drugClass={ti.drug_class} /></div>
+                    <div style={{ fontSize: 11, color: "#C4845A" }}>🔶 {ti.condicion}{ti.prescribed_dose ? ` · ${ti.prescribed_dose}` : ""}</div>
+                  </div>
+                  <button onClick={() => registerConditionalDose(ti)} disabled={busy}
+                    style={{ background: "var(--color-primary)", color: "#fff", border: "none", borderRadius: 10, padding: "7px 12px", fontSize: 11, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, flexShrink: 0, whiteSpace: "nowrap" }}>
+                    + Registrar toma
+                  </button>
+                </div>
+                {recentLogs.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {recentLogs.map(log => (
+                      <button key={log.id} onClick={() => undoConditionalDose(ti, log)} disabled={busy} title="Quitar este registro"
+                        style={{ fontSize: 10, padding: "3px 8px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#059669", cursor: busy ? "default" : "pointer" }}>
+                        ✓ {formatFechaHora(new Date(log.scheduled_at))} ✕
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
