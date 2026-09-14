@@ -6,20 +6,12 @@ import { getHeaderBackgroundStyle } from "@/lib/fondos";
 import DrugClassLabel from "@/components/DrugClassLabel";
 import { filterValidDoseLogs } from "@/lib/doseSchedule";
 import { computeItemNeeds } from "@/lib/inventoryCalc";
+import { getPetIcon } from "@/lib/petSpecies";
+import DeleteArchivedPetModal from "@/components/DeleteArchivedPetModal";
 
 const PET_ACCENT_COLORS = ["#FF6B35","#2EC4B6","#534AB7","#2D6A4F","#D4537E","#BA7517"];
 
 const TYPE_ICONS = { surgery:"🔪", illness:"🤒", exam:"🧪", procedure:"⚕️", vaccine:"💉", other:"📝" };
-
-function getPetAvatar(species) {
-  if (!species) return "🐾";
-  const s = species.toLowerCase();
-  if (s.includes("perro") || s.includes("dog")) return "🐶";
-  if (s.includes("gato") || s.includes("cat")) return "🐱";
-  if (s.includes("conejo")) return "🐰";
-  if (s.includes("ave") || s.includes("bird")) return "🐦";
-  return "🐾";
-}
 
 function calcAge(birth) {
   if (!birth) return "—";
@@ -110,6 +102,8 @@ const css = `
 export default function OverviewClient({ pets, archivedPets, user, userPlan, medications, vaccines, treatments, latestWeights, tutors, history, doseLogs, inventoryItems, inventoryLinks }) {
   const router = useRouter();
   const [selectedPet, setSelectedPet] = useState(null);
+  const [deletingPet, setDeletingPet] = useState(null); // pet object o null
+  const [hiddenArchivedIds, setHiddenArchivedIds] = useState(new Set());
 
   // ── Derived data ──────────────────────────────────
   const activeMeds = medications.filter(m => m.active !== false);
@@ -204,7 +198,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
         <button key={p.id} className={`ov-sidebar-btn${selectedPet?.id === p.id ? " active" : ""}`}
           onClick={() => setSelectedPet(p)}
           style={{ borderRight: selectedPet?.id === p.id ? `3px solid ${PET_ACCENT_COLORS[i % PET_ACCENT_COLORS.length]}` : undefined }}>
-          <span>{getPetAvatar(p.species)}</span> {p.name}{isBirthdayToday(p.birth_date) && " 🎂"}
+          <span>{getPetIcon(p.species, p.breed)}</span> {p.name}{isBirthdayToday(p.birth_date) && " 🎂"}
         </button>
       ))}
       <div className="ov-sidebar-section">Acciones</div>
@@ -252,7 +246,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                 <div style={{ width: 56, height: 56, borderRadius: "50%", background: color + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0, overflow: "hidden" }}>
                   {p.photo_url
                     ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-                    : getPetAvatar(p.species)}
+                    : getPetIcon(p.species, p.breed)}
                 </div>
                 <div>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 22, fontWeight: 800, color: "#1e293b" }}>
@@ -403,7 +397,7 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
           const pct = w ? Math.round((w.weight_kg / maxW) * 100) : 0;
           return (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 0", borderBottom: i < pets.length - 1 ? "1px solid #F1F5F9" : "none" }}>
-              <div style={{ fontSize: 22 }}>{getPetAvatar(p.species)}</div>
+              <div style={{ fontSize: 22 }}>{getPetIcon(p.species, p.breed)}</div>
               <div style={{ width: 100, fontWeight: 700, fontSize: 14, color: "#1e293b" }}>{p.name}</div>
               <div style={{ flex: 1, height: 10, background: "#F1F5F9", borderRadius: 5, overflow: "hidden" }}>
                 <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 5, transition: "width 0.5s" }} />
@@ -418,17 +412,17 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
       </div>
 
       {/* En Memoria */}
-      {archivedPets?.length > 0 && (
+      {archivedPets?.filter(p => !hiddenArchivedIds.has(p.id)).length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div className="ov-section-title" style={{ color: "#64748B" }}>🌈 En Memoria</div>
           <div className="ov-pet-grid">
-            {archivedPets.map(p => (
+            {archivedPets.filter(p => !hiddenArchivedIds.has(p.id)).map(p => (
               <div key={p.id} className="ov-pet-card" style={{ borderTopColor: "#94A3B8", filter: "saturate(0.55) sepia(0.15)", background: "#F8FAFC" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
                   <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#CBD5E1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0, overflow: "hidden" }}>
                     {p.photo_url
                       ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-                      : getPetAvatar(p.species)}
+                      : getPetIcon(p.species, p.breed)}
                   </div>
                   <div>
                     <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#475569" }}>{p.name}</div>
@@ -436,6 +430,10 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                   </div>
                 </div>
                 <div style={{ fontSize: 12, color: "#94A3B8" }}>En Memoria desde {formatFecha(p.archived_at)}</div>
+                <button onClick={() => setDeletingPet(p)}
+                  style={{ marginTop: 8, background: "none", border: "none", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
+                  🗑️ Eliminar para siempre
+                </button>
               </div>
             ))}
           </div>
@@ -447,6 +445,18 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
   return (
     <>
       <style>{css}</style>
+
+      {deletingPet && (
+        <DeleteArchivedPetModal
+          pet={deletingPet}
+          onClose={() => setDeletingPet(null)}
+          onDeleted={() => {
+            setHiddenArchivedIds(prev => new Set(prev).add(deletingPet.id));
+            setDeletingPet(null);
+            router.refresh();
+          }}
+        />
+      )}
 
       {/* Mobile fallback */}
       <div className="ov-mobile" style={{ minHeight: "100vh", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center", gap: 16, background: "#F0F2F5" }}>
@@ -520,7 +530,7 @@ function PetDetailView({ pet, color, meds, nv, w, petTutors, petHistory, doseSta
           <div style={{ width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40, flexShrink: 0, overflow: "hidden" }}>
             {pet.photo_url
               ? <img src={pet.photo_url} alt={pet.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-              : getPetAvatar(pet.species)}
+              : getPetIcon(pet.species, pet.breed)}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 28, fontWeight: 800, lineHeight: 1.1 }}>{pet.name}</div>

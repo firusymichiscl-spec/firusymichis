@@ -4,8 +4,9 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { validateRequired } from "@/lib/formValidation";
-import { validateWeightRange } from "@/lib/nutrition";
+import { validateBirthDate } from "@/lib/nutrition";
 import { filterChipInput, chipValidationMessage } from "@/lib/chip";
+import { OTHER_PET_TYPES } from "@/lib/petSpecies";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -37,12 +38,13 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
     sex: pet.sex || "",
     breed: pet.breed || "",
     birth_date: pet.birth_date || "",
-    weight_kg: pet.weight_kg || "",
     conditions: pet.conditions || [],
     diet: pet.diet || "",
     allergies: pet.allergies || [],
     chip_number: pet.chip_number || "",
     chip_registry: pet.chip_registry || "",
+    is_adopted: pet.is_adopted || false,
+    adopted_date: pet.adopted_date || "",
   });
   const [breedQuery, setBreedQuery] = useState(pet.breed || "");
   const [breedDropdown, setBreedDropdown] = useState(false);
@@ -50,7 +52,7 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
   const [conditionInput, setConditionInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [nameError, setNameError] = useState("");
-  const [weightError, setWeightError] = useState("");
+  const [birthDateError, setBirthDateError] = useState("");
 
   const breeds = form.species === "cat" ? BREEDS_CAT : form.species === "other" ? BREEDS_OTHER : BREEDS_DOG;
   const filteredBreeds = breedQuery ? breeds.filter(b => b.toLowerCase().includes(breedQuery.toLowerCase())) : breeds;
@@ -68,22 +70,20 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
 
   const CHANGED_FIELD_LABELS = {
     name: "nombre", species: "especie", sex: "sexo", breed: "raza",
-    birth_date: "nacimiento", weight_kg: "peso", conditions: "condiciones",
+    birth_date: "nacimiento", conditions: "condiciones",
     diet: "dieta", allergies: "alergias", chip_number: "chip", chip_registry: "registro de chip",
+    is_adopted: "adopción", adopted_date: "fecha de adopción",
   };
 
   const save = async () => {
-    // Peso opcional acá (se puede dejar en blanco) — solo se valida el
-    // rango si hay un valor. Usa form.species, no pet.species: la especie
-    // se puede cambiar en este mismo modal antes de guardar.
-    const weightCheck = form.weight_kg ? validateWeightRange(form.weight_kg, form.species) : { valid: true };
+    const birthCheck = validateBirthDate(form.birth_date, form.species, form.breed);
     const ok = validateRequired([
       { valid: !!form.name.trim(), id: "editpet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
-      { valid: weightCheck.valid, id: "editpet-weight", message: weightCheck.message, onInvalid: setWeightError },
+      { valid: birthCheck.valid, id: "editpet-birth-date", message: birthCheck.message, onInvalid: setBirthDateError },
     ]);
     if (!ok) return;
     setNameError("");
-    setWeightError("");
+    setBirthDateError("");
     setLoading(true);
     const changedFields = Object.keys(CHANGED_FIELD_LABELS).filter(key => {
       const before = pet[key];
@@ -96,11 +96,12 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
     const { error } = await supabase.from("pets").update({
       name: form.name, species: form.species, sex: form.sex || null,
       breed: form.breed, birth_date: form.birth_date || null,
-      weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions, diet: form.diet,
       allergies: form.allergies.length > 0 ? form.allergies : null,
       chip_number: form.chip_number || null,
       chip_registry: form.chip_registry || null,
+      is_adopted: form.is_adopted,
+      adopted_date: form.is_adopted && form.adopted_date ? form.adopted_date : null,
     }).eq("id", pet.id);
     if (!error) {
       const detail = changedFields.length > 0
@@ -144,7 +145,7 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
         <label style={css.label}>Especie</label>
         <div style={css.speciesGrid}>
           {[{ value: "dog", icon: "🐶", label: "Perro" }, { value: "cat", icon: "🐱", label: "Gato" }, { value: "other", icon: "🐰", label: "Otro" }].map(s => (
-            <div key={s.value} style={css.speciesBtn(form.species === s.value)} onClick={() => setForm(f => ({ ...f, species: s.value }))}>
+            <div key={s.value} style={css.speciesBtn(form.species === s.value)} onClick={() => { setForm(f => ({ ...f, species: s.value, breed: "" })); setBreedQuery(""); }}>
               <span style={{ fontSize: 24, display: "block", marginBottom: 3 }}>{s.icon}</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#3D1F0A" }}>{s.label}</span>
             </div>
@@ -168,36 +169,60 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
           onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setNameError(""); }} />
         {nameError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {nameError}</div>}
 
-        {/* RAZA */}
-        <label style={css.label}>Raza</label>
-        <div style={{ position: "relative" }}>
-          <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
-            onChange={e => { setBreedQuery(e.target.value); setBreedDropdown(true); }}
-            onFocus={() => setBreedDropdown(true)}
-            onBlur={() => setTimeout(() => setBreedDropdown(false), 200)} />
-          {breedDropdown && (
-            <div style={css.dropdown}>
-              {filteredBreeds.slice(0, 8).map(b => (
-                <div key={b} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, breed: b })); setBreedQuery(b); setBreedDropdown(false); }}>{b}</div>
-              ))}
-              {breedQuery && !breeds.find(b => b.toLowerCase() === breedQuery.toLowerCase()) && (
-                <div style={{ ...css.dropItem, color: "#2EC4B6", fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, breed: breedQuery })); setBreedDropdown(false); }}>+ Usar "{breedQuery}"</div>
-              )}
-            </div>
-          )}
-        </div>
+        {/* RAZA / TIPO */}
+        <label style={css.label}>{form.species === "other" ? "Tipo de mascota" : "Raza"}</label>
+        {form.species === "other" ? (
+          <select style={{ ...css.input, background: "#fff" }} value={form.breed}
+            onChange={e => setForm(f => ({ ...f, breed: e.target.value }))}>
+            <option value="">Selecciona...</option>
+            {OTHER_PET_TYPES.map(t => (
+              <option key={t.value} value={t.value}>{t.icon} {t.value}</option>
+            ))}
+          </select>
+        ) : (
+          <div style={{ position: "relative" }}>
+            <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
+              onChange={e => { setBreedQuery(e.target.value); setBreedDropdown(true); }}
+              onFocus={() => setBreedDropdown(true)}
+              onBlur={() => setTimeout(() => setBreedDropdown(false), 200)} />
+            {breedDropdown && (
+              <div style={css.dropdown}>
+                {filteredBreeds.slice(0, 8).map(b => (
+                  <div key={b} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, breed: b })); setBreedQuery(b); setBreedDropdown(false); }}>{b}</div>
+                ))}
+                {breedQuery && !breeds.find(b => b.toLowerCase() === breedQuery.toLowerCase()) && (
+                  <div style={{ ...css.dropItem, color: "#2EC4B6", fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, breed: breedQuery })); setBreedDropdown(false); }}>+ Usar "{breedQuery}"</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* FECHA NACIMIENTO */}
         <label style={css.label}>Fecha de nacimiento</label>
-        <input style={css.input} type="date" max={new Date().toISOString().split("T")[0]}
-          value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
+        <input style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} type="date" max={new Date().toISOString().split("T")[0]}
+          value={form.birth_date} onChange={e => { setForm(f => ({ ...f, birth_date: e.target.value })); setBirthDateError(""); }} />
         {form.birth_date && <div style={css.ageDisplay}>🎂 {calcAge(form.birth_date)}</div>}
+        {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
 
-        {/* PESO */}
-        <label style={css.label}>Peso actual (kg)</label>
-        <input id="editpet-weight" style={{ ...css.input, borderColor: weightError ? "#dc2626" : "#FFD9C8" }} type="number" step="0.1" placeholder="ej: 12.5"
-          value={form.weight_kg} onChange={e => { setForm(f => ({ ...f, weight_kg: e.target.value })); setWeightError(""); }} />
-        {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {weightError}</div>}
+        {/* ADOPCIÓN */}
+        <label style={css.label}>¿Es adoptada?</label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
+          {[{ value: true, label: "Sí" }, { value: false, label: "No" }].map(opt => (
+            <div key={String(opt.value)}
+              onClick={() => setForm(f => ({ ...f, is_adopted: opt.value, adopted_date: opt.value ? f.adopted_date : "" }))}
+              style={css.speciesBtn(form.is_adopted === opt.value)}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{opt.label}</span>
+            </div>
+          ))}
+        </div>
+        {form.is_adopted && (
+          <>
+            <label style={css.label}>Fecha de adopción</label>
+            <input style={css.input} type="date" max={new Date().toISOString().split("T")[0]}
+              value={form.adopted_date} onChange={e => setForm(f => ({ ...f, adopted_date: e.target.value }))} />
+          </>
+        )}
 
         {/* CHIP */}
         <label style={css.label}>Número de chip</label>

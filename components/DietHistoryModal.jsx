@@ -115,6 +115,7 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
     const ok = validateRequired([
       { valid: !!foodName.trim(), id: "diet-food-name", message: "El alimento es obligatorio", onInvalid: msg => setErrors(e => ({ ...e, foodName: msg })) },
       { valid: !!dateFrom, id: "diet-date-from", message: "La fecha de inicio es obligatoria", onInvalid: msg => setErrors(e => ({ ...e, dateFrom: msg })) },
+      { valid: !gramsPerDay || (parseInt(gramsPerDay) >= 0 && parseInt(gramsPerDay) <= 5000), id: "diet-grams", message: "Los gramos/día deben estar entre 0 y 5000. Verifica el valor.", onInvalid: msg => setErrors(e => ({ ...e, grams: msg })) },
     ]);
     if (!ok) return;
     setErrors({});
@@ -243,7 +244,9 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
 
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Gramos/día</div>
-            <input style={css.input} type="number" step="10" placeholder="ej: 350" value={gramsPerDay} onChange={e => setGramsPerDay(e.target.value)} />
+            <input style={{ ...css.input, borderColor: errors.grams ? "#dc2626" : "#FFD9C8" }} type="number" step="10" min="0" max="5000" placeholder="ej: 350" value={gramsPerDay}
+              onChange={e => { setGramsPerDay(e.target.value); setErrors(er => ({ ...er, grams: null })); }} />
+            {errors.grams && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.grams}</div>}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>

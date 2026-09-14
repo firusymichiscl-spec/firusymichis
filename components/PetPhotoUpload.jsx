@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
+import { getPetIcon } from "@/lib/petSpecies";
 
 export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji, readOnly }) {
   const supabase = createClient();
@@ -103,7 +104,7 @@ export default function PetPhotoUpload({ pet, onUpdate, avatarEmoji, readOnly })
     }, "image/jpeg", 0.9);
   };
 
-  const speciesIcon = avatarEmoji || (pet.species === "cat" ? "🐱" : pet.species === "other" ? "🐰" : "🐶");
+  const speciesIcon = avatarEmoji || getPetIcon(pet.species, pet.breed);
 
   return (
     <>

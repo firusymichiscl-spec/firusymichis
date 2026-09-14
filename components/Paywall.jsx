@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getPetIcon } from "@/lib/petSpecies";
 
 const calcAge = (birthDate) => {
   if (!birthDate) return "Sin datos";
@@ -14,11 +15,7 @@ const calcAge = (birthDate) => {
   return `${y} año${y !== 1 ? "s" : ""}${m > 0 ? ` ${m} mes${m !== 1 ? "es" : ""}` : ""}`;
 };
 
-const getPetAvatar = (species) => {
-  if (species === "cat") return "🐱";
-  if (species === "dog") return "🐶";
-  return "🐾";
-};
+const getPetAvatar = (species, breed) => getPetIcon(species, breed);
 
 const PLANS = [
   { id: "pro", label: "PRO", price: "$3.990 CLP/mes", features: "Hasta 3 mascotas · IA incluida · PDF" },
@@ -47,7 +44,7 @@ export default function Paywall({ lastPetSnapshot }) {
                 <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#FFF0EB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, overflow: "hidden", flexShrink: 0 }}>
                   {pet.photo_url
                     ? <img src={pet.photo_url} alt={pet.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
-                    : getPetAvatar(pet.species)}
+                    : getPetAvatar(pet.species, pet.breed)}
                 </div>
                 <div>
                   <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#3D1F0A" }}>{pet.name}</div>

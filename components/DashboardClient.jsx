@@ -17,6 +17,7 @@ import NotificationSettings from "@/components/NotificationSettings";
 import Paywall from "@/components/Paywall";
 import ArchivePetModal from "@/components/ArchivePetModal";
 import DangerZoneModal from "@/components/DangerZoneModal";
+import DeleteArchivedPetModal from "@/components/DeleteArchivedPetModal";
 import EventDeleteModal from "@/components/EventDeleteModal";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DoseTracker from "@/components/DoseTracker";
@@ -30,6 +31,7 @@ import { getHeaderBackgroundStyle } from "@/lib/fondos";
 import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno, todayInChile, sumarDias } from "@/lib/fechas";
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
+import { getPetIcon } from "@/lib/petSpecies";
 
 // Iniciales para el avatar del header: nombre de Google si Supabase lo trae
 // en user_metadata ("Hugo Cárcamo" → "HC" — primera letra de las dos
@@ -125,6 +127,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [switchingPet, setSwitchingPet] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [showDeleteArchived, setShowDeleteArchived] = useState(false);
   const [showBirthdayBanner, setShowBirthdayBanner] = useState(true);
 
   const isArchived = !!petData.archived_at;
@@ -708,6 +711,26 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
     }
   };
 
+  const handlePetDeleted = async () => {
+    setShowDangerZone(false);
+    setShowDeleteArchived(false);
+    const deletedName = petData.name;
+    const deletedSex = petData.sex;
+    const remaining = allPetsData.filter(p => p.id !== petData.id);
+    if (remaining.length === 0) {
+      const params = new URLSearchParams({ eliminada: deletedName });
+      if (deletedSex) params.set("eliminadaSex", deletedSex);
+      window.location.href = `/nueva-mascota?${params.toString()}`;
+    } else {
+      setAllPetsData(remaining);
+      await switchPet(remaining[0].id);
+      const params = new URLSearchParams(window.location.search);
+      params.set("eliminada", deletedName);
+      if (deletedSex) params.set("eliminadaSex", deletedSex);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
+  };
+
   // Firma en batch (una sola llamada) todas las fotos de eventos que todavía
   // no tienen signed URL resuelta cuando cambia la lista de historial.
   useEffect(() => {
@@ -842,19 +865,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const allergyAlert = petData.allergies?.length > 0 && medForm.name &&
     petData.allergies.some(a => a.toLowerCase() === medForm.name.toLowerCase());
 
-  const speciesIcon = petData.species === "cat" ? "🐱" : petData.species === "other" ? "🐰" : "🐶";
   const sexSymbol = petData.sex === 'male' ? ' ♂' : petData.sex === 'female' ? ' ♀' : '';
 
   const getPetAvatar = (species, breed, photoUrl) => {
     if (photoUrl) return null;
-    if (species === "cat") return "🐱";
-    if (species === "dog") return "🐶";
-    const breedEmojis = {
-      "conejo enano": "🐰", "hámster sirio": "🐹", "cobaya": "🐹",
-      "chinchilla": "🐭", "hurón": "🦡", "tortuga": "🐢",
-      "loro": "🦜", "canario": "🐦", "periquito": "🐦", "iguana": "🦎",
-    };
-    return breedEmojis[breed?.toLowerCase().trim()] || "🐾";
+    return getPetIcon(species, breed);
   };
 
   const calcAge = (birthDate) => {
@@ -1259,6 +1274,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>
               🌈 {petData.name} está En Memoria · Solo lectura
             </div>
+            <button onClick={() => setShowDeleteArchived(true)}
+              style={{ marginTop: 8, background: "none", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
+              🗑️ Eliminar para siempre
+            </button>
           </div>
         )}
 
@@ -1297,27 +1316,16 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               setCurrentWeight(null);
               setTreatmentItems([]);
             }}
-            onDeleted={async () => {
-              setShowDangerZone(false);
-              const deletedName = petData.name;
-              const deletedSex = petData.sex;
-              const remaining = allPetsData.filter(p => p.id !== petData.id);
-              if (remaining.length === 0) {
-                const params = new URLSearchParams({ eliminada: deletedName });
-                if (deletedSex) params.set("eliminadaSex", deletedSex);
-                window.location.href = `/nueva-mascota?${params.toString()}`;
-              } else {
-                setAllPetsData(remaining);
-                await switchPet(remaining[0].id);
-                // switchPet ya reemplazó la URL con "?pet=...", así que acá se
-                // agrega "eliminada" preservando ese param en vez de pisarlo.
-                const params = new URLSearchParams(window.location.search);
-                params.set("eliminada", deletedName);
-                if (deletedSex) params.set("eliminadaSex", deletedSex);
-                router.replace(`?${params.toString()}`, { scroll: false });
-              }
-            }}
+            onDeleted={handlePetDeleted}
             onOpenArchive={() => { setShowDangerZone(false); setShowArchiveModal(true); }}
+          />
+        )}
+
+        {showDeleteArchived && (
+          <DeleteArchivedPetModal
+            pet={petData}
+            onClose={() => setShowDeleteArchived(false)}
+            onDeleted={handlePetDeleted}
           />
         )}
 
@@ -1343,6 +1351,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ["Raza", petData.breed || "Sin datos"],
                   ["Sexo", petData.sex === 'male' ? '♂️ Macho' : petData.sex === 'female' ? '♀️ Hembra' : 'Sin datos'],
                   ["Edad", calcAge(petData.birth_date)],
+                  ["Adoptada", petData.is_adopted ? (petData.adopted_date ? `Sí, el ${formatDate(petData.adopted_date)}` : "Sí") : "No"],
                   ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
                   ["Chip", petData.chip_number ? `${formatChipDisplay(petData.chip_number)}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
                 ].map(([l, v]) => (

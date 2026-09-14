@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
-import { validateWeightRange } from "@/lib/nutrition";
+import { validateBirthDate } from "@/lib/nutrition";
+import { OTHER_PET_TYPES } from "@/lib/petSpecies";
 import DeletedPetToast from "@/components/DeletedPetToast";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
@@ -69,13 +70,14 @@ function NuevaMascotaInner() {
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     species: 'dog', speciesIcon: '🐶', speciesLabel: 'Perro',
-    name: '', breed: '', birth_date: '', weight_kg: '',
+    name: '', breed: '', birth_date: '',
     sex: '', conditions: [],
+    is_adopted: false, adopted_date: '',
   });
   const [breedQuery, setBreedQuery] = useState('');
   const [breedDropdown, setBreedDropdown] = useState(false);
   const [nameError, setNameError] = useState('');
-  const [weightError, setWeightError] = useState('');
+  const [birthDateError, setBirthDateError] = useState('');
 
   // FIX 1.2: solo mostrar "Volver al dashboard" si ya tiene alguna mascota.
   const [hasExistingPets, setHasExistingPets] = useState(false);
@@ -172,17 +174,14 @@ function NuevaMascotaInner() {
   };
 
   const goToStep3 = () => {
-    // Peso es opcional en este paso — solo se valida el rango si el
-    // usuario escribió algo (Lote R2 Fix, capa dura además de la
-    // advertencia de desviación >50% que ya existía).
-    const weightCheck = form.weight_kg ? validateWeightRange(form.weight_kg, form.species) : { valid: true };
+    const birthCheck = validateBirthDate(form.birth_date, form.species, form.breed);
     const ok = validateRequired([
       { valid: !!form.name.trim(), id: "pet-name", message: "El nombre es obligatorio", onInvalid: setNameError },
-      { valid: weightCheck.valid, id: "pet-weight", message: weightCheck.message, onInvalid: setWeightError },
+      { valid: birthCheck.valid, id: "pet-birth-date", message: birthCheck.message, onInvalid: setBirthDateError },
     ]);
     if (!ok) return;
     setNameError('');
-    setWeightError('');
+    setBirthDateError('');
     setStep(3);
   };
 
@@ -208,23 +207,14 @@ function NuevaMascotaInner() {
       sex: form.sex || null,
       breed: form.breed,
       birth_date: form.birth_date || null,
-      weight_kg: form.weight_kg ? parseFloat(form.weight_kg) : null,
       conditions: form.conditions,
+      is_adopted: form.is_adopted,
+      adopted_date: form.is_adopted && form.adopted_date ? form.adopted_date : null,
       slug,
     }).select().single();
 
     if (!error && newPet) {
       await logActivity(supabase, newPet.id, "Creó la ficha");
-      if (form.weight_kg) {
-        await supabase.from("weight_logs").insert({
-          pet_id: newPet.id,
-          weight_kg: parseFloat(form.weight_kg),
-          logged_date: new Date().toISOString().split("T")[0],
-          granularity: "sporadic",
-          week_of_month: null,
-        });
-        await logActivity(supabase, newPet.id, "Registró peso", `${form.weight_kg} kg`);
-      }
       // FIX 2.3: tutor titular — misma estructura de columnas que TutorTab.jsx.
       await supabase.from("tutors").insert({
         pet_id: newPet.id,
@@ -274,7 +264,7 @@ function NuevaMascotaInner() {
         ['Especie', form.speciesLabel],
         ['Raza', form.breed],
         ['Nacimiento', form.birth_date ? formatFecha(form.birth_date) : ''],
-        ['Peso', form.weight_kg ? `${form.weight_kg} kg` : ''],
+        ['Adoptada', form.is_adopted ? (form.adopted_date ? `Sí (${formatFecha(form.adopted_date)})` : 'Sí') : ''],
         ['Tutor titular', tutorForm.full_name],
       ].filter(([, v]) => v).map(([k, v]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
@@ -344,7 +334,7 @@ function NuevaMascotaInner() {
               <div style={css.sub}>Selecciona para personalizar la experiencia</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
                 {SPECIES_OPTIONS.map(s => (
-                  <div key={s.value} onClick={() => setForm(f => ({ ...f, species: s.value, speciesIcon: s.icon, speciesLabel: s.label }))}
+                  <div key={s.value} onClick={() => { setForm(f => ({ ...f, species: s.value, speciesIcon: s.icon, speciesLabel: s.label, breed: '' })); setBreedQuery(''); }}
                     style={{ border: `2px solid ${form.species === s.value ? '#FF6B35' : '#FFD9C8'}`, borderRadius: 14, padding: '14px 6px', background: form.species === s.value ? '#FFF0EB' : '#FFFAF7', cursor: 'pointer', textAlign: 'center' }}>
                     <span style={{ fontSize: 32, display: 'block', marginBottom: 4 }}>{s.icon}</span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#3D1F0A' }}>{s.label}</span>
@@ -380,35 +370,61 @@ function NuevaMascotaInner() {
                   </div>
                 ))}
               </div>
-              <label style={css.label}>Raza</label>
-              <div style={{ position: 'relative' }}>
-                <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
-                  onChange={e => { setBreedQuery(e.target.value); setBreedDropdown(true); }}
-                  onFocus={() => setBreedDropdown(true)}
-                  onBlur={() => setTimeout(() => setBreedDropdown(false), 200)} />
-                {breedDropdown && (
-                  <div style={css.dropdown}>
-                    {filteredBreeds.slice(0, 8).map(b => (
-                      <div key={b} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, breed: b })); setBreedQuery(b); setBreedDropdown(false); }}>{b}</div>
-                    ))}
-                    {breedQuery && !breeds.find(b => b.toLowerCase() === breedQuery.toLowerCase()) && (
-                      <div style={{ ...css.dropItem, color: '#2EC4B6', fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, breed: breedQuery })); setBreedDropdown(false); }}>+ Usar "{breedQuery}"</div>
-                    )}
+              <label style={css.label}>{form.species === 'other' ? 'Tipo de mascota' : 'Raza'}</label>
+              {form.species === 'other' ? (
+                <select style={{ ...css.input, background: '#FFFAF7' }} value={form.breed}
+                  onChange={e => {
+                    const val = e.target.value;
+                    const match = OTHER_PET_TYPES.find(t => t.value === val);
+                    setForm(f => ({ ...f, breed: val, speciesIcon: match ? match.icon : f.speciesIcon }));
+                  }}>
+                  <option value="">Selecciona...</option>
+                  {OTHER_PET_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.icon} {t.value}</option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input style={css.input} placeholder="Buscar raza..." value={breedQuery}
+                    onChange={e => { setBreedQuery(e.target.value); setBreedDropdown(true); }}
+                    onFocus={() => setBreedDropdown(true)}
+                    onBlur={() => setTimeout(() => setBreedDropdown(false), 200)} />
+                  {breedDropdown && (
+                    <div style={css.dropdown}>
+                      {filteredBreeds.slice(0, 8).map(b => (
+                        <div key={b} style={css.dropItem} onClick={() => { setForm(f => ({ ...f, breed: b })); setBreedQuery(b); setBreedDropdown(false); }}>{b}</div>
+                      ))}
+                      {breedQuery && !breeds.find(b => b.toLowerCase() === breedQuery.toLowerCase()) && (
+                        <div style={{ ...css.dropItem, color: '#2EC4B6', fontWeight: 700 }} onClick={() => { setForm(f => ({ ...f, breed: breedQuery })); setBreedDropdown(false); }}>+ Usar "{breedQuery}"</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <label style={css.label}>Fecha de nacimiento</label>
+              <input style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} type="date"
+                max={new Date().toISOString().split("T")[0]}
+                value={form.birth_date}
+                onChange={e => { setForm(f => ({ ...f, birth_date: e.target.value })); setBirthDateError(''); }} />
+              {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
+
+              <label style={css.label}>¿Es adoptada?</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4 }}>
+                {[{ value: true, label: 'Sí' }, { value: false, label: 'No' }].map(opt => (
+                  <div key={String(opt.value)}
+                    onClick={() => setForm(f => ({ ...f, is_adopted: opt.value, adopted_date: opt.value ? f.adopted_date : '' }))}
+                    style={{ border: `2px solid ${form.is_adopted === opt.value ? '#FF6B35' : '#FFD9C8'}`, borderRadius: 12, padding: '10px 6px', background: form.is_adopted === opt.value ? '#FFF0EB' : '#FFFAF7', cursor: 'pointer', textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#3D1F0A' }}>{opt.label}</span>
                   </div>
-                )}
+                ))}
               </div>
-              <div className="nm-basic-grid" style={{ gap: 10 }}>
-                <div>
-                  <label style={css.label}>Fecha de nacimiento</label>
-                  <input style={css.input} type="date" value={form.birth_date} onChange={e => setForm(f => ({ ...f, birth_date: e.target.value }))} />
-                </div>
-                <div>
-                  <label style={css.label}>Peso (kg)</label>
-                  <input id="pet-weight" style={{ ...css.input, borderColor: weightError ? "#dc2626" : "#FFD9C8" }} type="number" placeholder="38" step="0.1" value={form.weight_kg}
-                    onChange={e => { setForm(f => ({ ...f, weight_kg: e.target.value })); setWeightError(''); }} />
-                  {weightError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {weightError}</div>}
-                </div>
-              </div>
+              {form.is_adopted && (
+                <>
+                  <label style={css.label}>Fecha de adopción</label>
+                  <input style={css.input} type="date" max={new Date().toISOString().split("T")[0]}
+                    value={form.adopted_date} onChange={e => setForm(f => ({ ...f, adopted_date: e.target.value }))} />
+                </>
+              )}
               <button style={css.btn} onClick={goToStep3}>Continuar →</button>
               <button style={css.btnBack} onClick={() => setStep(1)}>← Volver</button>
             </div>

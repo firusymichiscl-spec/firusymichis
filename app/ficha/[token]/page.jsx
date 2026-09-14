@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { formatFecha } from "@/lib/fechas";
 import { formatChipDisplay } from "@/lib/chip";
 import DrugClassLabel from "@/components/DrugClassLabel";
+import { getPetIcon } from "@/lib/petSpecies";
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -71,7 +72,7 @@ export default async function FichaPublica({ params }) {
 
   const vaccines = history?.filter(h => h.type === "vaccine") || [];
   const medHistory = history?.filter(h => h.type !== "vaccine") || [];
-  const speciesIcon = pet?.species === "cat" ? "🐱" : pet?.species === "other" ? "🐰" : "🐶";
+  const speciesIcon = getPetIcon(pet?.species, pet?.breed);
   const sexLabel = pet?.sex === "male" ? "♂️ Macho" : pet?.sex === "female" ? "♀️ Hembra" : null;
 
   const daysLeft = share.expires_at
