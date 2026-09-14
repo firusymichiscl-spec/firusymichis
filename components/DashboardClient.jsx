@@ -32,6 +32,7 @@ import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno, todayInCh
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
 import { getPetIcon } from "@/lib/petSpecies";
+import { generoPalabra } from "@/lib/genero";
 import DateInputCL from "@/components/DateInputCL";
 
 // Iniciales para el avatar del header: nombre de Google si Supabase lo trae
@@ -1352,7 +1353,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ["Raza", petData.breed || "Sin datos"],
                   ["Sexo", petData.sex === 'male' ? '♂️ Macho' : petData.sex === 'female' ? '♀️ Hembra' : 'Sin datos'],
                   ["Edad", petData.birth_date_approximate && petData.birth_date ? `≈ ${calcAge(petData.birth_date)}` : calcAge(petData.birth_date)],
-                  ["Adoptada", petData.is_adopted ? `${petData.adoption_type === "rescatada" ? "Rescatada" : "Adoptada"}${petData.adopted_date ? `, el ${formatDate(petData.adopted_date)}` : ""}` : "No"],
+                  ["Adoptada", petData.is_adopted ? `${petData.adoption_type === "rescatada" ? generoPalabra(petData.sex, "Rescatada", "Rescatado") : generoPalabra(petData.sex, "Adoptada", "Adoptado")}${petData.adopted_date ? `, el ${formatDate(petData.adopted_date)}` : ""}` : "No"],
                   ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
                   ["Chip", petData.chip_number ? `${formatChipDisplay(petData.chip_number)}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
                 ].map(([l, v]) => (

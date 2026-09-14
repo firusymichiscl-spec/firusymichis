@@ -8,6 +8,7 @@ import { formatFecha } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
 import { validateBirthDate, birthDateFromApproxYears } from "@/lib/nutrition";
 import { OTHER_PET_TYPES, getMaxAgeYears } from "@/lib/petSpecies";
+import { generoPalabra } from "@/lib/genero";
 import DeletedPetToast from "@/components/DeletedPetToast";
 import DateInputCL from "@/components/DateInputCL";
 
@@ -278,7 +279,7 @@ function NuevaMascotaInner() {
         ['Especie', form.speciesLabel],
         ['Raza', form.breed],
         ['Nacimiento', form.birth_date ? (form.birth_date_approximate ? `≈ ${formatFecha(form.birth_date)} (edad aprox.)` : formatFecha(form.birth_date)) : ''],
-        ['Adoptada', form.adoption_type ? `${form.adoption_type === 'rescatada' ? 'Rescatada' : 'Adoptada'}${form.adopted_date ? ` (${formatFecha(form.adopted_date)})` : ''}` : ''],
+        ['Adoptada', form.adoption_type ? `${form.adoption_type === 'rescatada' ? generoPalabra(form.sex, 'Rescatada', 'Rescatado') : generoPalabra(form.sex, 'Adoptada', 'Adoptado')}${form.adopted_date ? ` (${formatFecha(form.adopted_date)})` : ''}` : ''],
         ['Tutor titular', tutorForm.full_name],
       ].filter(([, v]) => v).map(([k, v]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
@@ -415,12 +416,12 @@ function NuevaMascotaInner() {
                   )}
                 </div>
               )}
-              <label style={css.label}>¿Es adoptada?</label>
+              <label style={css.label}>¿Es {generoPalabra(form.sex, 'adoptada', 'adoptado')}?</label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 4 }}>
                 {[
                   { value: null, label: 'No' },
-                  { value: 'adoptada', label: 'Adoptada' },
-                  { value: 'rescatada', label: 'Rescatada' },
+                  { value: 'adoptada', label: generoPalabra(form.sex, 'Adoptada', 'Adoptado') },
+                  { value: 'rescatada', label: generoPalabra(form.sex, 'Rescatada', 'Rescatado') },
                 ].map(opt => (
                   <div key={String(opt.value)}
                     onClick={() => setForm(f => ({

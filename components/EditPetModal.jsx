@@ -7,6 +7,7 @@ import { validateRequired } from "@/lib/formValidation";
 import { validateBirthDate, birthDateFromApproxYears } from "@/lib/nutrition";
 import { filterChipInput, chipValidationMessage } from "@/lib/chip";
 import { OTHER_PET_TYPES, getMaxAgeYears } from "@/lib/petSpecies";
+import { generoPalabra } from "@/lib/genero";
 import DateInputCL from "@/components/DateInputCL";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
@@ -207,12 +208,12 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
         )}
 
         {/* ADOPCIÓN */}
-        <label style={css.label}>¿Es adoptada?</label>
+        <label style={css.label}>¿Es {generoPalabra(form.sex, "adoptada", "adoptado")}?</label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 6 }}>
           {[
             { value: null, label: "No" },
-            { value: "adoptada", label: "Adoptada" },
-            { value: "rescatada", label: "Rescatada" },
+            { value: "adoptada", label: generoPalabra(form.sex, "Adoptada", "Adoptado") },
+            { value: "rescatada", label: generoPalabra(form.sex, "Rescatada", "Rescatado") },
           ].map(opt => (
             <div key={String(opt.value)}
               onClick={() => setForm(f => ({
