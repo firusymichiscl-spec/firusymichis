@@ -4,9 +4,9 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { validateRequired } from "@/lib/formValidation";
-import { validateBirthDate } from "@/lib/nutrition";
+import { validateBirthDate, birthDateFromApproxYears } from "@/lib/nutrition";
 import { filterChipInput, chipValidationMessage } from "@/lib/chip";
-import { OTHER_PET_TYPES } from "@/lib/petSpecies";
+import { OTHER_PET_TYPES, getMaxAgeYears } from "@/lib/petSpecies";
 import DateInputCL from "@/components/DateInputCL";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
@@ -45,7 +45,10 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
     chip_number: pet.chip_number || "",
     chip_registry: pet.chip_registry || "",
     is_adopted: pet.is_adopted || false,
+    adoption_type: pet.adoption_type || null,
     adopted_date: pet.adopted_date || "",
+    birth_date_approximate: pet.birth_date_approximate || false,
+    approximate_age_years: pet.approximate_age_years != null ? String(pet.approximate_age_years) : "",
   });
   const [breedQuery, setBreedQuery] = useState(pet.breed || "");
   const [breedDropdown, setBreedDropdown] = useState(false);
@@ -74,6 +77,7 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
     birth_date: "nacimiento", conditions: "condiciones",
     diet: "dieta", allergies: "alergias", chip_number: "chip", chip_registry: "registro de chip",
     is_adopted: "adopción", adopted_date: "fecha de adopción",
+    adoption_type: "tipo de adopción", birth_date_approximate: "fecha aproximada", approximate_age_years: "edad aproximada",
   };
 
   const save = async () => {
@@ -103,6 +107,9 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
       chip_registry: form.chip_registry || null,
       is_adopted: form.is_adopted,
       adopted_date: form.is_adopted && form.adopted_date ? form.adopted_date : null,
+      adoption_type: form.adoption_type,
+      birth_date_approximate: form.birth_date_approximate,
+      approximate_age_years: form.birth_date_approximate && form.approximate_age_years ? parseFloat(form.approximate_age_years) : null,
     }).eq("id", pet.id);
     if (!error) {
       const detail = changedFields.length > 0
@@ -199,29 +206,79 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
           </div>
         )}
 
-        {/* FECHA NACIMIENTO */}
-        <label style={css.label}>Fecha de nacimiento</label>
-        <DateInputCL style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} max={new Date().toISOString().split("T")[0]}
-          value={form.birth_date} onChange={v => { setForm(f => ({ ...f, birth_date: v })); setBirthDateError(""); }} />
-        {form.birth_date && <div style={css.ageDisplay}>🎂 {calcAge(form.birth_date)}</div>}
-        {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
-
         {/* ADOPCIÓN */}
         <label style={css.label}>¿Es adoptada?</label>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
-          {[{ value: true, label: "Sí" }, { value: false, label: "No" }].map(opt => (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 6 }}>
+          {[
+            { value: null, label: "No" },
+            { value: "adoptada", label: "Adoptada" },
+            { value: "rescatada", label: "Rescatada" },
+          ].map(opt => (
             <div key={String(opt.value)}
-              onClick={() => setForm(f => ({ ...f, is_adopted: opt.value, adopted_date: opt.value ? f.adopted_date : "" }))}
-              style={css.speciesBtn(form.is_adopted === opt.value)}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{opt.label}</span>
+              onClick={() => setForm(f => ({
+                ...f,
+                is_adopted: !!opt.value,
+                adoption_type: opt.value,
+                adopted_date: opt.value ? f.adopted_date : "",
+                birth_date_approximate: opt.value ? f.birth_date_approximate : false,
+                approximate_age_years: opt.value ? f.approximate_age_years : "",
+              }))}
+              style={css.speciesBtn(form.adoption_type === opt.value)}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#3D1F0A" }}>{opt.label}</span>
             </div>
           ))}
         </div>
-        {form.is_adopted && (
+
+        {!form.adoption_type && (
           <>
-            <label style={css.label}>Fecha de adopción</label>
+            <label style={css.label}>Fecha de nacimiento</label>
+            <DateInputCL style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} max={new Date().toISOString().split("T")[0]}
+              value={form.birth_date} onChange={v => { setForm(f => ({ ...f, birth_date: v })); setBirthDateError(""); }} />
+            {form.birth_date && <div style={css.ageDisplay}>🎂 {calcAge(form.birth_date)}</div>}
+            {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
+          </>
+        )}
+
+        {form.adoption_type && (
+          <>
+            <label style={css.label}>Fecha aproximada de {form.adoption_type === "rescatada" ? "rescate" : "adopción"}</label>
             <DateInputCL style={css.input} max={new Date().toISOString().split("T")[0]}
               value={form.adopted_date} onChange={v => setForm(f => ({ ...f, adopted_date: v }))} />
+
+            <label style={css.label}>¿Sabes la fecha de nacimiento?</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
+              {[{ value: false, label: "Sí, la sé" }, { value: true, label: "No, edad aprox." }].map(opt => (
+                <div key={String(opt.value)}
+                  onClick={() => setForm(f => ({ ...f, birth_date_approximate: opt.value, birth_date: "", approximate_age_years: opt.value ? f.approximate_age_years : "" }))}
+                  style={css.speciesBtn(form.birth_date_approximate === opt.value)}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#3D1F0A" }}>{opt.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {!form.birth_date_approximate ? (
+              <>
+                <label style={css.label}>Fecha de nacimiento</label>
+                <DateInputCL style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} max={new Date().toISOString().split("T")[0]}
+                  value={form.birth_date} onChange={v => { setForm(f => ({ ...f, birth_date: v })); setBirthDateError(""); }} />
+                {form.birth_date && <div style={css.ageDisplay}>🎂 {calcAge(form.birth_date)}</div>}
+                {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
+              </>
+            ) : (
+              <>
+                <label style={css.label}>Edad aproximada (años) — según el veterinario</label>
+                <input style={css.input} type="number" min="0" max={getMaxAgeYears(form.species, form.breed)} step="0.5" placeholder="ej: 3"
+                  value={form.approximate_age_years}
+                  onChange={e => {
+                    const years = e.target.value;
+                    const iso = years ? birthDateFromApproxYears(parseFloat(years)) : "";
+                    setForm(f => ({ ...f, approximate_age_years: years, birth_date: iso }));
+                    setBirthDateError("");
+                  }} />
+                {form.birth_date && <div style={css.ageDisplay}>🎂 ≈ {calcAge(form.birth_date)}</div>}
+                {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
+              </>
+            )}
           </>
         )}
 

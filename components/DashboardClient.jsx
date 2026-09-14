@@ -1351,8 +1351,8 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   ["Especie", petData.species === "dog" ? "Perro" : petData.species === "cat" ? "Gato" : "Otro"],
                   ["Raza", petData.breed || "Sin datos"],
                   ["Sexo", petData.sex === 'male' ? '♂️ Macho' : petData.sex === 'female' ? '♀️ Hembra' : 'Sin datos'],
-                  ["Edad", calcAge(petData.birth_date)],
-                  ["Adoptada", petData.is_adopted ? (petData.adopted_date ? `Sí, el ${formatDate(petData.adopted_date)}` : "Sí") : "No"],
+                  ["Edad", petData.birth_date_approximate && petData.birth_date ? `≈ ${calcAge(petData.birth_date)}` : calcAge(petData.birth_date)],
+                  ["Adoptada", petData.is_adopted ? `${petData.adoption_type === "rescatada" ? "Rescatada" : "Adoptada"}${petData.adopted_date ? `, el ${formatDate(petData.adopted_date)}` : ""}` : "No"],
                   ["Peso actual", currentWeight ? `${currentWeight} kg` : "Sin datos"],
                   ["Chip", petData.chip_number ? `${formatChipDisplay(petData.chip_number)}${petData.chip_registry ? ` · ${petData.chip_registry}` : ""}` : "Sin datos"],
                 ].map(([l, v]) => (
