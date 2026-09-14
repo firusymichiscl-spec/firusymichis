@@ -86,6 +86,8 @@ function NuevaMascotaInner() {
   // FIX 2: tutor titular obligatorio + autocompletar desde otra mascota.
   const [tutorForm, setTutorForm] = useState({ full_name: '', phone: '', relationship: '' });
   const [tutorError, setTutorError] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState('');
   const [existingTutor, setExistingTutor] = useState(null); // { full_name, phone, relationship, petName }
   const [useExistingTutor, setUseExistingTutor] = useState(false);
   // Lote R Fix 1.1 — resumen compacto en móvil, colapsado por defecto para
@@ -188,6 +190,10 @@ function NuevaMascotaInner() {
   };
 
   const savePet = async () => {
+    if (!hasExistingPets && !termsAccepted) {
+      setTermsError('Debes aceptar los Términos y la Política de Privacidad para continuar.');
+      return;
+    }
     // FIX 2.2: no se puede guardar sin nombre y teléfono del tutor titular.
     const tutorMsg = `Necesitamos un contacto responsable de ${form.name || 'tu mascota'}`;
     const ok = validateRequired([
@@ -229,6 +235,9 @@ function NuevaMascotaInner() {
         relationship: tutorForm.relationship || null,
       });
       await logActivity(supabase, newPet.id, "Agregó tutor", "Titular");
+      if (!hasExistingPets) {
+        await supabase.auth.updateUser({ data: { terms_accepted_at: new Date().toISOString() } });
+      }
       setStep(5);
     }
     setLoading(false);
@@ -552,6 +561,25 @@ function NuevaMascotaInner() {
                 </div>
               )}
 
+              {!hasExistingPets && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, marginBottom: 4, cursor: 'pointer', fontSize: 12.5, color: '#7A4522', fontWeight: 600 }}>
+                  <input type="checkbox" checked={termsAccepted}
+                    onChange={e => { setTermsAccepted(e.target.checked); setTermsError(''); }}
+                    style={{ width: 16, height: 16, accentColor: '#FF6B35', flexShrink: 0, marginTop: 2 }} />
+                  <span>
+                    He leído y acepto los{" "}
+                    <a href="/terminos" target="_blank" rel="noopener noreferrer" style={{ color: '#FF6B35', fontWeight: 700 }}>Términos y Condiciones</a>
+                    {" "}y la{" "}
+                    <a href="/privacidad" target="_blank" rel="noopener noreferrer" style={{ color: '#FF6B35', fontWeight: 700 }}>Política de Privacidad</a>
+                    {" "}de Firus&amp;Michis.
+                  </span>
+                </label>
+              )}
+              {termsError && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#dc2626', borderRadius: 10, padding: '9px 12px', fontSize: 12, fontWeight: 700, marginTop: 8 }}>
+                  ⚠️ {termsError}
+                </div>
+              )}
               <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>
               <button style={css.btnBack} onClick={() => setStep(3)}>← Volver</button>
             </div>
