@@ -8,6 +8,7 @@ import MarkdownText from "@/components/MarkdownText";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import DrugClassLabel from "@/components/DrugClassLabel";
 import { validatePhases } from "@/lib/doseSchedule";
+import DateInputCL from "@/components/DateInputCL";
 
 const FREQ_MAP = {
   "cada 12 horas": 2, "cada 12h": 2, "2 veces al día": 2, "dos veces al día": 2,
@@ -760,9 +761,9 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                   corría todo el cálculo de dosis/fases/adherencia. */}
               <div style={{ background: "#FFF0EB", borderRadius: 16, border: "1.5px solid #FFD0BC", padding: 14, marginBottom: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, color: "#FF6B35", marginBottom: 3 }}>📅 Fecha de inicio del tratamiento</div>
-                <input type="date" style={{ ...inputS, background: "#fff", marginTop: 6 }}
+                <DateInputCL style={{ ...inputS, background: "#fff", marginTop: 6 }}
                   value={globalStartDate} min={minStartDate} max={maxStartDate}
-                  onChange={e => applyGlobalStartDate(e.target.value)} />
+                  onChange={v => applyGlobalStartDate(v)} />
                 <div style={{ fontSize: 10, color: "#7A4522", marginTop: 6 }}>
                   Se aplicará a todos los medicamentos de esta receta. Puedes elegir hasta 30 días atrás (desde el {formatFecha(minStartDate)}) — útil si digitalizas la receta días después de la consulta.
                 </div>
@@ -817,7 +818,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                 </div>
                 <div>
                   <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
-                  <input type="date" style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date} onChange={e => setTreatmentMeta(f => ({ ...f, emission_date: e.target.value }))} />
+                  <DateInputCL style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date} onChange={v => setTreatmentMeta(f => ({ ...f, emission_date: v }))} />
                 </div>
               </div>
 
@@ -925,7 +926,7 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                                 30 días atrás que el selector global (Feature 1.5: cada
                                 medicamento puede tener su propia fecha, ej. tratamientos
                                 escalonados). */}
-                            <input type="date" style={{ ...inputS, background: "#fff" }} value={item.start_date} min={minStartDate} max={maxStartDate} onChange={e => updateItem(item.id, "start_date", e.target.value)} />
+                            <DateInputCL style={{ ...inputS, background: "#fff" }} value={item.start_date} min={minStartDate} max={maxStartDate} onChange={v => updateItem(item.id, "start_date", v)} />
                           </div>
                           <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 5 }}>Hora</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>

@@ -32,6 +32,7 @@ import { formatFecha, formatFechaHora, formatFechaLarga, formatMesAno, todayInCh
 import { validateRequired, flashRequiredField } from "@/lib/formValidation";
 import { formatChipDisplay } from "@/lib/chip";
 import { getPetIcon } from "@/lib/petSpecies";
+import DateInputCL from "@/components/DateInputCL";
 
 // Iniciales para el avatar del header: nombre de Google si Supabase lo trae
 // en user_metadata ("Hugo Cárcamo" → "HC" — primera letra de las dos
@@ -2148,10 +2149,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               {/* Fecha */}
               <div style={{ marginBottom: 12 }}>
                 {fLabel(histForm.type === "vaccine" ? "Fecha en que se aplicó *" : "Fecha *")}
-                <input id="hist-event-date" type="date" style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
+                <DateInputCL style={{ ...inputS, border: `1.5px solid ${histErrors.event_date ? "#dc2626" : "#FFD9C8"}` }}
                   max={new Date().toISOString().split("T")[0]}
                   value={histForm.event_date}
-                  onChange={e => { setHistForm(f => ({ ...f, event_date: e.target.value })); setHistErrors(p => ({ ...p, event_date: false })); }} />
+                  onChange={v => { setHistForm(f => ({ ...f, event_date: v })); setHistErrors(p => ({ ...p, event_date: false })); }} />
                 {histErrors.event_date && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ La fecha es obligatoria</div>}
               </div>
 
@@ -2357,7 +2358,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   {/* Lote M2 — antes sin límites: permitía cualquier fecha,
                       pasada o futura, sin advertencia. Mismo rango que el
                       selector de AITab.jsx (30 días atrás, no más allá de hoy). */}
-                  <input type="date" style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} min={minStartDate} max={maxStartDate} onChange={e => setTiForm(f => ({ ...f, start_date: e.target.value }))} />
+                  <DateInputCL style={{ ...inputS, background: "#fff" }} value={tiForm.start_date || ""} min={minStartDate} max={maxStartDate} onChange={v => setTiForm(f => ({ ...f, start_date: v }))} />
                 </div>
                 {fLabel("Hora")}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>

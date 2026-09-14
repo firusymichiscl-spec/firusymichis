@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { formatFecha, formatMesAno, restarUnDia } from "@/lib/fechas";
 import { validateRequired } from "@/lib/formValidation";
+import DateInputCL from "@/components/DateInputCL";
 
 const FOOD_OPTIONS_DOG = [
   "Royal Canin Maxi Adult 15 kg", "Royal Canin Mini Adult 8 kg", "Royal Canin Medium Adult 15 kg",
@@ -252,13 +253,13 @@ export default function DietHistoryModal({ pet, onClose, onSaved }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Desde *</div>
-              <input id="diet-date-from" style={css.input} type="date" min={birthYearOf(pet)} value={dateFrom}
-                onChange={e => { setDateFrom(e.target.value); setErrors(er => ({ ...er, dateFrom: null })); }} />
+              <DateInputCL style={css.input} min={birthYearOf(pet)} value={dateFrom}
+                onChange={v => { setDateFrom(v); setErrors(er => ({ ...er, dateFrom: null })); }} />
               {errors.dateFrom && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {errors.dateFrom}</div>}
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#7A4522", marginBottom: 4 }}>Hasta (vacío = actual)</div>
-              <input style={css.input} type="date" min={dateFrom || birthYearOf(pet)} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <DateInputCL style={css.input} min={dateFrom || birthYearOf(pet)} value={dateTo} onChange={v => setDateTo(v)} />
             </div>
           </div>
 

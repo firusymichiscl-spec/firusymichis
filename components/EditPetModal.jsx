@@ -7,6 +7,7 @@ import { validateRequired } from "@/lib/formValidation";
 import { validateBirthDate } from "@/lib/nutrition";
 import { filterChipInput, chipValidationMessage } from "@/lib/chip";
 import { OTHER_PET_TYPES } from "@/lib/petSpecies";
+import DateInputCL from "@/components/DateInputCL";
 
 const BREEDS_DOG = ['Boyera de Berna','Golden Retriever','Labrador Retriever','Pastor Alemán','Bulldog Francés','Poodle','Beagle','Chihuahua','Yorkshire Terrier','Husky Siberiano','Boxer','Dálmata','Cocker Spaniel','Shih Tzu','Pomerania','Schnauzer','Dóberman','Rottweiler','Maltés','Basset Hound','Border Collie','Samoyedo','Akita','Weimaraner','Shar Pei'];
 const BREEDS_CAT = ['Siamés','Persa','Maine Coon','Ragdoll','Bengalí','Abisinio','British Shorthair','Esfinge','Scottish Fold','Angora','Birmano','Noruego del Bosque','Ruso Azul','Somali','Tonkinés'];
@@ -200,8 +201,8 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
 
         {/* FECHA NACIMIENTO */}
         <label style={css.label}>Fecha de nacimiento</label>
-        <input style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} type="date" max={new Date().toISOString().split("T")[0]}
-          value={form.birth_date} onChange={e => { setForm(f => ({ ...f, birth_date: e.target.value })); setBirthDateError(""); }} />
+        <DateInputCL style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} max={new Date().toISOString().split("T")[0]}
+          value={form.birth_date} onChange={v => { setForm(f => ({ ...f, birth_date: v })); setBirthDateError(""); }} />
         {form.birth_date && <div style={css.ageDisplay}>🎂 {calcAge(form.birth_date)}</div>}
         {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
 
@@ -219,8 +220,8 @@ export default function EditPetModal({ pet, onClose, onSave, onOpenDangerZone })
         {form.is_adopted && (
           <>
             <label style={css.label}>Fecha de adopción</label>
-            <input style={css.input} type="date" max={new Date().toISOString().split("T")[0]}
-              value={form.adopted_date} onChange={e => setForm(f => ({ ...f, adopted_date: e.target.value }))} />
+            <DateInputCL style={css.input} max={new Date().toISOString().split("T")[0]}
+              value={form.adopted_date} onChange={v => setForm(f => ({ ...f, adopted_date: v }))} />
           </>
         )}
 

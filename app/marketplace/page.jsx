@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { compressImage } from "@/lib/images/compress";
 import { formatFecha } from "@/lib/fechas";
+import DateInputCL from "@/components/DateInputCL";
 
 export default function MarketplacePage() {
   const supabase = createClient();
@@ -548,7 +549,7 @@ export default function MarketplacePage() {
 
               <div style={{ marginBottom: 12 }}>
                 {sLabel("Fecha de vencimiento")}
-                <input type="date" style={inputS} value={listingForm.expires_at} min={new Date().toISOString().split("T")[0]} onChange={e => setListingForm(f => ({ ...f, expires_at: e.target.value }))} />
+                <DateInputCL style={inputS} value={listingForm.expires_at} min={new Date().toISOString().split("T")[0]} onChange={v => setListingForm(f => ({ ...f, expires_at: v }))} />
               </div>
 
               <div style={{ marginBottom: 12 }}>

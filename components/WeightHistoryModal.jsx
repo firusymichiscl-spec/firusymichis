@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activityLog";
 import { formatFecha } from "@/lib/fechas";
 import { validateWeightRange } from "@/lib/nutrition";
 import { validateRequired } from "@/lib/formValidation";
+import DateInputCL from "@/components/DateInputCL";
 
 // Lote R3 — "años anteriores" editables: desde startYear hasta
 // currentYear-1 (el año en curso NUNCA entra acá, es siempre calculado).
@@ -611,11 +612,11 @@ const resetAll = async () => {
                     <div style={{ fontSize: 12, color: "#C4845A", marginBottom: 10 }}>Nuevos registros a agregar:</div>
                     {sporadic.map((s, i) => (
                       <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
-                        <input style={css.input} type="date"
+                        <DateInputCL style={css.input}
                           min={`${birthYear}-01-01`}
                           max={new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split("T")[0]}
                           value={s.date}
-                          onChange={e => setSporadic(p => p.map((x, j) => j === i ? { ...x, date: e.target.value } : x))} />
+                          onChange={v => setSporadic(p => p.map((x, j) => j === i ? { ...x, date: v } : x))} />
                         <input id={`sporadic-kg-${i}`} style={css.input} type="number" placeholder="kg" step="0.1" value={s.kg}
                           onChange={e => { setSporadic(p => p.map((x, j) => j === i ? { ...x, kg: e.target.value } : x)); setRangeError(""); }} />
                         {sporadic.length > 1 && (

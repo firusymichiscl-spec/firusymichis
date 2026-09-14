@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase";
 import { validateRequired } from "@/lib/formValidation";
 import { guessDrugClass } from "@/lib/clasesFarmacologicas";
 import { logActivity } from "@/lib/activityLog";
+import DateInputCL from "@/components/DateInputCL";
 
 const CATEGORIES = [
   { value: "medicamento", label: "💊 Medicamento" },
@@ -217,8 +218,8 @@ export default function StockItemModal({
 
           <div style={{ marginBottom: 12 }}>
             {fieldLabel("Vencimiento (opcional)")}
-            <input style={inputStyle} type="date"
-              value={form.expires_at} onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))} />
+            <DateInputCL style={inputStyle}
+              value={form.expires_at} onChange={v => setForm(f => ({ ...f, expires_at: v }))} />
           </div>
 
           <div style={{ marginBottom: 16 }}>

@@ -9,6 +9,7 @@ import { validateRequired } from "@/lib/formValidation";
 import { validateBirthDate } from "@/lib/nutrition";
 import { OTHER_PET_TYPES } from "@/lib/petSpecies";
 import DeletedPetToast from "@/components/DeletedPetToast";
+import DateInputCL from "@/components/DateInputCL";
 
 // Mismas opciones que TutorTab.jsx (misma tabla `tutors`, para que el valor
 // guardado siga siendo editable/seleccionable ahí después).
@@ -402,10 +403,10 @@ function NuevaMascotaInner() {
                 </div>
               )}
               <label style={css.label}>Fecha de nacimiento</label>
-              <input style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }} type="date"
+              <DateInputCL style={{ ...css.input, borderColor: birthDateError ? "#dc2626" : "#FFD9C8" }}
                 max={new Date().toISOString().split("T")[0]}
                 value={form.birth_date}
-                onChange={e => { setForm(f => ({ ...f, birth_date: e.target.value })); setBirthDateError(''); }} />
+                onChange={v => { setForm(f => ({ ...f, birth_date: v })); setBirthDateError(''); }} />
               {birthDateError && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {birthDateError}</div>}
 
               <label style={css.label}>¿Es adoptada?</label>
@@ -421,8 +422,8 @@ function NuevaMascotaInner() {
               {form.is_adopted && (
                 <>
                   <label style={css.label}>Fecha de adopción</label>
-                  <input style={css.input} type="date" max={new Date().toISOString().split("T")[0]}
-                    value={form.adopted_date} onChange={e => setForm(f => ({ ...f, adopted_date: e.target.value }))} />
+                  <DateInputCL style={css.input} max={new Date().toISOString().split("T")[0]}
+                    value={form.adopted_date} onChange={v => setForm(f => ({ ...f, adopted_date: v }))} />
                 </>
               )}
               <button style={css.btn} onClick={goToStep3}>Continuar →</button>
