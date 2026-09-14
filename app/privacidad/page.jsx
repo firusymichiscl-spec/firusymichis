@@ -6,7 +6,7 @@ export const metadata = {
     "Cómo Firus&Michis recopila, usa y protege los datos personales de sus usuarios en Chile.",
 };
 
-const ACTUALIZACION = "1 de agosto de 2026";
+const ACTUALIZACION = "14 de septiembre de 2026";
 
 const css = `
   @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700&display=swap');
@@ -77,11 +77,14 @@ export default function PoliticaPrivacidad() {
           <h2 className="lg-h2">2. Marco legal aplicable</h2>
           <p>
             Tratamos tus datos conforme a la legislación chilena vigente sobre
-            protección de la vida privada y datos personales, incluyendo la Ley
-            N.º 19.628 y la Ley N.º 21.719, que la moderniza y crea la Agencia de
-            Protección de Datos Personales. Cuando esta última entre plenamente en
-            vigencia, ajustaremos nuestras prácticas y este documento a sus
-            exigencias.
+            protección de la vida privada y datos personales: la Ley N.º 19.628 y
+            la Ley N.º 21.719, que la moderniza, crea la Agencia de Protección de
+            Datos Personales (APDP) y entra en plena vigencia el 1 de diciembre de
+            2026. Este documento refleja los estándares de la Ley N.º 21.719 —
+            entre ellos, los seis derechos que te reconoce (sección 10) y el
+            procedimiento ante una eventual brecha de seguridad (sección 9) — y
+            seguirá actualizándose a medida que la Agencia publique normativa
+            complementaria.
           </p>
 
           <h2 className="lg-h2">3. Qué datos recopilamos</h2>
@@ -192,9 +195,13 @@ export default function PoliticaPrivacidad() {
           </table>
           <p>
             Algunos de estos proveedores almacenan o procesan información en
-            servidores ubicados fuera de Chile. Al usar la plataforma, aceptas esta
-            transferencia internacional, que se realiza bajo los estándares de
-            seguridad contractuales de cada proveedor.
+            servidores ubicados fuera de Chile (principalmente en Estados Unidos).
+            Estas transferencias se realizan conforme a los acuerdos de
+            procesamiento de datos y las medidas de seguridad que cada proveedor
+            pone a disposición de sus clientes como parte de sus términos de
+            servicio. Al usar la plataforma, prestas tu consentimiento para esta
+            transferencia internacional, necesaria para prestarte el servicio que
+            has solicitado.
           </p>
 
           <h2 className="lg-h2">7. Perfiles públicos por código QR</h2>
@@ -239,23 +246,41 @@ export default function PoliticaPrivacidad() {
             detectar usos indebidos. Ningún sistema es completamente infalible, pero
             trabajamos permanentemente para reducir los riesgos.
           </p>
+          <p>
+            Si pese a estas medidas ocurriera una vulneración de seguridad que
+            comprometa tus datos personales (acceso no autorizado, pérdida o
+            destrucción), lo comunicaremos a la Agencia de Protección de Datos
+            Personales dentro de un plazo de <strong>72 horas</strong> desde que
+            tomemos conocimiento del incidente, y te avisaremos directamente a ti,
+            sin dilación indebida, cuando el incidente implique un riesgo alto para
+            tus derechos.
+          </p>
 
           <h2 className="lg-h2">10. Tus derechos</h2>
-          <p>Como titular de los datos, puedes ejercer en cualquier momento tu derecho a:</p>
+          <p>
+            La legislación chilena de protección de datos personales te reconoce los
+            siguientes derechos sobre tus datos, que puedes ejercer en cualquier
+            momento:
+          </p>
           <ul>
-            <li><strong>Acceder</strong> a los datos que tenemos sobre ti.</li>
-            <li><strong>Rectificar</strong> información inexacta o desactualizada.</li>
-            <li><strong>Eliminar</strong> tus datos, con las excepciones legales indicadas.</li>
-            <li><strong>Oponerte</strong> a determinados tratamientos o revocar tu consentimiento.</li>
-            <li><strong>Solicitar una copia</strong> de tu información en un formato legible.</li>
+            <li><strong>Acceso:</strong> saber qué datos tuyos tratamos, con qué finalidad, desde cuándo y con quién los hemos compartido.</li>
+            <li><strong>Rectificación:</strong> corregir datos inexactos, desactualizados o incompletos.</li>
+            <li><strong>Supresión (cancelación):</strong> solicitar la eliminación de tus datos, con las excepciones legales indicadas en la sección 8.</li>
+            <li><strong>Oposición:</strong> oponerte a un tratamiento específico o revocar un consentimiento que hayas otorgado.</li>
+            <li><strong>Portabilidad:</strong> solicitar una copia de tus datos personales en un formato estructurado, de uso común y lectura mecánica, para ti o para transferirla a otro responsable.</li>
+            <li><strong>Bloqueo:</strong> solicitar la suspensión temporal del tratamiento de tus datos mientras se resuelve una solicitud o un reclamo relacionado con ellos.</li>
           </ul>
           <p>
             Para ejercerlos, escríbenos a{" "}
             <a className="enlace" href="mailto:contacto@firusymichis.cl">
               contacto@firusymichis.cl
             </a>{" "}
-            desde el correo asociado a tu cuenta. Responderemos dentro de los plazos
-            que establece la ley.
+            desde el correo asociado a tu cuenta, indicando el derecho que quieres
+            ejercer. Responderemos dentro de los plazos que establece la ley. Si no
+            quedas conforme con nuestra respuesta, o no respondemos dentro de plazo,
+            puedes reclamar ante la <strong>Agencia de Protección de Datos
+            Personales</strong>, autoridad encargada de fiscalizar el cumplimiento
+            de esta normativa en Chile.
           </p>
           <p>
             El registro de actividad es inmodificable por diseño. Si necesitas la
