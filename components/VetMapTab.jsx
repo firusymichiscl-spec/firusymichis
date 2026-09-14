@@ -92,6 +92,7 @@ export default function VetMapTab({ pet, history }) {
   const [sortBy, setSortBy] = useState("distance");
   const [selectedVet, setSelectedVet] = useState(null);
   const [copyStatus, setCopyStatus] = useState(null); // { key, ok }
+  const [detailsCache, setDetailsCache] = useState({}); // { [place_id]: { phone, website, loading, error } }
   // Lote R Fix 3 — tutorial de permiso de ubicación. helpPlatform arranca
   // en la detección automática; el usuario puede cambiarla a mano si la
   // detección falló (3.3).
@@ -345,6 +346,18 @@ export default function VetMapTab({ pet, history }) {
     if (mapInstanceRef.current) updateMarkers(displayVets);
   }, [vets, sortBy, openNow]);
 
+  useEffect(() => {
+    if (!selectedVet?.place_id) return;
+    const pid = selectedVet.place_id;
+    if (detailsCache[pid]) return; // ya se pidió en esta sesión (éxito o error)
+    setDetailsCache(prev => ({ ...prev, [pid]: { loading: true } }));
+    fetch(`/api/places/details?place_id=${encodeURIComponent(pid)}`)
+      .then(res => (res.ok ? res.json() : Promise.reject()))
+      .then(data => setDetailsCache(prev => ({ ...prev, [pid]: { phone: data.phone, website: data.website, loading: false } })))
+      .catch(() => setDetailsCache(prev => ({ ...prev, [pid]: { error: true, loading: false } })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVet]);
+
   const css = {
     card: { background: "#fff", borderRadius: 18, padding: 16, marginBottom: 14, boxShadow: "0 4px 24px rgba(61,31,10,0.08)" },
   };
@@ -533,6 +546,38 @@ export default function VetMapTab({ pet, history }) {
                 {status?.ok ? "✓ Copiado al portapapeles" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
               </button>
             </div>
+            {selectedVet?.place_id === vet.place_id && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #FFF0EB" }} onClick={e => e.stopPropagation()}>
+                {(() => {
+                  const d = detailsCache[vet.place_id];
+                  if (!d || d.loading) {
+                    return <div style={{ fontSize: 11, color: "#C4845A" }}>Buscando teléfono y sitio web…</div>;
+                  }
+                  if (d.error) {
+                    return <div style={{ fontSize: 11, color: "#dc2626" }}>No se pudo obtener el detalle.</div>;
+                  }
+                  if (!d.phone && !d.website) {
+                    return <div style={{ fontSize: 11, color: "#94a3b8" }}>Sin teléfono ni sitio web registrados en Google.</div>;
+                  }
+                  return (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {d.phone && (
+                        <a href={`tel:${d.phone.replace(/\s+/g, "")}`}
+                          style={{ padding: "6px 12px", borderRadius: 8, background: "#E8FAF9", color: "#0F6E56", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                          📞 {d.phone}
+                        </a>
+                      )}
+                      {d.website && (
+                        <a href={d.website} target="_blank" rel="noopener noreferrer"
+                          style={{ padding: "6px 12px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                          🌐 Sitio web
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
         );
       })}
