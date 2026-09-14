@@ -62,7 +62,7 @@ export default function TerminosCondiciones() {
           <p>
             Firus&amp;Michis es un servicio operado por{" "}
             <strong>GO COMPUTACIÓN SpA</strong>, RUT 77.776.589-2, sociedad
-            constituida en Chile, disponible en firusymichis.cl y firusymichis.com.
+            constituida en Chile, disponible en firusymichis.cl.
           </p>
 
           <h2 className="lg-h2">2. Qué es y qué no es este servicio</h2>
