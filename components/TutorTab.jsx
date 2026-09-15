@@ -60,6 +60,8 @@ export default function TutorTab({ pet, isArchived }) {
   const [copyFromPrimary, setCopyFromPrimary] = useState(false);
   const [otherTutors, setOtherTutors] = useState([]);
   const [showCopyList, setShowCopyList] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState(null); // { ok, message }
 
   useEffect(() => { loadTutors(); }, []);
   useEffect(() => { loadOtherPetTutors(); }, []);
@@ -275,6 +277,27 @@ export default function TutorTab({ pet, isArchived }) {
     closeEdit();
   };
 
+  const sendInvite = async () => {
+    setInviting(true);
+    setInviteStatus(null);
+    try {
+      const res = await fetch("/api/tutors/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ petId: pet.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInviteStatus({ ok: false, message: data.error || "No se pudo enviar la invitación." });
+      } else {
+        setInviteStatus({ ok: true, message: data.message || `Invitación enviada a ${secondary.email}.` });
+      }
+    } catch {
+      setInviteStatus({ ok: false, message: "No se pudo enviar la invitación." });
+    }
+    setInviting(false);
+  };
+
   const hasAddress = (t) => t && (t.street || t.comuna || t.ciudad);
 
   const DataRow = ({ icon, value }) => (
@@ -328,6 +351,19 @@ export default function TutorTab({ pet, isArchived }) {
               {tutor.region && <DataRow icon="🗺️" value={tutor.region} />}
               {tutor.notes && <DataRow icon="📝" value={tutor.notes} />}
             </div>
+            {type === "secondary" && tutor.email && !isArchived && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #FFF0EB" }}>
+                <button onClick={sendInvite} disabled={inviting}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, background: "#E8FAF9", color: "#0F6E56", border: "1.5px solid #2EC4B6", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: inviting ? "not-allowed" : "pointer" }}>
+                  {inviting ? "Enviando..." : "📩 Invitar a tener su propia cuenta"}
+                </button>
+                {inviteStatus && (
+                  <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, textAlign: "center", color: inviteStatus.ok ? "#059669" : "#dc2626" }}>
+                    {inviteStatus.ok ? "✓ " : "⚠️ "}{inviteStatus.message}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         ) : (
           <div style={{ textAlign: "center", padding: "16px 0" }}>
