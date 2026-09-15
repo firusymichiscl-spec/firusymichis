@@ -41,7 +41,7 @@ export async function GET(req, { params }) {
     svc.from("medications").select("*").eq("pet_id", petId).order("created_at", { ascending: false }),
     svc.from("medical_history").select("*").eq("pet_id", petId).order("event_date", { ascending: false }),
     svc.from("treatment_items").select("*, treatments(diagnostico, doctor, vet_clinic, emission_date, recipe_date)").eq("pet_id", petId).eq("active", true).order("created_at", { ascending: false }),
-    svc.from("dose_log").select("*").eq("pet_id", petId),
+    svc.from("dose_log").select("*, treatment_items(name)").eq("pet_id", petId),
   ]);
 
   if (!petRes.data) {

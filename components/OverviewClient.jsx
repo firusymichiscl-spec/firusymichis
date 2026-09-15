@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { formatFecha } from "@/lib/fechas";
 import { getHeaderBackgroundStyle } from "@/lib/fondos";
@@ -104,6 +104,14 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
   const [selectedPet, setSelectedPet] = useState(null);
   const [deletingPet, setDeletingPet] = useState(null); // pet object o null
   const [hiddenArchivedIds, setHiddenArchivedIds] = useState(new Set());
+  const [sharedPets, setSharedPets] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/mascota-compartida")
+      .then(res => res.ok ? res.json() : { pets: [] })
+      .then(json => setSharedPets(json.pets || []))
+      .catch(() => {});
+  }, []);
 
   // ── Derived data ──────────────────────────────────
   const activeMeds = medications.filter(m => m.active !== false);
@@ -193,14 +201,41 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
       <button className={`ov-sidebar-btn${!selectedPet ? " active" : ""}`} onClick={() => setSelectedPet(null)}>
         <span>📊</span> Todas las mascotas
       </button>
-      <div className="ov-sidebar-section">Mascotas</div>
-      {pets.map((p, i) => (
-        <button key={p.id} className={`ov-sidebar-btn${selectedPet?.id === p.id ? " active" : ""}`}
-          onClick={() => setSelectedPet(p)}
-          style={{ borderRight: selectedPet?.id === p.id ? `3px solid ${PET_ACCENT_COLORS[i % PET_ACCENT_COLORS.length]}` : undefined }}>
-          <span>{getPetIcon(p.species, p.breed)}</span> {p.name}{isBirthdayToday(p.birth_date) && " 🎂"}
-        </button>
-      ))}
+      {pets.length > 0 && (
+        <>
+          <div className="ov-sidebar-section">Activas</div>
+          {pets.map((p, i) => (
+            <button key={p.id} className={`ov-sidebar-btn${selectedPet?.id === p.id ? " active" : ""}`}
+              onClick={() => setSelectedPet(p)}
+              style={{ borderRight: selectedPet?.id === p.id ? `3px solid ${PET_ACCENT_COLORS[i % PET_ACCENT_COLORS.length]}` : undefined }}>
+              <span>{getPetIcon(p.species, p.breed)}</span> {p.name}{isBirthdayToday(p.birth_date) && " 🎂"}
+            </button>
+          ))}
+        </>
+      )}
+
+      {archivedPets?.filter(p => !hiddenArchivedIds.has(p.id)).length > 0 && (
+        <>
+          <div className="ov-sidebar-section">En Memoria</div>
+          {archivedPets.filter(p => !hiddenArchivedIds.has(p.id)).map(p => (
+            <button key={p.id} className="ov-sidebar-btn" onClick={() => router.push(`/dashboard?pet=${p.id}`)}>
+              <span>🌈</span> {p.name}
+            </button>
+          ))}
+        </>
+      )}
+
+      {sharedPets.length > 0 && (
+        <>
+          <div className="ov-sidebar-section">Compartidas</div>
+          {sharedPets.map(p => (
+            <a key={p.id} href={`/mascota-compartida/${p.id}`} className="ov-sidebar-btn" style={{ textDecoration: "none" }}>
+              <span>🤝</span> {p.name}
+            </a>
+          ))}
+        </>
+      )}
+
       <div className="ov-sidebar-section">Acciones</div>
       <button className="ov-sidebar-btn" onClick={() => router.push("/nueva-mascota")}>
         <span>➕</span> Nueva mascota
@@ -435,6 +470,33 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
                   🗑️ Eliminar para siempre
                 </button>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Compartidas contigo */}
+      {sharedPets.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div className="ov-section-title" style={{ color: "#0F6E56" }}>🤝 Compartidas contigo</div>
+          <div className="ov-pet-grid">
+            {sharedPets.map(p => (
+              <a key={p.id} href={`/mascota-compartida/${p.id}`} className="ov-pet-card" style={{ borderTopColor: "#2EC4B6", textDecoration: "none", display: "block" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
+                  <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#E8FAF9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, flexShrink: 0, overflow: "hidden" }}>
+                    {p.photo_url
+                      ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                      : getPetIcon(p.species, p.breed)}
+                  </div>
+                  <div>
+                    <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#0F6E56" }}>{p.name}</div>
+                    <div style={{ fontSize: 13, color: "#7A4522" }}>{p.breed} · {calcAge(p.birth_date)}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "#2EC4B6", fontWeight: 700 }}>
+                  🤝 Compartida por {p.ownerName || "el titular"}{p.accepted_at ? ` · desde ${formatFecha(p.accepted_at.split("T")[0])}` : ""}
+                </div>
+              </a>
             ))}
           </div>
         </div>

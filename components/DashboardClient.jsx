@@ -126,6 +126,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [activePetId, setActivePetId] = useState(initialPet.id);
   const [allPetsData, setAllPetsData] = useState(allPets || []);
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
+  const [sharedAccess, setSharedAccess] = useState({}); // { [pet_id]: { email, accepted_at } }
   const [switchingPet, setSwitchingPet] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
@@ -279,6 +280,17 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   });
 
   useEffect(() => { loadTreatmentItems(); loadDoseLogs(); loadInventory(); }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase.from("pet_access").select("pet_id, email, accepted_at")
+      .eq("invited_by", user.id).eq("status", "accepted")
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(a => { map[a.pet_id] = a; });
+        setSharedAccess(map);
+      });
+  }, [user?.id]);
 
   const deleteTreatmentGroup = async (treatmentId) => {
     if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
@@ -1129,6 +1141,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
             <div style={{ flex: 1 }}>
               <div className="pet-name">{petData.name}</div>
               <div className="pet-breed">{petData.breed}{sexSymbol} · {calcAge(petData.birth_date)}</div>
+              {sharedAccess[petData.id] && (
+                <div style={{ fontSize: 10, color: "#fff", background: "rgba(46,196,182,0.35)", border: "1px solid rgba(46,196,182,0.6)", borderRadius: 8, padding: "2px 8px", marginTop: 4, display: "inline-block", fontWeight: 700 }}>
+                  🤝 Compartida con {sharedAccess[petData.id].email}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                 {allPetsData.length > 1 && (
                   <button onClick={() => setShowPetSwitcher(true)}
@@ -1194,6 +1211,11 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   <div style={{ flex: 1 }}>
                     <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: "#C4845A" }}>{p.breed} · {calcAge(p.birth_date)}</div>
+                    {sharedAccess[p.id] && (
+                      <div style={{ fontSize: 10, color: "#0F6E56", fontWeight: 700, marginTop: 2 }}>
+                        🤝 Compartida con {sharedAccess[p.id].email} desde {formatFecha(sharedAccess[p.id].accepted_at?.split("T")[0])}
+                      </div>
+                    )}
                   </div>
                   {p.id === activePetId && <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 700 }}>✓ Activa</div>}
                 </div>

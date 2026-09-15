@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { logActivity } from "@/lib/activityLog";
 import { validateRequired } from "@/lib/formValidation";
+import { formatFecha } from "@/lib/fechas";
 
 const RELATIONSHIPS = ["Dueño", "Familiar", "Veterinario", "Vecino", "Otro"];
 const EMAIL_DOMAINS = ["@gmail.com", "@hotmail.com", "@outlook.com", "@yahoo.com", "@icloud.com", "@live.com", "@yahoo.es"];
@@ -62,6 +63,7 @@ export default function TutorTab({ pet, isArchived }) {
   const [showCopyList, setShowCopyList] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [inviteStatus, setInviteStatus] = useState(null); // { ok, message }
+  const [accessInfo, setAccessInfo] = useState(undefined); // undefined=cargando, null=sin invitación, {...}=con invitación
 
   useEffect(() => { loadTutors(); }, []);
   useEffect(() => { loadOtherPetTutors(); }, []);
@@ -291,11 +293,32 @@ export default function TutorTab({ pet, isArchived }) {
         setInviteStatus({ ok: false, message: data.error || "No se pudo enviar la invitación." });
       } else {
         setInviteStatus({ ok: true, message: data.message || `Invitación enviada a ${secondary.email}.` });
+        fetchAccessInfo();
       }
     } catch {
       setInviteStatus({ ok: false, message: "No se pudo enviar la invitación." });
     }
     setInviting(false);
+  };
+
+  const fetchAccessInfo = () => {
+    if (!secondary?.email) { setAccessInfo(null); return; }
+    supabase.from("pet_access").select("id, status, created_at, accepted_at")
+      .eq("pet_id", pet.id).eq("email", secondary.email).maybeSingle()
+      .then(({ data }) => setAccessInfo(data || null));
+  };
+
+  useEffect(() => {
+    fetchAccessInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondary?.email, pet.id]);
+
+  const revokeAccess = async () => {
+    if (!accessInfo?.id) return;
+    if (!confirm(`¿Quitarle el acceso a ${secondary.full_name || secondary.email}?`)) return;
+    await supabase.from("pet_access").delete().eq("id", accessInfo.id);
+    setAccessInfo(null);
+    setInviteStatus(null);
   };
 
   const hasAddress = (t) => t && (t.street || t.comuna || t.ciudad);
@@ -353,13 +376,35 @@ export default function TutorTab({ pet, isArchived }) {
             </div>
             {type === "secondary" && tutor.email && !isArchived && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #FFF0EB" }}>
-                <button onClick={sendInvite} disabled={inviting}
-                  style={{ width: "100%", padding: 10, borderRadius: 10, background: "#E8FAF9", color: "#0F6E56", border: "1.5px solid #2EC4B6", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: inviting ? "not-allowed" : "pointer" }}>
-                  {inviting ? "Enviando..." : "📩 Invitar a tener su propia cuenta"}
-                </button>
-                {inviteStatus && (
-                  <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, textAlign: "center", color: inviteStatus.ok ? "#059669" : "#dc2626" }}>
-                    {inviteStatus.ok ? "✓ " : "⚠️ "}{inviteStatus.message}
+                {accessInfo === undefined && (
+                  <div style={{ fontSize: 12, color: "#C4845A" }}>Cargando estado de acceso...</div>
+                )}
+                {accessInfo === null && (
+                  <>
+                    <button onClick={sendInvite} disabled={inviting}
+                      style={{ width: "100%", padding: 10, borderRadius: 10, background: "#E8FAF9", color: "#0F6E56", border: "1.5px solid #2EC4B6", fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 700, cursor: inviting ? "not-allowed" : "pointer" }}>
+                      {inviting ? "Enviando..." : "📩 Invitar a tener su propia cuenta"}
+                    </button>
+                    {inviteStatus && (
+                      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, textAlign: "center", color: inviteStatus.ok ? "#059669" : "#dc2626" }}>
+                        {inviteStatus.ok ? "✓ " : "⚠️ "}{inviteStatus.message}
+                      </div>
+                    )}
+                  </>
+                )}
+                {accessInfo?.status === "pending" && (
+                  <div style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 10, padding: 10, textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>⏳ Invitación enviada — pendiente de aceptar</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button onClick={sendInvite} disabled={inviting} style={{ flex: 1, padding: 8, borderRadius: 8, background: "#fff", border: "1.5px solid #FDE68A", color: "#92400E", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reenviar</button>
+                      <button onClick={revokeAccess} style={{ flex: 1, padding: 8, borderRadius: 8, background: "#fff", border: "1.5px solid #fecaca", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {accessInfo?.status === "accepted" && (
+                  <div style={{ background: "#E8FAF4", border: "1.5px solid #a7f3d0", borderRadius: 10, padding: 10, textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>✓ Tiene acceso desde el {accessInfo.accepted_at ? formatFecha(accessInfo.accepted_at.split("T")[0]) : ""}</div>
+                    <button onClick={revokeAccess} style={{ marginTop: 8, width: "100%", padding: 8, borderRadius: 8, background: "#fff", border: "1.5px solid #fecaca", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Quitar acceso</button>
                   </div>
                 )}
               </div>
