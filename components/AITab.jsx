@@ -818,7 +818,10 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
                 </div>
                 <div>
                   <div style={{ fontSize: 11, color: "#C4845A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 3 }}>Fecha de emisión</div>
-                  <DateInputCL style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date} onChange={v => setTreatmentMeta(f => ({ ...f, emission_date: v }))} />
+                  <DateInputCL style={{ ...inputS, background: "#fff" }} value={treatmentMeta.emission_date}
+                    min={new Date(new Date().getFullYear() - 3, 0, 1).toISOString().split("T")[0]}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={v => setTreatmentMeta(f => ({ ...f, emission_date: v }))} />
                 </div>
               </div>
 
