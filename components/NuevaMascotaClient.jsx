@@ -280,7 +280,7 @@ function NuevaMascotaInner() {
         ['Especie', form.speciesLabel],
         ['Raza', form.breed],
         ['Nacimiento', form.birth_date ? (form.birth_date_approximate ? `≈ ${formatFecha(form.birth_date)} (edad aprox.)` : formatFecha(form.birth_date)) : ''],
-        ['Adoptada', form.adoption_type ? `${form.adoption_type === 'rescatada' ? generoPalabra(form.sex, 'Rescatada', 'Rescatado') : generoPalabra(form.sex, 'Adoptada', 'Adoptado')}${form.adopted_date ? ` (${formatFecha(form.adopted_date)})` : ''}` : ''],
+        [generoPalabra(form.sex, 'Adoptada/Rescatada', 'Adoptado/Rescatado'), form.adoption_type ? `${form.adoption_type === 'rescatada' ? generoPalabra(form.sex, 'Rescatada', 'Rescatado') : generoPalabra(form.sex, 'Adoptada', 'Adoptado')}${form.adopted_date ? ` (${formatFecha(form.adopted_date)})` : ''}` : ''],
         ['Tutor titular', tutorForm.full_name],
       ].filter(([, v]) => v).map(([k, v]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 11, padding: '4px 0', borderBottom: '1px solid #FFF0EB' }}>
