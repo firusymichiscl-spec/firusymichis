@@ -127,6 +127,7 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
   const [allPetsData, setAllPetsData] = useState(allPets || []);
   const [showPetSwitcher, setShowPetSwitcher] = useState(false);
   const [sharedAccess, setSharedAccess] = useState({}); // { [pet_id]: { email, accepted_at } }
+  const [sharedPets, setSharedPets] = useState([]);
   const [switchingPet, setSwitchingPet] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
@@ -291,6 +292,13 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
         setSharedAccess(map);
       });
   }, [user?.id]);
+
+  useEffect(() => {
+    fetch("/api/mascota-compartida")
+      .then(res => res.ok ? res.json() : { pets: [] })
+      .then(json => setSharedPets(json.pets || []))
+      .catch(() => {});
+  }, []);
 
   const deleteTreatmentGroup = async (treatmentId) => {
     if (!confirm("¿Eliminar este tratamiento? Esta acción no se puede deshacer.")) return;
@@ -1220,6 +1228,26 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                   {p.id === activePetId && <div style={{ fontSize: 12, color: "var(--color-primary)", fontWeight: 700 }}>✓ Activa</div>}
                 </div>
               ))}
+
+              {sharedPets.length > 0 && (
+                <>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 13, fontWeight: 800, color: "#0F6E56", margin: "16px 0 8px" }}>🤝 Compartidas contigo</div>
+                  {sharedPets.map(p => (
+                    <a key={p.id} href={`/mascota-compartida/${p.id}`}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 8, background: "#fff", border: "1.5px solid #A7F3D0", textDecoration: "none" }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#E8FAF9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
+                        {p.photo_url
+                          ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                          : getPetAvatar(p.species, p.breed, p.photo_url)}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: "#0F6E56" }}>Compartida por {p.ownerName || "el titular"}</div>
+                      </div>
+                    </a>
+                  ))}
+                </>
+              )}
 
               {allPetsData.some(p => p.archived_at) && (
                 <>

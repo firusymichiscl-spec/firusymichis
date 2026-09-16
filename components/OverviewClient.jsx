@@ -521,14 +521,38 @@ export default function OverviewClient({ pets, archivedPets, user, userPlan, med
       )}
 
       {/* Mobile fallback */}
-      <div className="ov-mobile" style={{ minHeight: "100vh", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center", gap: 16, background: "#F0F2F5" }}>
+      <div className="ov-mobile" style={{ minHeight: "100vh", flexDirection: "column", alignItems: "center", padding: "32px 20px", textAlign: "center", gap: 16, background: "#F0F2F5" }}>
+        {sharedPets.length > 0 && (
+          <div style={{ width: "100%", maxWidth: 360, marginBottom: 8 }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 18, fontWeight: 800, color: "#0F6E56", marginBottom: 12 }}>🤝 Mascotas compartidas contigo</div>
+            {sharedPets.map(p => (
+              <a key={p.id} href={`/mascota-compartida/${p.id}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 14, marginBottom: 10, background: "#fff", border: "1.5px solid #A7F3D0", textDecoration: "none", textAlign: "left" }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#E8FAF9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, overflow: "hidden", flexShrink: 0 }}>
+                  {p.photo_url
+                    ? <img src={p.photo_url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                    : getPetIcon(p.species, p.breed)}
+                </div>
+                <div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.name}</div>
+                  <div style={{ fontSize: 11, color: "#64748B" }}>Compartida por {p.ownerName || "el titular"}</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
         <div style={{ fontSize: 48 }}>🖥️</div>
-        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#1e293b" }}>Vista disponible solo en pantalla grande</div>
-        <div style={{ fontSize: 14, color: "#64748B", maxWidth: 280 }}>La vista general requiere una pantalla de al menos 1024px.</div>
-        <button onClick={() => router.push("/dashboard")}
-          style={{ padding: "10px 24px", borderRadius: 12, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-          ← Volver al dashboard
-        </button>
+        <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 20, fontWeight: 800, color: "#1e293b" }}>
+          {sharedPets.length > 0 ? "El resto de la vista general está disponible solo en pantalla grande" : "Vista disponible solo en pantalla grande"}
+        </div>
+        <div style={{ fontSize: 14, color: "#64748B", maxWidth: 280 }}>
+          {sharedPets.length > 0 ? "Tus mascotas activas y en memoria se ven mejor desde un computador." : "La vista general requiere una pantalla de al menos 1024px."}
+        </div>
+        {pets.length > 0 && (
+          <button onClick={() => router.push("/dashboard")}
+            style={{ padding: "10px 24px", borderRadius: 12, background: "#FF6B35", color: "#fff", border: "none", fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            ← Volver al dashboard
+          </button>
+        )}
       </div>
 
       <div className="ov-page">
