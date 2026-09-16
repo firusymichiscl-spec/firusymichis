@@ -719,6 +719,13 @@ export default function AITab({ pet, medications, history, isArchived, onTreatme
         <div>
           <div style={card}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#8B5CF6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Lector de receta</div>
+            <div style={{ background: "#FFFBEB", border: "1.5px solid #FDE68A", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 11, color: "#92400E", lineHeight: 1.5 }}>
+              💡 Para mejores resultados, sube una receta con texto claro,
+              idealmente escrita en computador. Si es manuscrita, igual la
+              podemos leer, pero <strong>revisa cada dato antes de guardar</strong> —
+              la letra a mano a veces se interpreta mal y puede faltar o
+              cambiar información importante.
+            </div>
             <div onClick={() => fileRef.current.click()} style={{ border: "2px dashed #C4B5FD", borderRadius: 14, padding: "20px 16px", textAlign: "center", background: "#f5f3ff", cursor: "pointer", marginBottom: 8 }}>
               {preview ? <img src={preview} alt="Receta" style={{ maxWidth: "100%", maxHeight: 160, borderRadius: 10, objectFit: "contain" }} /> : <><div style={{ fontSize: 32, marginBottom: 6 }}>📋</div><div style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed" }}>Toca para subir receta</div><div style={{ fontSize: 11, color: "#8B5CF6", marginTop: 3 }}>Foto JPG o PNG</div></>}
               <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
