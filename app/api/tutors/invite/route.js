@@ -1,11 +1,20 @@
 import { Resend } from "resend";
 import { createRouteSupabase } from "@/lib/supabase-route";
+import { checkInviteQuota, recordAiUsage } from "@/lib/ai/quota";
 import crypto from "node:crypto";
+
+// Mismo helper que ya usa app/api/send-notification/route.js.
+const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
 export async function POST(req) {
   const supabase = await createRouteSupabase();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return new Response("Unauthorized", { status: 401 });
+
+  const quota = await checkInviteQuota(user.id);
+  if (!quota.allowed) {
+    return Response.json({ error: "Alcanzaste el límite diario de invitaciones. Vuelve mañana." }, { status: 429 });
+  }
 
   const { petId } = await req.json();
   if (!petId) return Response.json({ error: "Falta petId." }, { status: 400 });
@@ -69,14 +78,17 @@ export async function POST(req) {
   }
 
   const link = `https://firusymichis.cl/invitacion?token=${inviteToken}`;
-  const inviterName = user.user_metadata?.full_name || user.user_metadata?.name || "Alguien";
+  const inviterNameRaw = user.user_metadata?.full_name || user.user_metadata?.name || "Alguien";
+  const inviterName = esc(inviterNameRaw);
+  const petName = esc(pet.name);
+  const secondaryName = secondary.full_name ? esc(secondary.full_name) : "";
   const resend = new Resend(process.env.RESEND_API_KEY);
 
   try {
     await resend.emails.send({
       from: "Firus&Michis <notificaciones@firusymichis.cl>",
       to: [secondary.email],
-      subject: `${inviterName} te invitó a ${pet.name} en Firus&Michis`,
+      subject: `${inviterNameRaw} te invitó a ${pet.name} en Firus&Michis`,
       html: `<!DOCTYPE html>
 <html lang="es"><body style="margin:0;padding:0;background-color:#FFF8F3;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFF8F3;"><tr><td align="center" style="padding:20px 12px;">
@@ -85,8 +97,8 @@ export async function POST(req) {
 <span style="font-size:24px;font-weight:bold;color:#ffffff;">&#128062; Firus&amp;Michis</span>
 </td></tr>
 <tr><td style="padding:24px 20px;color:#3D1F0A;">
-<p style="margin:0 0 12px;font-size:18px;font-weight:bold;">Te invitaron a ${pet.name} &#128062;</p>
-<p style="margin:0 0 16px;font-size:15px;line-height:22px;color:#7A4522;">${secondary.full_name ? secondary.full_name + ", te" : "Te"} invitaron como tutor suplente de ${pet.name} en Firus&amp;Michis. Vas a poder ver su ficha y registrar cuando le des sus medicamentos.</p>
+<p style="margin:0 0 12px;font-size:18px;font-weight:bold;">Te invitaron a ${petName} &#128062;</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:22px;color:#7A4522;">${secondaryName ? secondaryName + ", te" : "Te"} invitaron como tutor suplente de ${petName} en Firus&amp;Michis. Vas a poder ver su ficha y registrar cuando le des sus medicamentos.</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;"><tr><td align="center" bgcolor="#FF6B35" style="border-radius:10px;">
 <a href="${link}" style="display:inline-block;padding:12px 20px;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Aceptar invitación</a>
 </td></tr></table>
@@ -98,6 +110,8 @@ export async function POST(req) {
   } catch (e) {
     return Response.json({ error: "No se pudo enviar el correo." }, { status: 500 });
   }
+
+  await recordAiUsage(user.id, "tutor_invite");
 
   return Response.json({ success: true });
 }
