@@ -118,6 +118,9 @@ export default function MascotaCompartidaPage() {
 
   return (
     <div style={css.page}>
+      <a href="/dashboard/overview" style={{ display: "block", padding: "10px 16px", background: "#fff", color: "#7A4522", fontSize: 13, fontWeight: 700, textDecoration: "none", borderBottom: "1px solid #F5E6DA" }}>
+        ← Volver a mis mascotas
+      </a>
       <div style={css.banner}>👀 Estás viendo esta ficha como tutor suplente — solo el tutor titular puede editar la información.</div>
       <div style={css.header}>
         <div style={css.avatar}>{icon}</div>
