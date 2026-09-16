@@ -238,6 +238,7 @@ function NuevaMascotaInner() {
       await logActivity(supabase, newPet.id, "Agregó tutor", "Titular");
       if (!hasExistingPets) {
         await supabase.auth.updateUser({ data: { terms_accepted_at: new Date().toISOString() } });
+        await fetch("/api/trial/activar", { method: "POST" }).catch(() => {});
       }
       setStep(5);
     }
