@@ -62,7 +62,8 @@ export default function TerminosCondiciones() {
           <p>
             Firus&amp;Michis es un servicio operado por{" "}
             <strong>GO COMPUTACIÓN SpA</strong>, RUT 77.776.589-2, sociedad
-            constituida en Chile, disponible en firusymichis.cl.
+            constituida en Chile, con domicilio en Alberto Undurraga 1910,
+            disponible en firusymichis.cl.
           </p>
 
           <h2 className="lg-h2">2. Qué es y qué no es este servicio</h2>
@@ -221,8 +222,10 @@ export default function TerminosCondiciones() {
             <li>Pérdida de datos por causas ajenas a nuestro control.</li>
           </ul>
           <p>
-            Nada de lo anterior limita los derechos irrenunciables que te reconoce la
-            Ley N.º 19.496 sobre protección de los derechos de los consumidores.
+            Nada de lo anterior excluye nuestra responsabilidad por
+            incumplimientos imputables a Firus&amp;Michis, ni limita los
+            derechos irrenunciables que te reconoce la Ley N.º 19.496 sobre
+            protección de los derechos de los consumidores.
           </p>
 
           <h2 className="lg-h2">13. Suspensión de cuentas</h2>
@@ -230,15 +233,21 @@ export default function TerminosCondiciones() {
             Podemos suspender o cerrar una cuenta que infrinja estas condiciones, haga
             un uso abusivo de los recursos del servicio o intente vulnerar su
             seguridad. Cuando sea razonable, te avisaremos previamente y te daremos la
-            posibilidad de descargar tu información.
+            posibilidad de descargar tu información. Si la cuenta suspendida tenía un
+            plan pagado vigente, evaluaremos cada caso conforme a la gravedad del
+            motivo; si no estás de acuerdo con una suspensión, puedes reclamar a
+            través del canal de contacto indicado al final de este documento.
           </p>
 
           <h2 className="lg-h2">14. Cambios a estos términos</h2>
           <p>
             Podemos actualizar estas condiciones. Los cambios relevantes se comunicarán
             por correo electrónico o mediante aviso en la aplicación con anticipación
-            razonable. El uso continuado del servicio tras la entrada en vigencia
-            implica su aceptación.
+            razonable, y no se aplicarán retroactivamente a un período ya contratado
+            y pagado. Si un cambio material afecta condiciones esenciales de tu plan,
+            puedes cancelar tu suscripción sin penalidad antes de que entre en
+            vigencia. El uso continuado del servicio después de esa fecha implica su
+            aceptación.
           </p>
 
           <h2 className="lg-h2">15. Ley aplicable y jurisdicción</h2>

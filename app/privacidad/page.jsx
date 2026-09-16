@@ -63,9 +63,9 @@ export default function PoliticaPrivacidad() {
           <p>
             El responsable del tratamiento de los datos personales recopilados a
             través de este sitio es <strong>GO COMPUTACIÓN SpA</strong>, RUT
-            77.776.589-2, sociedad constituida en Chile, en adelante
-            &ldquo;Firus&amp;Michis&rdquo;, &ldquo;nosotros&rdquo; o &ldquo;la
-            plataforma&rdquo;.
+            77.776.589-2, sociedad constituida en Chile, con domicilio en
+            Alberto Undurraga 1910, en adelante &ldquo;Firus&amp;Michis&rdquo;,
+            &ldquo;nosotros&rdquo; o &ldquo;la plataforma&rdquo;.
           </p>
           <p>
             Canal de contacto para materias de privacidad:{" "}
@@ -145,6 +145,19 @@ export default function PoliticaPrivacidad() {
           </ul>
 
           <h2 className="lg-h2">4. Para qué usamos tus datos</h2>
+          <p>
+            Tratamos tus datos según distintas bases jurídicas según la
+            finalidad: la <strong>ejecución del servicio</strong> que
+            contrataste (prestar la plataforma, generar tus documentos y
+            perfiles) no requiere un consentimiento aparte porque es necesaria
+            para cumplirte lo que solicitaste; los <strong>recordatorios y
+            alertas</strong> se basan en tu configuración voluntaria, que
+            puedes desactivar cuando quieras; las <strong>funciones de
+            inteligencia artificial</strong> se activan solo cuando tú las
+            usas; y la prevención de fraude y el cumplimiento de obligaciones
+            legales se basan en nuestro interés legítimo y en la ley,
+            respectivamente.
+          </p>
           <ul>
             <li>Prestar el servicio: mostrar, organizar y respaldar la información de salud de tus mascotas.</li>
             <li>Enviarte recordatorios y alertas por correo electrónico, según las preferencias que configures.</li>
@@ -166,6 +179,15 @@ export default function PoliticaPrivacidad() {
             estas funciones, los datos de la consulta (incluida la imagen de la receta
             cuando corresponda) se transmiten a ese proveedor para generar la
             respuesta.
+          </p>
+          <p>
+            Anthropic no utiliza los datos que se envían a través de su API
+            comercial para entrenar sus modelos, salvo que exista un acuerdo
+            distinto entre las partes. La información de salud que registras
+            corresponde a tu mascota, no a una persona natural — la Ley
+            N.º 21.719 protege datos de personas, por lo que estos registros
+            no constituyen datos sensibles de salud humana. Sí lo son, en
+            cambio, los datos de contacto de los tutores que registres.
           </p>
           <div className="lg-nota">
             Las respuestas generadas por inteligencia artificial son{" "}
@@ -193,6 +215,13 @@ export default function PoliticaPrivacidad() {
               <tr><td>Resend</td><td>Envío de correos de notificación</td></tr>
             </tbody>
           </table>
+          <p>
+            La mayoría de estos proveedores procesa datos por nuestra cuenta
+            y bajo nuestras instrucciones. Google es una excepción parcial:
+            como proveedor de inicio de sesión, también trata tu información
+            bajo su propia política de privacidad como responsable
+            independiente de ese tratamiento.
+          </p>
           <p>
             Algunos de estos proveedores almacenan o procesan información en
             servidores ubicados fuera de Chile (principalmente en Estados Unidos).
@@ -249,11 +278,12 @@ export default function PoliticaPrivacidad() {
           <p>
             Si pese a estas medidas ocurriera una vulneración de seguridad que
             comprometa tus datos personales (acceso no autorizado, pérdida o
-            destrucción), lo comunicaremos a la Agencia de Protección de Datos
-            Personales dentro de un plazo de <strong>72 horas</strong> desde que
-            tomemos conocimiento del incidente, y te avisaremos directamente a ti,
-            sin dilación indebida, cuando el incidente implique un riesgo alto para
-            tus derechos.
+            destrucción) y exista un riesgo razonable para tus derechos, lo
+            comunicaremos a la Agencia de Protección de Datos Personales por
+            los medios más expeditos posibles y{" "}
+            <strong>sin dilaciones indebidas</strong>, conforme al artículo 14
+            sexies de la Ley N.º 21.719, y te avisaremos directamente a ti
+            cuando el incidente implique un riesgo alto para tus derechos.
           </p>
 
           <h2 className="lg-h2">10. Tus derechos</h2>
