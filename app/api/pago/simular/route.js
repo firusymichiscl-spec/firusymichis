@@ -40,7 +40,7 @@ export async function POST(req) {
 
   const { error } = await supabaseAdmin
     .from("profiles")
-    .update({ plan, plan_expires_at: null })
+    .update({ plan, plan_expires_at: null, plan_started_at: new Date().toISOString() })
     .eq("id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

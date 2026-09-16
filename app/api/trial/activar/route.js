@@ -37,9 +37,10 @@ export async function POST() {
     return NextResponse.json({ ok: true, skipped: true });
   }
 
+  const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString();
   const { error } = await svc.from("profiles")
-    .update({ plan: "pro", plan_expires_at: expiresAt })
+    .update({ plan: "pro", plan_expires_at: expiresAt, plan_started_at: now })
     .eq("id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

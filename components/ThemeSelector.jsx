@@ -82,7 +82,7 @@ export default function ThemeSelector({ initialTheme, initialCustomColor, petId,
             <div style={{ fontFamily: "'Baloo 2', cursive", fontWeight: 800, color: "#fff", fontSize: 16 }}>Vista previa</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.8)" }}>{THEME_NAMES[selected] || "Personalizado"}</div>
           </div>
-          <div style={{ marginLeft: "auto", background: "var(--color-accent)", color: "#3D1F0A", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>PRO</div>
+          <div style={{ marginLeft: "auto", background: "var(--color-accent)", color: "var(--color-accent-text, #3D1F0A)", fontSize: 9, fontWeight: 800, padding: "2px 8px", borderRadius: 10 }}>PRO</div>
         </div>
 
         {/* Grid de temas */}

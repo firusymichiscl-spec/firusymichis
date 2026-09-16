@@ -64,7 +64,7 @@ export default async function Dashboard() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, plan_expires_at, theme, theme_custom_color, dose_view_pref")
+    .select("plan, plan_expires_at, plan_started_at, theme, theme_custom_color, dose_view_pref")
     .eq("id", user.id)
     .single();
 
@@ -79,6 +79,7 @@ export default async function Dashboard() {
       ? Math.ceil((new Date(profile.plan_expires_at) - new Date()) / 86400000)
       : null;
 
+  const planStartedAt = isActivePlan ? profile?.plan_started_at || null : null;
   const userTheme = profile?.theme || "clasico";
   const userThemeCustomColor = profile?.theme_custom_color || null;
   const userDoseViewPref = profile?.dose_view_pref || null;
@@ -137,6 +138,7 @@ export default async function Dashboard() {
           lastWeight={lastWeight}
           userPlan={userPlan}
           diasRestantes={diasRestantes}
+          planStartedAt={planStartedAt}
           initialTheme={userTheme}
           initialCustomColor={userThemeCustomColor}
           showTrialBanner={showTrialBanner}

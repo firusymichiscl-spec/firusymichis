@@ -103,7 +103,7 @@ const emptyMedForm = {
   mg_per_unit:'', prescribed_dose:'', drug_class: '',
 };
 
-export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot, initialDoseViewPref }) {
+export default function DashboardClient({ pet: initialPet, allPets, medications: initialMeds, history, user, lastWeight, userPlan, diasRestantes, planStartedAt, initialTheme, initialCustomColor, showTrialBanner, trialExpired, lastPetSnapshot, initialDoseViewPref }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -2536,10 +2536,10 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
               <div style={{ fontSize: 14, fontWeight: 700, color: "#3D1F0A", wordBreak: "break-word" }}>{user.email}</div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: userPlan === "free" ? 6 : 16 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 4 }}>
               <span style={{
                 background: userPlan === "free" ? "#F1F5F9" : "var(--color-accent)",
-                color: userPlan === "free" ? "#64748B" : "#3D1F0A",
+                color: userPlan === "free" ? "#64748B" : "var(--color-accent-text, #3D1F0A)",
                 fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 10,
                 letterSpacing: "0.5px", textTransform: "uppercase",
               }}>
@@ -2551,6 +2551,14 @@ export default function DashboardClient({ pet: initialPet, allPets, medications:
                 </span>
               )}
             </div>
+            {userPlan !== "free" && planStartedAt && (
+              <div style={{ textAlign: "center", fontSize: 11, color: "#C4845A", marginBottom: 16 }}>
+                Miembro {diasRestantes !== null ? "de prueba" : "PRO"} desde el {formatFecha(planStartedAt.split("T")[0])}
+              </div>
+            )}
+            {userPlan !== "free" && !planStartedAt && (
+              <div style={{ marginBottom: 16 }} />
+            )}
             {userPlan === "free" && (
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <Link href="/pago" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-primary)" }}>Pásate a PRO →</Link>
