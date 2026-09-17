@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase";
 
 const RADII = [
   { label: "1 km", value: 1000 },
@@ -79,6 +80,7 @@ function detectLocationHelpPlatform() {
 }
 
 export default function VetMapTab({ pet, history }) {
+  const supabase = createClient();
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -105,6 +107,8 @@ export default function VetMapTab({ pet, history }) {
   const [manualMode, setManualMode] = useState(false);
   const [manualLabel, setManualLabel] = useState(""); // texto efectivamente buscado, para el aviso y el "sin resultados"
   const [manualError, setManualError] = useState(null);
+  const [favorites, setFavorites] = useState([]);
+  const [favoriteBusy, setFavoriteBusy] = useState(null);
 
   // Veterinarias del historial de la mascota
   const historyVets = [...new Set(
@@ -138,6 +142,12 @@ export default function VetMapTab({ pet, history }) {
   };
 
   useEffect(() => { getLocation(); }, []);
+
+  useEffect(() => {
+    supabase.from("vet_favorites").select("*").eq("pet_id", pet.id)
+      .then(({ data }) => setFavorites(data || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pet.id]);
 
   // Inicializar mapa cuando hay ubicación y Google cargado — Lote R4:
   // NUNCA en modo manual (el mapa se oculta por completo, ver JSX). Al
@@ -290,6 +300,42 @@ export default function VetMapTab({ pet, history }) {
     }
     setCopyStatus({ key, ok });
     setTimeout(() => setCopyStatus(s => (s?.key === key ? null : s)), 2000);
+  };
+
+  const toggleFavorite = async (vet) => {
+    const existing = favorites.find(f => f.place_id === vet.place_id);
+    if (existing) {
+      await supabase.from("vet_favorites").delete().eq("id", existing.id);
+      setFavorites(prev => prev.filter(f => f.id !== existing.id));
+      return;
+    }
+    setFavoriteBusy(vet.place_id);
+    let phone = detailsCache[vet.place_id]?.phone || null;
+    let website = detailsCache[vet.place_id]?.website || null;
+    if (!phone && !website) {
+      try {
+        const res = await fetch(`/api/places/details?place_id=${encodeURIComponent(vet.place_id)}`);
+        const data = await res.json();
+        phone = data.phone || null;
+        website = data.website || null;
+      } catch {}
+    }
+    const { data: inserted } = await supabase.from("vet_favorites").insert({
+      pet_id: pet.id,
+      place_id: vet.place_id,
+      name: vet.name,
+      address: vet.vicinity || null,
+      phone,
+      website,
+      rating: vet.rating || null,
+    }).select().single();
+    if (inserted) setFavorites(prev => [...prev, inserted]);
+    setFavoriteBusy(null);
+  };
+
+  const updateVetName = async (favId, value) => {
+    setFavorites(prev => prev.map(f => f.id === favId ? { ...f, vet_name: value } : f));
+    await supabase.from("vet_favorites").update({ vet_name: value }).eq("id", favId);
   };
 
   const getDistanceMeters = (vetLocation) => {
@@ -488,6 +534,31 @@ export default function VetMapTab({ pet, history }) {
         </div>
       )}
 
+      {favorites.length > 0 && (
+        <div style={css.card}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>⭐ Mis veterinarias favoritas</div>
+          {favorites.map((f, i) => (
+            <div key={f.id} style={{ padding: "10px 0", borderBottom: i < favorites.length - 1 ? "1px solid #FFF0EB" : "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#3D1F0A" }}>{f.name}</div>
+                  {f.address && <div style={{ fontSize: 11, color: "#C4845A" }}>📍 {f.address}</div>}
+                  {f.rating && <div style={{ fontSize: 10, color: "#B45309", fontWeight: 700, marginTop: 2 }}>⭐ {f.rating}</div>}
+                </div>
+                <button onClick={() => toggleFavorite({ place_id: f.place_id })} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#FFD166", flexShrink: 0 }} aria-label="Quitar de favoritas">★</button>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                {f.phone && <a href={`tel:${f.phone.replace(/\s+/g, "")}`} style={{ padding: "4px 10px", borderRadius: 8, background: "#E8FAF9", color: "#0F6E56", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>📞 {f.phone}</a>}
+                {f.website && <a href={f.website} target="_blank" rel="noopener noreferrer" style={{ padding: "4px 10px", borderRadius: 8, background: "#FFF0EB", color: "#FF6B35", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>🌐 Sitio web</a>}
+                {!f.phone && !f.website && <span style={{ fontSize: 11, color: "#94a3b8" }}>Sin teléfono ni sitio web registrados en Google</span>}
+              </div>
+              <input placeholder="Nombre del veterinario (opcional)" defaultValue={f.vet_name || ""} onBlur={e => updateVetName(f.id, e.target.value)}
+                style={{ marginTop: 8, width: "100%", padding: "6px 10px", borderRadius: 8, border: "1px solid #FFD9C8", fontSize: 12, fontFamily: "'Nunito', sans-serif", boxSizing: "border-box" }} />
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Veterinarias del historial */}
       {historyVets.length > 0 && (
         <div style={css.card}>
@@ -541,6 +612,11 @@ export default function VetMapTab({ pet, history }) {
                   {vet.opening_hours?.open_now === undefined && <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8" }}>Sin dato de horario</span>}
                 </div>
               </div>
+              <button onClick={e => { e.stopPropagation(); toggleFavorite(vet); }} disabled={favoriteBusy === vet.place_id}
+                style={{ padding: "5px 8px", borderRadius: 8, background: favorites.some(f => f.place_id === vet.place_id) ? "#FFF7D6" : "#fff", color: favorites.some(f => f.place_id === vet.place_id) ? "#B45309" : "#94a3b8", border: "1px solid #FFE9A8", fontSize: 14, cursor: favoriteBusy === vet.place_id ? "not-allowed" : "pointer", flexShrink: 0, marginLeft: 8 }}
+                aria-label="Marcar como favorita">
+                {favorites.some(f => f.place_id === vet.place_id) ? "★" : "☆"}
+              </button>
               <button onClick={e => { e.stopPropagation(); copyText(vet.name, key); }}
                 style={{ padding: "5px 10px", borderRadius: 8, background: status?.ok ? "#e8faf4" : status && !status.ok ? "#fef2f2" : "#FFF0EB", color: status?.ok ? "#059669" : status && !status.ok ? "#dc2626" : "#FF6B35", border: `1px solid ${status?.ok ? "#a7f3d0" : status && !status.ok ? "#fecaca" : "#FFD0BC"}`, fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0, marginLeft: 8, whiteSpace: "nowrap" }}>
                 {status?.ok ? "✓ Copiado al portapapeles" : status && !status.ok ? "No se pudo copiar" : "📋 Copiar nombre"}
