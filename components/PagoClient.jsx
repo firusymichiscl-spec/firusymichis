@@ -4,16 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const PLANS = [
-  { id: "pro", label: "PRO", price: "$3.990", features: ["Hasta 3 mascotas", "Asistente IA incluido", "Exportar ficha en PDF"] },
-  { id: "premium", label: "PREMIUM", price: "$7.990", features: ["Hasta 5 mascotas", "Todo lo de PRO", "Perfil familiar compartido"] },
+  { id: "3m", label: "3 MESES", months: 3, price: 7990, priceLabel: "$7.990", perMonth: "≈ $2.663/mes" },
+  { id: "6m", label: "6 MESES", months: 6, price: 14990, priceLabel: "$14.990", perMonth: "≈ $2.498/mes", ahorro: "Ahorras 16%" },
+  { id: "12m", label: "12 MESES", months: 12, price: 24990, priceLabel: "$24.990", perMonth: "≈ $2.083/mes", ahorro: "Ahorras 30%" },
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function PagoClient({ currentPlan, preselectedPlan }) {
   const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState(preselectedPlan || "pro");
+  const [selectedPlan, setSelectedPlan] = useState(preselectedPlan || "3m");
   const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState(null);
 
   // Formulario simulado — integrar Mercado Pago aquí
   const [cardName, setCardName] = useState("");
@@ -23,21 +25,21 @@ export default function PagoClient({ currentPlan, preselectedPlan }) {
 
   const activarPlan = async () => {
     setProcessing(true);
+    setError(null);
     await sleep(1500);
 
-    const res = await fetch("/api/pago/simular", {
+    const res = await fetch("/api/pago/flow/crear", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: selectedPlan }),
+      body: JSON.stringify({ months: chosenPlan.months }),
     });
-
-    setProcessing(false);
+    const data = await res.json();
     if (!res.ok) {
-      alert("No se pudo activar el plan. Intenta de nuevo.");
+      setError(data.error || "No se pudo iniciar el pago.");
+      setProcessing(false);
       return;
     }
-
-    router.push("/dashboard?activated=true");
+    window.location.assign(data.url);
   };
 
   const css = {
@@ -78,13 +80,11 @@ export default function PagoClient({ currentPlan, preselectedPlan }) {
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 800, color: "#3D1F0A" }}>{p.label}</span>
-                <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#FF6B35" }}>{p.price} <small style={{ fontSize: 11, fontWeight: 600 }}>CLP/mes</small></span>
+                <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 16, fontWeight: 800, color: "#FF6B35" }}>{p.priceLabel} <small style={{ fontSize: 11, fontWeight: 600 }}>CLP</small></span>
               </div>
-              <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
-                {p.features.map((f) => (
-                  <li key={f} style={{ fontSize: 12.5, color: "#7A4522", lineHeight: 1.8 }}>✓ {f}</li>
-                ))}
-              </ul>
+              <div style={{ fontSize: 12, color: "#7A4522", marginTop: 4 }}>{p.perMonth}</div>
+              {p.ahorro && <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginTop: 2 }}>{p.ahorro}</div>}
+              <div style={{ fontSize: 12.5, color: "#7A4522", lineHeight: 1.8, marginTop: 6 }}>✓ Hasta 3 mascotas · Asistente IA · Exportar PDF</div>
             </div>
           </div>
         ))}
@@ -113,9 +113,18 @@ export default function PagoClient({ currentPlan, preselectedPlan }) {
           </div>
         </div>
 
+        {error && (
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", color: "#dc2626", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 700, marginTop: 16 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
         <button style={css.submitBtn} onClick={activarPlan} disabled={processing}>
-          {processing ? "Procesando..." : `Activar plan ${chosenPlan?.label || ""}`}
+          {processing ? "Procesando..." : `Activar PRO ${chosenPlan?.label?.toLowerCase() || ""}`}
         </button>
+        <div style={{ fontSize: 11, color: "#B08968", textAlign: "center", marginTop: 8 }}>
+          ⚠️ Esto es una simulación de pago para pruebas internas — no se realiza ningún cobro real todavía.
+        </div>
 
         <div style={{ fontSize: 11, color: "#B08968", textAlign: "center", marginTop: 10 }}>
           * Pago simulado — próximamente Mercado Pago
