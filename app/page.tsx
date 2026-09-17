@@ -31,22 +31,35 @@ const css = `
   .lp-title .accent{color:#FF6B35;}
   .lp-sub{font-size:17px;color:#7A4522;line-height:1.6;margin-bottom:32px;}
   .lp-cta-row{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:28px;}
-  .lp-cta-main{padding:15px 30px;border-radius:14px;border:none;background:linear-gradient(135deg,#FF6B35,#e85d2e);color:#fff;font-family:'Baloo 2',cursive;font-size:16px;font-weight:700;text-decoration:none;box-shadow:0 8px 24px rgba(255,107,53,0.35);}
-  .lp-cta-sec{padding:15px 24px;border-radius:14px;border:1.5px solid #FFD9C8;background:#fff;color:#3D1F0A;font-family:'Baloo 2',cursive;font-size:15px;font-weight:700;text-decoration:none;}
+  .lp-cta-main{padding:15px 30px;border-radius:14px;border:none;background:linear-gradient(135deg,#FF6B35,#e85d2e);color:#fff;font-family:'Baloo 2',cursive;font-size:16px;font-weight:700;text-decoration:none;box-shadow:0 8px 24px rgba(255,107,53,0.35);transition:background 0.2s ease, transform 0.15s ease;}
+  .lp-cta-main:active{background:linear-gradient(135deg,#e85d2e,#c94a20);transform:scale(0.97);}
+  .lp-cta-sec{padding:15px 24px;border-radius:14px;border:1.5px solid #FFD9C8;background:#fff;color:#3D1F0A;font-family:'Baloo 2',cursive;font-size:15px;font-weight:700;text-decoration:none;transition:background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;}
+  .lp-cta-sec:active{background:#FFF0EB;border-color:#FF6B35;transform:scale(0.97);}
   .lp-chips{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-bottom:20px;}
   .lp-chip{background:#fff;border:1.5px solid #FFE4D6;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:700;color:#7A4522;}
   .lp-note{font-size:12px;color:#B08968;}
   .lp-section{max-width:1080px;margin:0 auto;padding:56px 24px;}
   .lp-section-title{font-family:'Baloo 2',cursive;font-size:28px;font-weight:800;color:#3D1F0A;text-align:center;margin-bottom:8px;}
   .lp-section-sub{font-size:14px;color:#7A4522;text-align:center;margin-bottom:40px;}
+  .lp-shot{position:absolute;top:16px;left:16px;right:16px;bottom:16px;width:calc(100% - 32px);height:calc(100% - 32px);object-fit:contain;opacity:0;animation:lpshotcycle 15s infinite;}
+  @keyframes lpshotcycle{0%{opacity:0;transform:translateY(8px)}4%{opacity:1;transform:translateY(0)}16%{opacity:1}20%{opacity:0;transform:translateY(-8px)}100%{opacity:0}}
+  .lp-shot-1{animation-delay:0s}
+  .lp-shot-2{animation-delay:-3s}
+  .lp-shot-3{animation-delay:-6s}
+  .lp-shot-4{animation-delay:-9s}
+  .lp-shot-5{animation-delay:-12s}
   .lp-features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;}
   .lp-feature-card{background:#fff;border-radius:18px;padding:26px 22px;box-shadow:0 2px 12px rgba(61,31,10,0.06);}
   .lp-feature-icon{font-size:32px;margin-bottom:14px;}
   .lp-feature-title{font-family:'Baloo 2',cursive;font-size:16px;font-weight:700;color:#3D1F0A;margin-bottom:6px;}
   .lp-feature-desc{font-size:13.5px;color:#7A4522;line-height:1.5;}
   .lp-pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;align-items:stretch;}
-  .lp-plan{background:#fff;border-radius:20px;padding:30px 26px;box-shadow:0 2px 12px rgba(61,31,10,0.06);border:1.5px solid #FFE4D6;display:flex;flex-direction:column;}
+  .lp-plan{background:#fff;border-radius:20px;padding:30px 26px;box-shadow:0 2px 12px rgba(61,31,10,0.06);border:1.5px solid #FFE4D6;display:flex;flex-direction:column;transition:transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;cursor:pointer;position:relative;overflow:hidden;}
+  .lp-plan:hover{transform:translateY(-6px);box-shadow:0 16px 32px rgba(61,31,10,0.12);}
+  .lp-plan:active{transform:translateY(-2px);border-color:#FF6B35;box-shadow:0 8px 20px rgba(255,107,53,0.2);}
   .lp-plan.featured{background:linear-gradient(160deg,#FF6B35,#e85d2e);border:none;color:#fff;transform:scale(1.03);box-shadow:0 12px 32px rgba(255,107,53,0.35);}
+  .lp-plan.featured:hover{transform:scale(1.03) translateY(-6px);box-shadow:0 20px 40px rgba(255,107,53,0.45);}
+  .lp-plan.featured:active{transform:scale(1.01) translateY(-2px);box-shadow:0 10px 26px rgba(255,107,53,0.5);}
   .lp-plan-name{font-family:'Baloo 2',cursive;font-size:15px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:10px;}
   .lp-plan-price{font-family:'Baloo 2',cursive;font-size:32px;font-weight:800;margin-bottom:4px;}
   .lp-plan-price small{font-size:13px;font-weight:600;opacity:0.75;}
@@ -171,6 +184,18 @@ export default async function Home() {
         <div className="lp-note">Sin tarjeta de crédito · Cancela cuando quieras · Datos seguros</div>
       </section>
 
+      <section className="lp-section" style={{ paddingTop: 8 }}>
+        <h2 className="lp-section-title">Así se ve por dentro</h2>
+        <div className="lp-section-sub">La ficha completa de tu mascota, siempre a mano</div>
+        <div style={{ maxWidth: 320, margin: "0 auto", background: "#fff", border: "1.5px solid #FFE4D6", borderRadius: 24, padding: 16, position: "relative", height: 460, overflow: "hidden", boxShadow: "0 8px 24px rgba(61,31,10,0.08)" }}>
+          <img src="/landing/screenshot-1-datos-basicos.png" alt="Datos básicos de una mascota en Firus&Michis" className="lp-shot lp-shot-1" />
+          <img src="/landing/screenshot-2-peso.png" alt="Evolución de peso de una mascota en Firus&Michis" className="lp-shot lp-shot-2" />
+          <img src="/landing/screenshot-3-historial.png" alt="Historial médico de una mascota en Firus&Michis" className="lp-shot lp-shot-3" />
+          <img src="/landing/screenshot-4-alimentacion.png" alt="Registro de alimentación en Firus&Michis" className="lp-shot lp-shot-4" />
+          <img src="/landing/screenshot-5-ia.png" alt="Asistente de inteligencia artificial en Firus&Michis" className="lp-shot lp-shot-5" />
+        </div>
+      </section>
+
       <section id="features" className="lp-section">
         <h2 className="lp-section-title">Todo lo que tu mascota necesita</h2>
         <div className="lp-section-sub">Una app pensada para no perder nunca el control de su salud</div>
@@ -188,9 +213,9 @@ export default async function Home() {
       <section id="pricing" className="lp-section">
         <h2 className="lp-section-title">Planes simples, sin sorpresas</h2>
         <div className="lp-section-sub">Empieza gratis y sube de plan cuando lo necesites</div>
-        <div className="lp-pricing-grid">
+        <div className="lp-pricing-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <div className="lp-plan">
-            <div className="lp-plan-name" style={{ color: "#2EC4B6" }}>Free trial</div>
+            <div className="lp-plan-name" style={{ color: "#2EC4B6" }}>FREE TRIAL</div>
             <div className="lp-plan-price">1 mes <small>gratis</small></div>
             <ul className="lp-plan-feat" style={{ listStyle: "none", padding: 0 }}>
               <li>✓ Acceso PRO completo</li>
@@ -200,26 +225,43 @@ export default async function Home() {
             <Link href="/login" className="lp-cta-sec">Empezar gratis →</Link>
           </div>
 
-          <div className="lp-plan featured">
-            <div className="lp-plan-name">Pro</div>
-            <div className="lp-plan-price">$3.990 <small>CLP/mes</small></div>
+          <div className="lp-plan">
+            <div className="lp-plan-name" style={{ color: "#3D1F0A" }}>PRO · 3 MESES</div>
+            <div className="lp-plan-price">$7.990 <small>CLP</small></div>
+            <div style={{ fontSize: 12, color: "#7A4522", marginTop: -8, marginBottom: 8 }}>≈ $2.663/mes</div>
             <ul className="lp-plan-feat" style={{ listStyle: "none", padding: 0 }}>
               <li>✓ Hasta 3 mascotas</li>
               <li>✓ Asistente IA incluido</li>
               <li>✓ Exportar ficha en PDF</li>
             </ul>
-            <Link href="/login" className="lp-cta-main">Empezar gratis →</Link>
+            <Link href="/login" className="lp-cta-sec">Empezar gratis →</Link>
           </div>
 
           <div className="lp-plan">
-            <div className="lp-plan-name" style={{ color: "#805AD5" }}>Premium</div>
-            <div className="lp-plan-price">$7.990 <small>CLP/mes</small></div>
+            <div style={{ position: "absolute", top: 14, right: -34, transform: "rotate(40deg)", background: "#059669", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 38px" }}>16%</div>
+            <div className="lp-plan-name" style={{ color: "#3D1F0A" }}>PRO · 6 MESES</div>
+            <div className="lp-plan-price">$14.990 <small>CLP</small></div>
+            <div style={{ fontSize: 12, color: "#7A4522", marginTop: -8, marginBottom: 8 }}>≈ $2.498/mes</div>
             <ul className="lp-plan-feat" style={{ listStyle: "none", padding: 0 }}>
-              <li>✓ Hasta 5 mascotas</li>
-              <li>✓ Todo lo de PRO</li>
-              <li>✓ Perfil familiar compartido</li>
+              <li>✓ Hasta 3 mascotas</li>
+              <li>✓ Asistente IA incluido</li>
+              <li>✓ Exportar ficha en PDF</li>
             </ul>
             <Link href="/login" className="lp-cta-sec">Empezar gratis →</Link>
+          </div>
+
+          <div className="lp-plan featured">
+            <div style={{ position: "absolute", top: 14, right: -34, transform: "rotate(40deg)", background: "#059669", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 38px" }}>30%</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#FF6B35", background: "#fff", display: "inline-block", padding: "3px 10px", borderRadius: 10, marginBottom: 10 }}>Recomendado</div>
+            <div className="lp-plan-name" style={{ color: "#fff" }}>PRO · 12 MESES</div>
+            <div className="lp-plan-price" style={{ color: "#fff" }}>$24.990 <small style={{ color: "rgba(255,255,255,0.85)" }}>CLP</small></div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.9)", marginTop: -8, marginBottom: 8 }}>≈ $2.083/mes</div>
+            <ul className="lp-plan-feat" style={{ listStyle: "none", padding: 0, color: "#fff" }}>
+              <li>✓ Hasta 3 mascotas</li>
+              <li>✓ Asistente IA incluido</li>
+              <li>✓ Exportar ficha en PDF</li>
+            </ul>
+            <Link href="/login" className="lp-cta-main">Empezar gratis →</Link>
           </div>
         </div>
       </section>
