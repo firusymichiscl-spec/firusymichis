@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPetIcon } from "@/lib/petSpecies";
 
@@ -17,14 +16,8 @@ const calcAge = (birthDate) => {
 
 const getPetAvatar = (species, breed) => getPetIcon(species, breed);
 
-const PLANS = [
-  { id: "pro", label: "PRO", price: "$3.990 CLP/mes", features: "Hasta 3 mascotas · IA incluida · PDF" },
-  { id: "premium", label: "PREMIUM", price: "$7.990 CLP/mes", features: "Hasta 5 mascotas · Perfil familiar" },
-];
-
 export default function Paywall({ lastPetSnapshot }) {
   const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState("pro");
 
   const pet = lastPetSnapshot;
 
@@ -89,34 +82,19 @@ export default function Paywall({ lastPetSnapshot }) {
             Tus datos están seguros y te esperan.
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
-            {PLANS.map((p) => (
-              <label key={p.id} onClick={() => setSelectedPlan(p.id)} style={{
-                display: "flex", alignItems: "center", gap: 12, textAlign: "left",
-                border: `2px solid ${selectedPlan === p.id ? "#FF6B35" : "#FFD9C8"}`,
-                background: selectedPlan === p.id ? "#FFF0EB" : "#fff",
-                borderRadius: 14, padding: "12px 16px", cursor: "pointer",
-              }}>
-                <input type="radio" name="plan" checked={selectedPlan === p.id} onChange={() => setSelectedPlan(p.id)}
-                  style={{ width: 18, height: 18, accentColor: "#FF6B35", flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                    <span style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#3D1F0A" }}>{p.label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#FF6B35" }}>{p.price}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#8A5530", marginTop: 2 }}>{p.features}</div>
-                </div>
-              </label>
-            ))}
+          <div style={{ textAlign: "left", background: "#FFF0EB", borderRadius: 14, padding: 16, marginBottom: 22 }}>
+            <div style={{ fontFamily: "'Baloo 2', cursive", fontSize: 14, fontWeight: 800, color: "#3D1F0A", marginBottom: 4 }}>Plan PRO</div>
+            <div style={{ fontSize: 12.5, color: "#7A4522" }}>✓ Hasta 3 mascotas · Asistente IA · Exportar PDF</div>
+            <div style={{ fontSize: 12, color: "#8A5530", marginTop: 6 }}>Elige 3, 6 o 12 meses en el siguiente paso.</div>
           </div>
 
-          <button onClick={() => router.push(`/pago?plan=${selectedPlan}`)} style={{
+          <button onClick={() => router.push("/pago")} style={{
             width: "100%", padding: 14, borderRadius: 14, border: "none",
             background: "linear-gradient(135deg,#FF6B35,#e85d2e)", color: "#fff",
             fontFamily: "'Baloo 2', cursive", fontSize: 15, fontWeight: 700, cursor: "pointer",
             boxShadow: "0 8px 20px rgba(255,107,53,0.3)",
           }}>
-            Continuar con {selectedPlan === "pro" ? "PRO" : "PREMIUM"} →
+            Ver planes y continuar →
           </button>
 
           <a href="mailto:contacto@firusymichis.cl" style={{

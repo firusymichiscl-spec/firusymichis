@@ -84,6 +84,9 @@ function NuevaMascotaInner() {
 
   // FIX 1.2: solo mostrar "Volver al dashboard" si ya tiene alguna mascota.
   const [hasExistingPets, setHasExistingPets] = useState(false);
+  const [existingPetsCount, setExistingPetsCount] = useState(0);
+  const [userPlan, setUserPlan] = useState('free');
+  const [petLimitError, setPetLimitError] = useState('');
   // FIX 2: tutor titular obligatorio + autocompletar desde otra mascota.
   const [tutorForm, setTutorForm] = useState({ full_name: '', phone: '', relationship: '' });
   const [tutorError, setTutorError] = useState('');
@@ -102,6 +105,9 @@ function NuevaMascotaInner() {
       const { data: existingPets } = await supabase.from('pets').select('id, name').eq('user_id', user.id);
       if (!existingPets || existingPets.length === 0) return;
       setHasExistingPets(true);
+      setExistingPetsCount(existingPets.length);
+      const { data: profile } = await supabase.from('profiles').select('plan').eq('id', user.id).single();
+      setUserPlan(profile?.plan || 'free');
 
       const petIds = existingPets.map(p => p.id);
       const { data: tutors } = await supabase.from('tutors').select('*').in('pet_id', petIds).eq('type', 'primary').limit(1);
@@ -191,6 +197,11 @@ function NuevaMascotaInner() {
   };
 
   const savePet = async () => {
+    const PET_LIMIT_PRO = 3;
+    if (userPlan === 'pro' && existingPetsCount >= PET_LIMIT_PRO) {
+      setPetLimitError(`Tu plan PRO permite hasta ${PET_LIMIT_PRO} mascotas. Si necesitas más, escríbenos a contacto@firusymichis.cl.`);
+      return;
+    }
     if (!hasExistingPets && !termsAccepted) {
       setTermsError('Debes aceptar los Términos y la Política de Privacidad para continuar.');
       return;
@@ -580,6 +591,11 @@ function NuevaMascotaInner() {
               {termsError && (
                 <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#dc2626', borderRadius: 10, padding: '9px 12px', fontSize: 12, fontWeight: 700, marginTop: 8 }}>
                   ⚠️ {termsError}
+                </div>
+              )}
+              {petLimitError && (
+                <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#dc2626', borderRadius: 10, padding: '9px 12px', fontSize: 12, fontWeight: 700, marginTop: 8 }}>
+                  ⚠️ {petLimitError}
                 </div>
               )}
               <button style={css.btn} onClick={savePet} disabled={loading}>{loading ? 'Guardando...' : 'Guardar mascota ✓'}</button>

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import PagoClient from "@/components/PagoClient";
 
 export default async function PagoPage({ searchParams }) {
-  const { plan: planParam } = await searchParams;
+  // planParam ya no se usa (solo existe un plan, PRO, con 3 duraciones)
 
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -33,12 +33,9 @@ export default async function PagoPage({ searchParams }) {
     .eq("id", user.id)
     .single();
 
-  const preselected = planParam === "premium" ? "premium" : "pro";
-
   return (
     <PagoClient
       currentPlan={profile?.plan || "free"}
-      preselectedPlan={preselected}
     />
   );
 }
